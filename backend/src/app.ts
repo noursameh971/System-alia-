@@ -6,7 +6,10 @@ import { errorHandler } from "./middleware/errorHandler.js";
 import { brandsRouter } from "./modules/brands/brands.routes.js";
 import { categoriesRouter } from "./modules/categories/categories.routes.js";
 import { inventoryRouter } from "./modules/inventory/inventory.routes.js";
+import { ordersRouter } from "./modules/orders/orders.routes.js";
 import { productsRouter } from "./modules/products/products.routes.js";
+import { reasonCodesRouter } from "./modules/reason-codes/reasonCodes.routes.js";
+import { returnsRouter } from "./modules/returns/returns.routes.js";
 import { stockMovementsRouter } from "./modules/stock-movements/stockMovements.routes.js";
 import { warehouseRouter } from "./modules/warehouse/warehouse.routes.js";
 
@@ -39,6 +42,9 @@ export function createApp(): Express {
   app.use("/api/warehouses", warehouseRouter);
   app.use("/api/stock-movements", stockMovementsRouter);
   app.use("/api/inventory", inventoryRouter);
+  app.use("/api/reason-codes", reasonCodesRouter);
+  app.use("/api/orders", ordersRouter);
+  app.use("/api/returns", returnsRouter);
 
   // Must be registered last — Express only routes here on thrown/forwarded errors.
   app.use(errorHandler);

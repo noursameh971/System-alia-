@@ -145,6 +145,12 @@ npm run db:studio     # drizzle-kit: browse the DB in a local GUI
 | GET    | `/api/stock-movements/variants/:variantId`    | any authenticated    | audit trail for a variant, newest first |
 | GET    | `/api/inventory/variants/:variantId`          | any authenticated    | current on-hand quantity per bin for a variant |
 | GET    | `/api/inventory`                              | any authenticated    | list current stock across all variants/bins, filterable by `brandId`/`categoryId`/`zoneId`/`binId` — the Inventory dashboard's data source |
+| GET    | `/api/reason-codes`                           | any authenticated    | list reason codes, optional `?appliesTo=stock_movement\|return` |
+| GET    | `/api/orders`                                 | any authenticated    | list orders, optional `?brandId=`/`?status=`, with item count + total |
+| POST   | `/api/orders`                                 | any authenticated    | create an order; decrements inventory for every item in the same transaction |
+| GET    | `/api/orders/:orderId`                        | any authenticated    | order detail: items with attributes, price snapshot, returned/returnable quantity |
+| GET    | `/api/returns`                                | any authenticated    | list returns, optional `?orderId=` |
+| POST   | `/api/returns`                                | any authenticated    | process a return against an order item; restocks inventory only if `disposition: "restock"` |
 
 `POST /api/products` request shape:
 
@@ -177,10 +183,29 @@ Stock movement request shapes:
 ```
 
 `referenceType`/`referenceId` are optional free-form pointers (e.g. to an
-`orders` row) — the `returns` table itself (linking a movement back to a
-specific order/order_item with a restock-vs-write-off decision) is part of
-the future Orders & Returns module; when it ships it calls
-`recordReturnMovement` under the hood and passes `referenceType: "return"`.
+`orders` row). The Orders & Returns module (below) is the main consumer:
+placing an order calls the outbound movement logic with
+`referenceType: "order"`, and a restock return calls the return movement
+logic with `referenceType: "return"`.
+
+Orders & Returns request shapes:
+
+```json
+// POST /api/orders
+{
+  "brandId": "uuid",
+  "customerName": "optional",
+  "customerPhone": "optional",
+  "customerAddress": "optional",
+  "items": [ { "variantId": "uuid", "binId": "uuid", "quantity": 4 } ]
+}
+
+// POST /api/returns — restock (must include restockBinId)
+{ "orderItemId": "uuid", "quantity": 2, "reasonCodeId": "uuid", "disposition": "restock", "restockBinId": "uuid" }
+
+// POST /api/returns — write-off (restockBinId must be omitted)
+{ "orderItemId": "uuid", "quantity": 1, "reasonCodeId": "uuid", "disposition": "write_off" }
+```
 
 `requireAuth` expects a `Bearer` JWT (`{ sub: userId, role: "admin" | "warehouse_staff" }`)
 signed with `JWT_SECRET` — **unless `AUTH_BYPASS=true`**, see below.
@@ -208,6 +233,41 @@ an authenticated user with **no token required at all**:
 warning on startup whenever it's on. Delete the branch in
 `middleware/auth.ts` (`applyMockAuth` and the `if (env.AUTH_BYPASS)` check)
 once the real auth module ships.
+
+## Orders & Returns: composing one transaction, not two
+
+Placing an order must create the `orders`/`order_items` rows *and* decrement
+inventory for every item — and if any item can't be fulfilled, none of it
+should happen, order included. The Step 3 stock-movement functions
+(`recordOutboundMovement`, `recordReturnMovement`, etc.) each opened their
+*own* `db.transaction()`, which made them unusable here: calling one from
+inside the order's transaction would mean two independent transactions, and
+a failure in the second wouldn't roll back the first.
+
+Step 6 splits every `record*Movement` function into two: an `...InTx`
+version that does the actual work against a transaction handle the caller
+provides, and the original public function, now a thin wrapper that just
+opens its own transaction and calls the `...InTx` version. The
+`/api/stock-movements/*` routes still get one transaction per call, same as
+before — nothing about their behavior changed. `orders.service.ts` and
+`returns.service.ts` call `recordOutboundMovementInTx`/
+`recordReturnMovementInTx` directly, passing their *own* `tx`, so:
+
+- **Order creation**: validate brand + every item (variant belongs to this
+  brand, has an active price) up front, insert the order, then for each item
+  call `recordOutboundMovementInTx` — which throws on insufficient stock,
+  aborting the whole transaction. An order with 3 items where the 3rd is out
+  of stock leaves *zero* rows behind: not the order, not items 1 and 2's
+  inventory decrements, nothing. Verified directly: an order for 9999 units
+  correctly 409s and a follow-up inventory check shows the quantity
+  untouched — not partially decremented by whichever items would have fit.
+- **Returns**: a `restock` return calls `recordReturnMovementInTx` in the
+  same transaction as the `returns` row insert; a `write_off` return never
+  calls it at all — per the brief, inventory is only ever incremented for
+  the `restock` disposition, so a written-off item doesn't silently
+  reappear as sellable stock. Every return quantity is also checked against
+  `order_item.quantity - (sum of quantities already returned for that item)`
+  before anything is written, so over-returning is rejected outright.
 
 ## Concurrency & data integrity in stock movements
 
@@ -286,3 +346,18 @@ applied, server run with `AUTH_BYPASS=true`, requests fired via `curl`):
   /api/stock-movements/variants/:variantId`) showed all four movements in
   order; and the concurrency race described above was run for real and
   produced the exact expected outcome.
+- **Step 6**: created an order for 5 units (inventory correctly decremented);
+  attempted an order for 9999 units and confirmed both the 409 *and* that
+  inventory was left completely untouched (proving the whole order rolled
+  back, not just the failing item); listed and fetched the order, confirming
+  the price snapshot and attributes were correct; processed a `restock`
+  return of 2 units and confirmed inventory went back up by exactly 2;
+  processed a `write_off` return of 1 unit and confirmed inventory did
+  **not** change; attempted to return more than remained returnable (3 more
+  when only 2 were left) and got a precise rejection message; confirmed a
+  `restock` return submitted without `restockBinId` is rejected by Zod
+  before it reaches the database; and read back the variant's full stock
+  movement audit trail, confirming exactly three rows — `inbound`,
+  `outbound` (referencing the order), `return_in` (referencing the return)
+  — with **no row at all** for the write-off, matching the "only restock
+  touches inventory" design.

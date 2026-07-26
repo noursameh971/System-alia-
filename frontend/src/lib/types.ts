@@ -105,3 +105,98 @@ export interface MovementResult {
   fromBinQuantityAfter: number | null;
   toBinQuantityAfter: number | null;
 }
+
+export type ReasonScope = "stock_movement" | "return" | "both";
+
+export interface ReasonCode {
+  id: string;
+  code: string;
+  label: string;
+  appliesTo: ReasonScope;
+}
+
+export type OrderStatus = "pending" | "processing" | "shipped" | "delivered" | "cancelled";
+
+export interface OrderListItem {
+  id: string;
+  orderNumber: string;
+  status: OrderStatus;
+  customerName: string | null;
+  orderDate: string;
+  brand: Brand;
+  itemCount: number;
+  total: number;
+}
+
+export interface OrderDetailItem {
+  id: string;
+  variantId: string;
+  sku: string;
+  productName: string;
+  attributes: ProductVariantAttribute[];
+  quantity: number;
+  unitPriceAtSale: number;
+  subtotal: number;
+  returnedQuantity: number;
+  returnableQuantity: number;
+}
+
+export interface OrderDetail {
+  id: string;
+  orderNumber: string;
+  status: OrderStatus;
+  customerName: string | null;
+  customerPhone: string | null;
+  customerAddress: string | null;
+  orderDate: string;
+  brand: Brand;
+  items: OrderDetailItem[];
+}
+
+export interface CreatedOrderItem {
+  id: string;
+  variantId: string;
+  sku: string;
+  quantity: number;
+  unitPriceAtSale: number;
+  subtotal: number;
+}
+
+export interface CreatedOrder {
+  id: string;
+  orderNumber: string;
+  brandId: string;
+  status: OrderStatus;
+  customerName: string | null;
+  customerPhone: string | null;
+  customerAddress: string | null;
+  orderDate: string;
+  items: CreatedOrderItem[];
+}
+
+export type ReturnDisposition = "restock" | "write_off";
+
+export interface CreatedReturn {
+  id: string;
+  orderId: string;
+  orderItemId: string;
+  variantId: string;
+  sku: string;
+  quantity: number;
+  disposition: ReturnDisposition;
+  restockBinId: string | null;
+  reasonCodeId: string;
+}
+
+export interface ReturnListItem {
+  id: string;
+  orderId: string;
+  orderItemId: string;
+  sku: string;
+  quantity: number;
+  disposition: ReturnDisposition;
+  reasonLabel: string;
+  restockBinId: string | null;
+  notes: string | null;
+  createdAt: string;
+}

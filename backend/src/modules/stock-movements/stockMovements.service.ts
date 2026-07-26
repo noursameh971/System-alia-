@@ -1,12 +1,8 @@
 import { desc, eq } from "drizzle-orm";
+import type { PgTransaction } from "drizzle-orm/pg-core";
 import { db } from "../../db/client.js";
 import { decrementInventory, incrementInventory } from "../../db/inventoryOperations.js";
-import {
-  productVariants,
-  reasonCodes,
-  stockMovements,
-  warehouseBins,
-} from "../../db/schema/index.js";
+import { productVariants, reasonCodes, stockMovements, warehouseBins } from "../../db/schema/index.js";
 import { ApiError } from "../../utils/apiError.js";
 import type {
   InboundMovementInput,
@@ -16,7 +12,9 @@ import type {
 } from "./stockMovements.schema.js";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-async function assertVariantExists(tx: any, variantId: string): Promise<void> {
+type Tx = PgTransaction<any, any, any>;
+
+export async function assertVariantExists(tx: Tx, variantId: string): Promise<void> {
   const [row] = await tx
     .select({ id: productVariants.id })
     .from(productVariants)
@@ -25,8 +23,7 @@ async function assertVariantExists(tx: any, variantId: string): Promise<void> {
   if (!row) throw ApiError.badRequest(`Variant ${variantId} does not exist`);
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-async function assertBinExists(tx: any, binId: string): Promise<void> {
+export async function assertBinExists(tx: Tx, binId: string): Promise<void> {
   const [row] = await tx
     .select({ id: warehouseBins.id })
     .from(warehouseBins)
@@ -35,8 +32,7 @@ async function assertBinExists(tx: any, binId: string): Promise<void> {
   if (!row) throw ApiError.badRequest(`Bin ${binId} does not exist`);
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-async function assertReasonCodeExists(tx: any, reasonCodeId: string): Promise<void> {
+export async function assertReasonCodeExists(tx: Tx, reasonCodeId: string): Promise<void> {
   const [row] = await tx
     .select({ id: reasonCodes.id })
     .from(reasonCodes)
@@ -55,188 +51,221 @@ export interface MovementResult {
   toBinQuantityAfter: number | null;
 }
 
+/**
+ * Every `record*Movement` function below has an `...InTx` twin that does the
+ * actual work against a caller-supplied transaction, and a thin public
+ * wrapper that opens its own `db.transaction()` for standalone use (the
+ * `/api/stock-movements/*` routes). This split exists so the Orders &
+ * Returns module can compose an outbound/return movement into its *own*
+ * order/return transaction — "create the order" and "decrement the stock"
+ * must commit or roll back as one unit, which isn't possible if the
+ * movement function insists on opening a second, independent transaction.
+ */
+
+export async function recordInboundMovementInTx(
+  tx: Tx,
+  input: InboundMovementInput,
+  actorUserId: string,
+): Promise<MovementResult> {
+  await assertVariantExists(tx, input.variantId);
+  await assertBinExists(tx, input.binId);
+
+  const quantityAfter = await incrementInventory(tx, {
+    variantId: input.variantId,
+    binId: input.binId,
+    quantity: input.quantity,
+  });
+
+  const [movement] = await tx
+    .insert(stockMovements)
+    .values({
+      variantId: input.variantId,
+      movementType: "inbound",
+      quantity: input.quantity,
+      toBinId: input.binId,
+      referenceType: input.referenceType,
+      referenceId: input.referenceId,
+      performedBy: actorUserId,
+      notes: input.notes,
+    })
+    .returning();
+  if (!movement) throw new Error("Movement insert returned no row"); // unreachable
+
+  return {
+    movementId: movement.id,
+    variantId: input.variantId,
+    quantity: input.quantity,
+    fromBinId: null,
+    toBinId: input.binId,
+    fromBinQuantityAfter: null,
+    toBinQuantityAfter: quantityAfter,
+  };
+}
+
 export async function recordInboundMovement(
   input: InboundMovementInput,
   actorUserId: string,
 ): Promise<MovementResult> {
-  return db.transaction(async (tx) => {
-    await assertVariantExists(tx, input.variantId);
-    await assertBinExists(tx, input.binId);
+  return db.transaction((tx) => recordInboundMovementInTx(tx, input, actorUserId));
+}
 
-    const quantityAfter = await incrementInventory(tx, {
-      variantId: input.variantId,
-      binId: input.binId,
-      quantity: input.quantity,
-    });
+export async function recordOutboundMovementInTx(
+  tx: Tx,
+  input: OutboundMovementInput,
+  actorUserId: string,
+): Promise<MovementResult> {
+  await assertVariantExists(tx, input.variantId);
+  await assertBinExists(tx, input.binId);
 
-    const [movement] = await tx
-      .insert(stockMovements)
-      .values({
-        variantId: input.variantId,
-        movementType: "inbound",
-        quantity: input.quantity,
-        toBinId: input.binId,
-        referenceType: input.referenceType,
-        referenceId: input.referenceId,
-        performedBy: actorUserId,
-        notes: input.notes,
-      })
-      .returning();
-    if (!movement) throw new Error("Movement insert returned no row"); // unreachable
-
-    return {
-      movementId: movement.id,
-      variantId: input.variantId,
-      quantity: input.quantity,
-      fromBinId: null,
-      toBinId: input.binId,
-      fromBinQuantityAfter: null,
-      toBinQuantityAfter: quantityAfter,
-    };
+  // Throws ApiError.conflict (409) and rolls back the whole (possibly
+  // caller-owned) transaction if there isn't enough stock.
+  const quantityAfter = await decrementInventory(tx, {
+    variantId: input.variantId,
+    binId: input.binId,
+    quantity: input.quantity,
   });
+
+  const [movement] = await tx
+    .insert(stockMovements)
+    .values({
+      variantId: input.variantId,
+      movementType: "outbound",
+      quantity: input.quantity,
+      fromBinId: input.binId,
+      referenceType: input.referenceType,
+      referenceId: input.referenceId,
+      performedBy: actorUserId,
+      notes: input.notes,
+    })
+    .returning();
+  if (!movement) throw new Error("Movement insert returned no row"); // unreachable
+
+  return {
+    movementId: movement.id,
+    variantId: input.variantId,
+    quantity: input.quantity,
+    fromBinId: input.binId,
+    toBinId: null,
+    fromBinQuantityAfter: quantityAfter,
+    toBinQuantityAfter: null,
+  };
 }
 
 export async function recordOutboundMovement(
   input: OutboundMovementInput,
   actorUserId: string,
 ): Promise<MovementResult> {
-  return db.transaction(async (tx) => {
-    await assertVariantExists(tx, input.variantId);
-    await assertBinExists(tx, input.binId);
+  return db.transaction((tx) => recordOutboundMovementInTx(tx, input, actorUserId));
+}
 
-    // Throws ApiError.conflict (409) and rolls back the whole transaction if
-    // there isn't enough stock — nothing else in this function has run a
-    // write yet, so there's nothing to undo.
-    const quantityAfter = await decrementInventory(tx, {
-      variantId: input.variantId,
-      binId: input.binId,
-      quantity: input.quantity,
-    });
+export async function recordTransferMovementInTx(
+  tx: Tx,
+  input: TransferMovementInput,
+  actorUserId: string,
+): Promise<MovementResult> {
+  await assertVariantExists(tx, input.variantId);
+  await assertBinExists(tx, input.fromBinId);
+  await assertBinExists(tx, input.toBinId);
 
-    const [movement] = await tx
-      .insert(stockMovements)
-      .values({
-        variantId: input.variantId,
-        movementType: "outbound",
-        quantity: input.quantity,
-        fromBinId: input.binId,
-        referenceType: input.referenceType,
-        referenceId: input.referenceId,
-        performedBy: actorUserId,
-        notes: input.notes,
-      })
-      .returning();
-    if (!movement) throw new Error("Movement insert returned no row"); // unreachable
-
-    return {
-      movementId: movement.id,
-      variantId: input.variantId,
-      quantity: input.quantity,
-      fromBinId: input.binId,
-      toBinId: null,
-      fromBinQuantityAfter: quantityAfter,
-      toBinQuantityAfter: null,
-    };
+  // Decrement first: if the source doesn't have enough stock this throws
+  // and the transaction rolls back before the destination is ever touched.
+  const fromQuantityAfter = await decrementInventory(tx, {
+    variantId: input.variantId,
+    binId: input.fromBinId,
+    quantity: input.quantity,
   });
+  const toQuantityAfter = await incrementInventory(tx, {
+    variantId: input.variantId,
+    binId: input.toBinId,
+    quantity: input.quantity,
+  });
+
+  const [movement] = await tx
+    .insert(stockMovements)
+    .values({
+      variantId: input.variantId,
+      movementType: "transfer",
+      quantity: input.quantity,
+      fromBinId: input.fromBinId,
+      toBinId: input.toBinId,
+      performedBy: actorUserId,
+      notes: input.notes,
+    })
+    .returning();
+  if (!movement) throw new Error("Movement insert returned no row"); // unreachable
+
+  return {
+    movementId: movement.id,
+    variantId: input.variantId,
+    quantity: input.quantity,
+    fromBinId: input.fromBinId,
+    toBinId: input.toBinId,
+    fromBinQuantityAfter: fromQuantityAfter,
+    toBinQuantityAfter: toQuantityAfter,
+  };
 }
 
 export async function recordTransferMovement(
   input: TransferMovementInput,
   actorUserId: string,
 ): Promise<MovementResult> {
-  return db.transaction(async (tx) => {
-    await assertVariantExists(tx, input.variantId);
-    await assertBinExists(tx, input.fromBinId);
-    await assertBinExists(tx, input.toBinId);
-
-    // Decrement first: if the source doesn't have enough stock this throws
-    // and the transaction rolls back before the destination is ever touched.
-    const fromQuantityAfter = await decrementInventory(tx, {
-      variantId: input.variantId,
-      binId: input.fromBinId,
-      quantity: input.quantity,
-    });
-    const toQuantityAfter = await incrementInventory(tx, {
-      variantId: input.variantId,
-      binId: input.toBinId,
-      quantity: input.quantity,
-    });
-
-    const [movement] = await tx
-      .insert(stockMovements)
-      .values({
-        variantId: input.variantId,
-        movementType: "transfer",
-        quantity: input.quantity,
-        fromBinId: input.fromBinId,
-        toBinId: input.toBinId,
-        performedBy: actorUserId,
-        notes: input.notes,
-      })
-      .returning();
-    if (!movement) throw new Error("Movement insert returned no row"); // unreachable
-
-    return {
-      movementId: movement.id,
-      variantId: input.variantId,
-      quantity: input.quantity,
-      fromBinId: input.fromBinId,
-      toBinId: input.toBinId,
-      fromBinQuantityAfter: fromQuantityAfter,
-      toBinQuantityAfter: toQuantityAfter,
-    };
-  });
+  return db.transaction((tx) => recordTransferMovementInTx(tx, input, actorUserId));
 }
 
 /**
  * Records a `return_in` stock movement — the inventory-side effect of a
- * return (put stock back in a bin). The `returns` table (linking this back
- * to the original order/order_item with a restock-vs-write-off decision)
- * belongs to the Orders & Returns module, which hasn't been built yet; when
- * it lands, it will call this same function and pass referenceType='return'
- * + referenceId=<returns.id> to link the two records together.
+ * restock return (put stock back in a bin). The Returns module calls this
+ * (via the InTx variant, from its own transaction) only when a return's
+ * disposition is `restock`; a `write_off` return never touches inventory,
+ * so it never calls this at all.
  */
+export async function recordReturnMovementInTx(
+  tx: Tx,
+  input: ReturnMovementInput,
+  actorUserId: string,
+): Promise<MovementResult> {
+  await assertVariantExists(tx, input.variantId);
+  await assertBinExists(tx, input.binId);
+  await assertReasonCodeExists(tx, input.reasonCodeId);
+
+  const quantityAfter = await incrementInventory(tx, {
+    variantId: input.variantId,
+    binId: input.binId,
+    quantity: input.quantity,
+  });
+
+  const [movement] = await tx
+    .insert(stockMovements)
+    .values({
+      variantId: input.variantId,
+      movementType: "return_in",
+      quantity: input.quantity,
+      toBinId: input.binId,
+      reasonCodeId: input.reasonCodeId,
+      referenceType: input.referenceType,
+      referenceId: input.referenceId,
+      performedBy: actorUserId,
+      notes: input.notes,
+    })
+    .returning();
+  if (!movement) throw new Error("Movement insert returned no row"); // unreachable
+
+  return {
+    movementId: movement.id,
+    variantId: input.variantId,
+    quantity: input.quantity,
+    fromBinId: null,
+    toBinId: input.binId,
+    fromBinQuantityAfter: null,
+    toBinQuantityAfter: quantityAfter,
+  };
+}
+
 export async function recordReturnMovement(
   input: ReturnMovementInput,
   actorUserId: string,
 ): Promise<MovementResult> {
-  return db.transaction(async (tx) => {
-    await assertVariantExists(tx, input.variantId);
-    await assertBinExists(tx, input.binId);
-    await assertReasonCodeExists(tx, input.reasonCodeId);
-
-    const quantityAfter = await incrementInventory(tx, {
-      variantId: input.variantId,
-      binId: input.binId,
-      quantity: input.quantity,
-    });
-
-    const [movement] = await tx
-      .insert(stockMovements)
-      .values({
-        variantId: input.variantId,
-        movementType: "return_in",
-        quantity: input.quantity,
-        toBinId: input.binId,
-        reasonCodeId: input.reasonCodeId,
-        referenceType: input.referenceType,
-        referenceId: input.referenceId,
-        performedBy: actorUserId,
-        notes: input.notes,
-      })
-      .returning();
-    if (!movement) throw new Error("Movement insert returned no row"); // unreachable
-
-    return {
-      movementId: movement.id,
-      variantId: input.variantId,
-      quantity: input.quantity,
-      fromBinId: null,
-      toBinId: input.binId,
-      fromBinQuantityAfter: null,
-      toBinQuantityAfter: quantityAfter,
-    };
-  });
+  return db.transaction((tx) => recordReturnMovementInTx(tx, input, actorUserId));
 }
 
 export async function listMovementsForVariant(variantId: string, limit = 50) {
