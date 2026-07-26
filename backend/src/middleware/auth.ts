@@ -18,12 +18,50 @@ declare global {
 }
 
 /**
+ * Placeholder user id used by the AUTH_BYPASS dev shortcut below when the
+ * caller doesn't supply x-mock-user-id. created_by/performed_by columns are
+ * NOT NULL FKs into `users`, so a row with this exact id must exist locally
+ * (see backend/README.md's seed snippet) or every write will fail its FK
+ * check — that's intentional, it keeps the bypass from silently attributing
+ * writes to a user that doesn't really exist.
+ */
+export const DEV_MOCK_ADMIN_ID = "00000000-0000-0000-0000-000000000001";
+
+/**
+ * TEMPORARY, Step-3-only: when AUTH_BYPASS=true, every request is treated as
+ * an authenticated user with no token check at all, so the warehouse/
+ * inventory APIs can be exercised from Postman before the real login/JWT
+ * module exists. Override the identity per-request with `x-mock-user-id`
+ * and `x-mock-role` headers (e.g. to test the admin-only routes as
+ * warehouse_staff and confirm they 403).
+ *
+ * Guardrails: env.ts refuses to boot with AUTH_BYPASS=true when
+ * NODE_ENV=production, and server startup logs a loud warning whenever it's
+ * on. Still, this whole branch should be deleted once real auth ships —
+ * don't let it linger past local testing.
+ */
+function applyMockAuth(req: Request): void {
+  const roleHeader = req.header("x-mock-role");
+  const role = roleHeader === "warehouse_staff" ? "warehouse_staff" : "admin";
+  req.user = {
+    id: req.header("x-mock-user-id") || DEV_MOCK_ADMIN_ID,
+    role,
+  };
+}
+
+/**
  * Verifies the Bearer JWT and attaches the caller to req.user.
- * Login/token-issuance is out of scope for Step 2 (products & QR codes) and
- * lands with the dedicated auth module — this only guards routes that need
- * an already-authenticated caller (e.g. to stamp created_by/performed_by).
+ * Login/token-issuance is out of scope for these early steps and lands with
+ * the dedicated auth module — this only guards routes that need an
+ * already-authenticated caller (e.g. to stamp created_by/performed_by).
  */
 export function requireAuth(req: Request, _res: Response, next: NextFunction): void {
+  if (env.AUTH_BYPASS) {
+    applyMockAuth(req);
+    next();
+    return;
+  }
+
   const header = req.headers.authorization;
   if (!header?.startsWith("Bearer ")) {
     throw ApiError.unauthorized("Missing bearer token");

@@ -3,10 +3,21 @@ import express, { type Express } from "express";
 import helmet from "helmet";
 import { env } from "./config/env.js";
 import { errorHandler } from "./middleware/errorHandler.js";
+import { inventoryRouter } from "./modules/inventory/inventory.routes.js";
 import { productsRouter } from "./modules/products/products.routes.js";
+import { stockMovementsRouter } from "./modules/stock-movements/stockMovements.routes.js";
+import { warehouseRouter } from "./modules/warehouse/warehouse.routes.js";
 
 export function createApp(): Express {
   const app = express();
+
+  if (env.AUTH_BYPASS) {
+    console.warn(
+      "\n⚠️  AUTH_BYPASS is enabled — every request is treated as an authenticated user with " +
+        "NO token check. This is for local Postman testing only. Never set this in production " +
+        "(env.ts already refuses to boot with AUTH_BYPASS=true + NODE_ENV=production, but double-check).\n",
+    );
+  }
 
   app.use(helmet());
   app.use(
@@ -21,6 +32,9 @@ export function createApp(): Express {
   });
 
   app.use("/api/products", productsRouter);
+  app.use("/api/warehouses", warehouseRouter);
+  app.use("/api/stock-movements", stockMovementsRouter);
+  app.use("/api/inventory", inventoryRouter);
 
   // Must be registered last — Express only routes here on thrown/forwarded errors.
   app.use(errorHandler);
