@@ -29,9 +29,9 @@ frontend/
     app/
       layout.tsx          # root layout — wraps everything in BrandProvider + DashboardShell
       page.tsx              # redirects "/" -> "/products"
-      products/page.tsx      # Products page (the core UI for this step)
-      inventory/page.tsx      # stub — backend API exists (Step 3), page not built yet
-      orders/page.tsx          # stub — same
+      products/page.tsx      # Products page
+      inventory/page.tsx      # Inventory page: Stock Levels / Record Movement tabs
+      orders/page.tsx          # stub — backend API doesn't exist yet either
     components/
       layout/
         DashboardShell.tsx      # Header + Sidebar + MobileBottomNav + content slot
@@ -46,16 +46,26 @@ frontend/
         ProductCard.tsx      # one product: name, brand/category badges, variant list
         VariantRow.tsx         # one variant: SKU, attribute badges, price, Generate QR button
         QrCodeModal.tsx           # fetches the QR PNG, shows it, Download/Print
+      inventory/
+        StockFilters.tsx, StockLevelsTable.tsx   # the dashboard: category/zone/bin filters + results
+        VariantScanInput.tsx                       # shared "scan or type SKU" -> resolved variant card
+        BinSelect.tsx, QuantityInput.tsx              # shared form fields (forwardRef, for autofocus chaining)
+        MovementStatusBanner.tsx                        # shared success/error banner
+        InboundForm.tsx, OutboundForm.tsx, TransferForm.tsx   # one form per movement type
+        MovementForms.tsx                                       # tab switcher between the three
       ui/
         Badge.tsx, Spinner.tsx, EmptyState.tsx, ComingSoon.tsx
     context/
       BrandContext.tsx    # brand list (SWR) + selected brand (persisted, cross-tab synced)
+    hooks/
+      useAllBins.ts          # every bin across the warehouse, flattened with zone code
+      useVariantStock.ts       # per-bin on-hand quantity for one variant
     lib/
       apiClient.ts          # fetch wrapper: unwraps the backend's {success,data} envelope
       auth.ts                 # placeholder for attaching a JWT once login exists
       env.ts                    # NEXT_PUBLIC_API_URL
       types.ts                    # TS types mirroring backend response shapes
-      brands.ts, products.ts        # typed API functions per domain
+      brands.ts, categories.ts, products.ts, variants.ts, warehouses.ts, inventory.ts   # typed API functions per domain
 ```
 
 ## Layout & responsiveness
@@ -91,23 +101,87 @@ with a `download` attribute) and **Print** (`window.print()`, scoped to
 just the QR by a `#qr-print-area` visibility rule in `globals.css` so the
 rest of the dashboard doesn't print too).
 
-## Backend addition needed for this step
+## Inventory page
 
-The backend had no product **list** endpoint before this step (only
-`POST /api/products` to create). Added `GET /api/products?brandId=` in
-`backend/src/modules/products/` (service/controller/route), returning
-products with their variants, attribute values, and current active price
-inlined — one request for what the Products page needs, no N+1. Also added
-`GET /api/brands` (`backend/src/modules/brands/`) for the toggle.
+Two tabs, both under the one `Inventory` nav item (no extra top-level route —
+the mobile bottom nav only has three slots):
+
+- **Record Movement** (the default landing tab — for staff actively working
+  the floor, recording a movement is the far more frequent action than
+  browsing a dashboard, so it gets the zero-tap spot). A sub-tab switch
+  between Inbound / Outbound / Transfer, each a linear flow: scan-or-type a
+  SKU → pick a bin (or From/To bins for transfer) → enter a quantity →
+  submit. Fields autofocus as each becomes available (SKU input → bin select
+  → quantity) via refs, so a fast worker never has to reach for the mouse.
+  Outbound and Transfer's bin pickers only list bins where the scanned
+  variant actually has stock, annotated with the live quantity (`A / A1 — 20
+  in stock`) — pulled from the existing `GET /api/inventory/variants/:id`
+  endpoint (Step 3) via `useVariantStock`. On success the form resets itself
+  and refocuses the SKU input for the next scan; a 409 (insufficient stock)
+  from the backend is translated into `Only 20 available in that bin (you
+  asked for 9999)` instead of a raw error.
+- **Stock Levels**: the dashboard. Filters by Category, Zone, and Bin
+  (Brand reuses the header's existing global toggle rather than a second,
+  redundant brand control) against the new `GET /api/inventory` endpoint.
+
+### QR/SKU entry
+
+`VariantScanInput` is the shared "scan or type SKU" component used by all
+three movement forms. Per the ask, this step implements manual entry
+(type or paste the code) rather than live camera scanning — camera-based
+scanning would need the device camera plus a JS QR decode library (e.g.
+`BarcodeDetector` or `@zxing/browser`), which is a reasonable future
+addition but out of scope here. It resolves the SKU against the new `GET
+/api/products/variants/by-sku/:sku` and shows the matched product/variant
+(name, brand, attributes) before any bin/quantity step, so staff confirm
+what they scanned instead of acting on a bare string. A 404 renders as `No
+variant with SKU ...` inline.
+
+## Backend additions needed for this step
+
+None of these existed before Step 5:
+
+- `GET /api/products/variants/by-sku/:sku` — resolves the scan/manual-entry
+  input to a full variant record.
+- `GET /api/inventory?brandId=&categoryId=&zoneId=&binId=` — lists current
+  stock across every variant/bin for the dashboard (the only prior inventory
+  endpoint was scoped to one variant).
+- `GET /api/categories` — a small new `backend/src/modules/categories/`
+  module (categories were previously only reachable embedded inside product
+  records) — backs the Stock Levels category filter.
+
+## A bug this step's own testing caught
+
+`VariantScanInput` originally rendered its own `<form onSubmit>` for
+Enter-to-submit. Nested inside `InboundForm`/`OutboundForm`/`TransferForm`'s
+own `<form>`, that's invalid HTML (`<form>` can't contain a `<form>`) and
+broke React hydration — only visible once the page was actually loaded in a
+browser, not from `npm run build`/`lint` alone. Fixed by dropping the inner
+element to a `<div>` and handling Enter via `onKeyDown` with
+`stopPropagation` so it can't also bubble into the outer form's submit.
+
+Separately, `OutboundForm`/`TransferForm` weren't invalidating the cached
+per-bin stock (`useVariantStock`'s SWR cache) after a successful movement,
+so quickly re-scanning the same SKU right after submitting could briefly
+show the pre-movement quantity in the bin picker. Both forms now call the
+hook's `mutate` before resetting.
 
 ## Verification
 
-Ran for real, not just built: started the backend (`AUTH_BYPASS=true`) and
-`npm run dev` together, drove a headless Chromium against the app with
-Playwright, and confirmed with screenshots — desktop and a 390×844 mobile
-viewport — that: the Products page renders a real product fetched from the
-API; switching the brand toggle to Noori correctly re-fetches and shows the
-empty state (no Noori products exist yet); clicking **Generate QR** loads a
-real PNG from the backend's QR endpoint into the modal; and the
-Inventory/Orders nav stubs render. Zero browser console errors across the
-whole flow. `npm run build` and `npm run lint` both pass clean.
+Ran for real end-to-end against a live backend + Postgres, both this step
+and Step 4's flow re-verified together:
+
+- Started the backend (`AUTH_BYPASS=true`) and `npm run dev` together, drove
+  a headless Chromium with Playwright (screenshots at desktop and 390×844
+  mobile), confirmed the Products page, brand-filtered empty state, and QR
+  modal all still work.
+- For Inventory: seeded a variant with 25 units in bin A1, then through the
+  actual UI (not the API directly) — recorded an Inbound of 10 into A2,
+  confirmed a bad SKU shows an inline error, recorded an Outbound of 5 from
+  A1, confirmed an oversized Outbound (9999) is rejected with the precise
+  "Only 20 available" message, recorded a Transfer of 3 from A2 to A1, then
+  switched to Stock Levels and confirmed the dashboard showed the exact
+  expected final quantities (A1: 25 − 5 + 3 = 23, A2: 10 − 3 = 7) — proving
+  the whole chain (forms → API → DB transaction → dashboard query) agrees.
+  Also exercised the Zone filter. `npm run build` and `npm run lint` pass
+  clean throughout.

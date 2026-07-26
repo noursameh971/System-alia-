@@ -5,7 +5,7 @@ import { productVariants } from "../../db/schema/index.js";
 import { ApiError } from "../../utils/apiError.js";
 import { sendSuccess } from "../../utils/apiResponse.js";
 import { generateVariantQrPng } from "../qrcode/qrcode.util.js";
-import { createProductWithVariants, listProductsWithVariants } from "./products.service.js";
+import { createProductWithVariants, getVariantBySku, listProductsWithVariants } from "./products.service.js";
 import { listProductsQuerySchema, type CreateProductInput } from "./products.schema.js";
 
 export async function createProduct(req: Request, res: Response): Promise<void> {
@@ -26,6 +26,17 @@ export async function getProducts(req: Request, res: Response): Promise<void> {
 
   const productList = await listProductsWithVariants(parsed.data);
   sendSuccess(res, 200, productList);
+}
+
+/** GET /api/products/variants/by-sku/:sku — resolves a scanned/typed SKU to a variant for the movement forms. */
+export async function getVariantBySkuHandler(req: Request, res: Response): Promise<void> {
+  const sku = String(req.params.sku ?? "");
+  if (!sku) throw ApiError.badRequest("SKU is required");
+
+  const variant = await getVariantBySku(sku);
+  if (!variant) throw ApiError.notFound(`No variant with SKU ${sku}`);
+
+  sendSuccess(res, 200, variant);
 }
 
 /** Serves the printable QR sticker (PNG) for a variant, looked up by SKU. */

@@ -127,8 +127,10 @@ npm run db:studio     # drizzle-kit: browse the DB in a local GUI
 |--------|----------------------------------------------|----------------------|-------------|
 | GET    | `/health`                                     | none                  | liveness check |
 | GET    | `/api/brands`                                 | any authenticated    | list brands (backs the frontend's brand toggle) |
+| GET    | `/api/categories`                             | any authenticated    | list categories (shared taxonomy across brands) |
 | GET    | `/api/products`                               | any authenticated    | list products (optional `?brandId=`), variants/attributes/price inlined |
 | POST   | `/api/products`                               | admin                | create a product + all its variants in one DB transaction |
+| GET    | `/api/products/variants/by-sku/:sku`          | any authenticated    | resolve a scanned/typed SKU to a variant (backs the movement forms' scan input) |
 | GET    | `/api/products/variants/:sku/qr-code`         | any authenticated    | printable PNG QR sticker for a variant |
 | GET    | `/api/warehouses`                             | any authenticated    | list warehouses |
 | POST   | `/api/warehouses`                             | admin                | create a warehouse |
@@ -142,6 +144,7 @@ npm run db:studio     # drizzle-kit: browse the DB in a local GUI
 | POST   | `/api/stock-movements/returns`                | any authenticated    | stock coming back into a bin (`return_in`) |
 | GET    | `/api/stock-movements/variants/:variantId`    | any authenticated    | audit trail for a variant, newest first |
 | GET    | `/api/inventory/variants/:variantId`          | any authenticated    | current on-hand quantity per bin for a variant |
+| GET    | `/api/inventory`                              | any authenticated    | list current stock across all variants/bins, filterable by `brandId`/`categoryId`/`zoneId`/`binId` — the Inventory dashboard's data source |
 
 `POST /api/products` request shape:
 

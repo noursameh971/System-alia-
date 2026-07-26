@@ -294,3 +294,75 @@ export async function listProductsWithVariants(filters: { brandId?: string }): P
     variants: variantsByProduct.get(p.id) ?? [],
   }));
 }
+
+export interface VariantLookupResult {
+  id: string;
+  sku: string;
+  qrCodeValue: string;
+  status: string;
+  productId: string;
+  productName: string;
+  brand: { id: string; name: string; code: string };
+  category: { id: string; name: string };
+  attributes: { attributeName: string; value: string }[];
+  price: number | null;
+  currency: string | null;
+}
+
+/**
+ * Resolves a variant by its SKU (== the QR code payload) — backs the
+ * frontend's "scan or type the QR/SKU" input on the stock movement forms,
+ * so staff get the product name/attributes back to confirm before picking a
+ * bin and quantity, instead of acting on a bare SKU string.
+ */
+export async function getVariantBySku(sku: string): Promise<VariantLookupResult | null> {
+  const [row] = await db
+    .select({
+      id: productVariants.id,
+      sku: productVariants.sku,
+      qrCodeValue: productVariants.qrCodeValue,
+      status: productVariants.status,
+      productId: products.id,
+      productName: products.name,
+      brandId: brands.id,
+      brandName: brands.name,
+      brandCode: brands.code,
+      categoryId: categories.id,
+      categoryName: categories.name,
+    })
+    .from(productVariants)
+    .innerJoin(products, eq(products.id, productVariants.productId))
+    .innerJoin(brands, eq(brands.id, products.brandId))
+    .innerJoin(categories, eq(categories.id, products.categoryId))
+    .where(eq(productVariants.sku, sku))
+    .limit(1);
+
+  if (!row) return null;
+
+  const attributeRows = await db
+    .select({ attributeName: attributes.name, value: attributeValues.value })
+    .from(variantAttributeValues)
+    .innerJoin(attributeValues, eq(attributeValues.id, variantAttributeValues.attributeValueId))
+    .innerJoin(attributes, eq(attributes.id, attributeValues.attributeId))
+    .where(eq(variantAttributeValues.variantId, row.id));
+
+  const [priceRow] = await db
+    .select({ price: variantPrices.price, currency: variantPrices.currency })
+    .from(variantPrices)
+    .where(and(eq(variantPrices.variantId, row.id), isNull(variantPrices.effectiveTo)))
+    .limit(1);
+
+  return {
+    id: row.id,
+    sku: row.sku,
+    qrCodeValue: row.qrCodeValue,
+    status: row.status,
+    productId: row.productId,
+    productName: row.productName,
+    brand: { id: row.brandId, name: row.brandName, code: row.brandCode },
+    category: { id: row.categoryId, name: row.categoryName },
+    attributes: attributeRows.sort((a, b) => a.attributeName.localeCompare(b.attributeName)),
+    price: priceRow ? Number(priceRow.price) : null,
+    currency: priceRow?.currency ?? null,
+  };
+}
