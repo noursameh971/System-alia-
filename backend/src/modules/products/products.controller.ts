@@ -5,8 +5,8 @@ import { productVariants } from "../../db/schema/index.js";
 import { ApiError } from "../../utils/apiError.js";
 import { sendSuccess } from "../../utils/apiResponse.js";
 import { generateVariantQrPng } from "../qrcode/qrcode.util.js";
-import { createProductWithVariants } from "./products.service.js";
-import type { CreateProductInput } from "./products.schema.js";
+import { createProductWithVariants, listProductsWithVariants } from "./products.service.js";
+import { listProductsQuerySchema, type CreateProductInput } from "./products.schema.js";
 
 export async function createProduct(req: Request, res: Response): Promise<void> {
   const input = req.body as CreateProductInput;
@@ -15,6 +15,17 @@ export async function createProduct(req: Request, res: Response): Promise<void> 
 
   const product = await createProductWithVariants(input, actorUserId);
   sendSuccess(res, 201, product);
+}
+
+/** GET /api/products?brandId= — list products with variants, attributes, and current price inlined. */
+export async function getProducts(req: Request, res: Response): Promise<void> {
+  const parsed = listProductsQuerySchema.safeParse(req.query);
+  if (!parsed.success) {
+    throw ApiError.badRequest("Invalid query parameters", parsed.error.flatten());
+  }
+
+  const productList = await listProductsWithVariants(parsed.data);
+  sendSuccess(res, 200, productList);
 }
 
 /** Serves the printable QR sticker (PNG) for a variant, looked up by SKU. */

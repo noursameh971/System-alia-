@@ -3,6 +3,7 @@ import express, { type Express } from "express";
 import helmet from "helmet";
 import { env } from "./config/env.js";
 import { errorHandler } from "./middleware/errorHandler.js";
+import { brandsRouter } from "./modules/brands/brands.routes.js";
 import { inventoryRouter } from "./modules/inventory/inventory.routes.js";
 import { productsRouter } from "./modules/products/products.routes.js";
 import { stockMovementsRouter } from "./modules/stock-movements/stockMovements.routes.js";
@@ -31,6 +32,7 @@ export function createApp(): Express {
     res.json({ status: "ok" });
   });
 
+  app.use("/api/brands", brandsRouter);
   app.use("/api/products", productsRouter);
   app.use("/api/warehouses", warehouseRouter);
   app.use("/api/stock-movements", stockMovementsRouter);

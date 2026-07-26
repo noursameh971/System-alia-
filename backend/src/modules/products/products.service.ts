@@ -1,4 +1,4 @@
-import { eq, inArray, sql } from "drizzle-orm";
+import { and, eq, inArray, isNull, sql } from "drizzle-orm";
 import { db } from "../../db/client.js";
 import {
   attributeValues,
@@ -169,4 +169,128 @@ export async function createProductWithVariants(
       variants: createdVariants,
     };
   });
+}
+
+export interface ProductListVariant {
+  id: string;
+  sku: string;
+  qrCodeValue: string;
+  status: string;
+  attributes: { attributeName: string; value: string }[];
+  price: number | null;
+  currency: string | null;
+}
+
+export interface ProductListItem {
+  id: string;
+  name: string;
+  description: string | null;
+  status: string;
+  brand: { id: string; name: string; code: string };
+  category: { id: string; name: string; code: string };
+  variants: ProductListVariant[];
+}
+
+/**
+ * Lists products (optionally scoped to one brand) with their variants,
+ * attribute values, and current active price inlined — built for the
+ * frontend's Products page, which needs all of that in one request rather
+ * than N+1 round trips per product.
+ */
+export async function listProductsWithVariants(filters: { brandId?: string }): Promise<ProductListItem[]> {
+  const productRows = await db
+    .select({
+      id: products.id,
+      name: products.name,
+      description: products.description,
+      status: products.status,
+      brandId: brands.id,
+      brandName: brands.name,
+      brandCode: brands.code,
+      categoryId: categories.id,
+      categoryName: categories.name,
+      categoryCode: categories.code,
+    })
+    .from(products)
+    .innerJoin(brands, eq(brands.id, products.brandId))
+    .innerJoin(categories, eq(categories.id, products.categoryId))
+    .where(filters.brandId ? eq(products.brandId, filters.brandId) : undefined)
+    .orderBy(products.name);
+
+  if (productRows.length === 0) return [];
+
+  const productIds = productRows.map((p) => p.id);
+
+  const variantRows = await db
+    .select({
+      id: productVariants.id,
+      productId: productVariants.productId,
+      sku: productVariants.sku,
+      qrCodeValue: productVariants.qrCodeValue,
+      status: productVariants.status,
+    })
+    .from(productVariants)
+    .where(inArray(productVariants.productId, productIds));
+
+  const variantIds = variantRows.map((v) => v.id);
+
+  const [attributeRows, priceRows] = variantIds.length
+    ? await Promise.all([
+        db
+          .select({
+            variantId: variantAttributeValues.variantId,
+            attributeName: attributes.name,
+            value: attributeValues.value,
+          })
+          .from(variantAttributeValues)
+          .innerJoin(attributeValues, eq(attributeValues.id, variantAttributeValues.attributeValueId))
+          .innerJoin(attributes, eq(attributes.id, attributeValues.attributeId))
+          .where(inArray(variantAttributeValues.variantId, variantIds)),
+        db
+          .select({
+            variantId: variantPrices.variantId,
+            price: variantPrices.price,
+            currency: variantPrices.currency,
+          })
+          .from(variantPrices)
+          .where(and(inArray(variantPrices.variantId, variantIds), isNull(variantPrices.effectiveTo))),
+      ])
+    : [[], []];
+
+  const attributesByVariant = new Map<string, { attributeName: string; value: string }[]>();
+  for (const row of attributeRows) {
+    const list = attributesByVariant.get(row.variantId) ?? [];
+    list.push({ attributeName: row.attributeName, value: row.value });
+    attributesByVariant.set(row.variantId, list);
+  }
+
+  const priceByVariant = new Map(priceRows.map((row) => [row.variantId, row]));
+
+  const variantsByProduct = new Map<string, ProductListVariant[]>();
+  for (const variant of variantRows) {
+    const price = priceByVariant.get(variant.id);
+    const list = variantsByProduct.get(variant.productId) ?? [];
+    list.push({
+      id: variant.id,
+      sku: variant.sku,
+      qrCodeValue: variant.qrCodeValue,
+      status: variant.status,
+      attributes: (attributesByVariant.get(variant.id) ?? []).sort((a, b) =>
+        a.attributeName.localeCompare(b.attributeName),
+      ),
+      price: price ? Number(price.price) : null,
+      currency: price?.currency ?? null,
+    });
+    variantsByProduct.set(variant.productId, list);
+  }
+
+  return productRows.map((p) => ({
+    id: p.id,
+    name: p.name,
+    description: p.description,
+    status: p.status,
+    brand: { id: p.brandId, name: p.brandName, code: p.brandCode },
+    category: { id: p.categoryId, name: p.categoryName, code: p.categoryCode },
+    variants: variantsByProduct.get(p.id) ?? [],
+  }));
 }

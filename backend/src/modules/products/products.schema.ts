@@ -17,3 +17,9 @@ export const createProductSchema = z.object({
 });
 
 export type CreateProductInput = z.infer<typeof createProductSchema>;
+
+export const listProductsQuerySchema = z.object({
+  brandId: z.string().uuid().optional(),
+});
+
+export type ListProductsQuery = z.infer<typeof listProductsQuerySchema>;

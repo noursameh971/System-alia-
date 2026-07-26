@@ -126,6 +126,8 @@ npm run db:studio     # drizzle-kit: browse the DB in a local GUI
 | Method | Path                                        | Auth               | Description |
 |--------|----------------------------------------------|----------------------|-------------|
 | GET    | `/health`                                     | none                  | liveness check |
+| GET    | `/api/brands`                                 | any authenticated    | list brands (backs the frontend's brand toggle) |
+| GET    | `/api/products`                               | any authenticated    | list products (optional `?brandId=`), variants/attributes/price inlined |
 | POST   | `/api/products`                               | admin                | create a product + all its variants in one DB transaction |
 | GET    | `/api/products/variants/:sku/qr-code`         | any authenticated    | printable PNG QR sticker for a variant |
 | GET    | `/api/warehouses`                             | any authenticated    | list warehouses |
