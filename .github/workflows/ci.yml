@@ -1,0 +1,74 @@
+name: CI
+
+# Runs on every push to main and on every pull request (regardless of base
+# branch), so nothing broken reaches Vercel (frontend) or Render/Railway
+# (backend) — those platforms only build on their own deploy hooks, they
+# don't lint or typecheck first. If this repo's default branch isn't
+# actually called "main", update the branch name below to match.
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# Cancel superseded runs on the same PR/branch instead of letting an old
+# push's jobs keep running after a newer push already re-triggered CI.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend:
+    name: Backend (lint, typecheck, build)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+
+      - run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Build
+        run: npm run build
+
+  frontend:
+    name: Frontend (lint, typecheck, build)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Typecheck
+        run: npx tsc --noEmit
+
+      - name: Build
+        # No env vars needed here: NEXT_PUBLIC_API_URL/JWT_SECRET are only
+        # read at request time (apiClient.ts, proxy.ts), never during the
+        # build — verified locally, `next build` succeeds with neither set.
+        # Real values live on Vercel (see docs/DEPLOYMENT.md), not here.
+        run: npm run build

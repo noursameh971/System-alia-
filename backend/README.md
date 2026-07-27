@@ -114,12 +114,17 @@ npm run dev                # tsx watch — http://localhost:4000
 Other scripts:
 
 ```bash
+npm run lint          # eslint (Babel-parsed — see eslint.config.mjs for why, not typescript-eslint)
 npm run typecheck   # tsc --noEmit
 npm run build        # compile to dist/
 npm start             # run compiled dist/server.js
 npm run db:generate   # drizzle-kit: generate a migration from schema changes
 npm run db:studio     # drizzle-kit: browse the DB in a local GUI
 ```
+
+All three of lint/typecheck/build (plus the frontend's equivalents) run in
+CI on every push to `main` and every pull request — see
+`.github/workflows/ci.yml`.
 
 ## Endpoints
 

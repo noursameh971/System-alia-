@@ -3,7 +3,7 @@ import type { PgTransaction } from "drizzle-orm/pg-core";
 import { inventory } from "./schema/index.js";
 import { ApiError } from "../utils/apiError.js";
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+// PgTransaction's generic params aren't meaningfully constrainable here; see stockMovements.service.ts's identical alias.
 type Tx = PgTransaction<any, any, any>;
 
 /**

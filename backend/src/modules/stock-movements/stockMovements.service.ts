@@ -11,7 +11,7 @@ import type {
   TransferMovementInput,
 } from "./stockMovements.schema.js";
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+// PgTransaction's generic params aren't meaningfully constrainable here; see inventoryOperations.ts's identical alias.
 type Tx = PgTransaction<any, any, any>;
 
 export async function assertVariantExists(tx: Tx, variantId: string): Promise<void> {
