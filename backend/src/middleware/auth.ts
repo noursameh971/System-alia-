@@ -1,6 +1,9 @@
 import type { NextFunction, Request, Response } from "express";
 import jwt from "jsonwebtoken";
+import { eq } from "drizzle-orm";
 import { env } from "../config/env.js";
+import { db } from "../db/client.js";
+import { brands, users } from "../db/schema/index.js";
 import { ApiError } from "../utils/apiError.js";
 
 export interface AuthenticatedUser {
@@ -22,11 +25,23 @@ declare global {
 }
 
 /**
- * Verifies the Bearer JWT (issued by POST /api/auth/login) and attaches the
- * caller to req.user. Every route below this must be mounted after this
- * middleware to be protected — there is no bypass.
+ * Verifies the Bearer JWT (issued by POST /api/auth/login), then re-checks
+ * the caller against the database before attaching them to req.user.
+ *
+ * Why hit the DB on every request instead of trusting the token's claims:
+ * a JWT is a bearer credential valid until it expires (JWT_EXPIRES_IN,
+ * default 8h) — with no server-side state, deactivating a user (or a
+ * warehouse_staff being reassigned/promoted) wouldn't take effect until
+ * their token naturally expired. In a warehouse, an ex-employee keeping
+ * hours of access after termination is a real risk (bad stock counts, fake
+ * returns), not a theoretical one. This adds one indexed primary-key lookup
+ * per request (join on the same PK the row would be fetched by anyway) to
+ * buy instant revocation instead of a token blocklist — role and brand
+ * assignment come from this same query, not the token, so an edit made via
+ * PATCH /api/users/:id also takes effect on the caller's very next request,
+ * not at their next login.
  */
-export function requireAuth(req: Request, _res: Response, next: NextFunction): void {
+export async function requireAuth(req: Request, _res: Response, next: NextFunction): Promise<void> {
   const header = req.headers.authorization;
   if (!header?.startsWith("Bearer ")) {
     throw ApiError.unauthorized("Missing bearer token");
@@ -34,26 +49,32 @@ export function requireAuth(req: Request, _res: Response, next: NextFunction): v
 
   const token = header.slice("Bearer ".length);
 
+  let subject: string;
   try {
-    const payload = jwt.verify(token, env.JWT_SECRET) as {
-      sub: string;
-      role: string;
-      brandCode: string | null;
-      brandId: string | null;
-    };
-    if (payload.role !== "admin" && payload.role !== "warehouse_staff") {
-      throw ApiError.unauthorized("Invalid token payload");
-    }
-    req.user = {
-      id: payload.sub,
-      role: payload.role,
-      brandCode: payload.brandCode ?? null,
-      brandId: payload.brandId ?? null,
-    };
-    next();
+    const payload = jwt.verify(token, env.JWT_SECRET) as { sub: string };
+    subject = payload.sub;
   } catch {
     throw ApiError.unauthorized("Invalid or expired token");
   }
+
+  const [row] = await db
+    .select({ role: users.role, isActive: users.isActive, brandId: users.brandId, brandCode: brands.code })
+    .from(users)
+    .leftJoin(brands, eq(brands.id, users.brandId))
+    .where(eq(users.id, subject))
+    .limit(1);
+
+  if (!row || !row.isActive) {
+    throw ApiError.unauthorized("This account is no longer active");
+  }
+
+  req.user = {
+    id: subject,
+    role: row.role,
+    brandCode: row.role === "admin" ? null : (row.brandCode?.toLowerCase() ?? null),
+    brandId: row.role === "admin" ? null : row.brandId,
+  };
+  next();
 }
 
 export function requireRole(...allowedRoles: AuthenticatedUser["role"][]) {

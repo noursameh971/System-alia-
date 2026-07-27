@@ -103,9 +103,29 @@ There's no self-registration — accounts are provisioned by an admin.
   password check (this is an admin action on someone else's account, not
   self-service).
 - Login already rejected `is_active = false` accounts from Step 8
-  (`auth.service.ts#login`) — deactivating a user here takes effect on
-  their *next* login attempt. Their existing session's JWT stays valid
-  until it expires (`JWT_EXPIRES_IN`, default 8h); there's no server-side
-  session revocation, so a deactivated user isn't cut off mid-session. Worth
-  a token-blocklist or shorter-lived tokens if that gap matters for a given
-  deployment.
+  (`auth.service.ts#login`). Deactivation used to only take effect on the
+  next *login* — see below, Step 10 closes that gap for requests too.
+
+## Instant revocation (Step 10)
+
+The gap called out above — a deactivated user's existing JWT stayed valid
+for the rest of `JWT_EXPIRES_IN` (default 8h) since nothing checked it
+against current DB state — is closed. `requireAuth`
+(`backend/src/middleware/auth.ts`) now does this on **every** request, not
+just at login:
+
+1. Verify the JWT signature/expiry (unchanged) — this only proves *who* is
+   asking.
+2. Look up that user's `role`, `isActive`, and `brandId` fresh from the
+   database (one indexed PK lookup, joined to `brands` for the code) and
+   use *those* values for `req.user`, not whatever the token claims.
+3. Reject with 401 if the row is missing or `isActive` is `false`.
+
+Two things fall out of sourcing authorization state from the DB instead of
+the token on every request: deactivating someone now cuts off their very
+next API call, not their next login (in a warehouse, "terminated employee
+has up to 8h of access" is a real incident, not a theoretical one) — and a
+role/brand change via `PATCH /api/users/:userId` also applies immediately,
+instead of waiting for the token to expire and be reissued. The tradeoff is
+explicit: one extra indexed lookup per request in exchange for no
+blocklist, no token versioning, no additional moving parts.

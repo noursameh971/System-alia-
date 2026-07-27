@@ -11,6 +11,7 @@ import { Spinner } from "@/components/ui/Spinner";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { OrderStatusBadge } from "./OrderStatusBadge";
 import { ReturnModal } from "./ReturnModal";
+import { OrderReceipt } from "./OrderReceipt";
 
 export function OrderDetail({ orderId }: { orderId: string }) {
   const {
@@ -22,6 +23,7 @@ export function OrderDetail({ orderId }: { orderId: string }) {
   const { data: returnHistory, mutate: mutateReturns } = useSWR(["returns", orderId], () => listReturns(orderId));
 
   const [returningItem, setReturningItem] = useState<OrderDetailItem | null>(null);
+  const [showReceipt, setShowReceipt] = useState(false);
 
   function handleReturnSuccess() {
     void mutateOrder();
@@ -62,6 +64,13 @@ export function OrderDetail({ orderId }: { orderId: string }) {
               {new Date(order.orderDate).toLocaleString()}
             </p>
           </div>
+          <button
+            type="button"
+            onClick={() => setShowReceipt(true)}
+            className="rounded-lg border border-slate-300 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
+          >
+            Print Receipt
+          </button>
         </div>
 
         {order.customerName || order.customerPhone || order.customerAddress ? (
@@ -145,6 +154,8 @@ export function OrderDetail({ orderId }: { orderId: string }) {
       {returningItem ? (
         <ReturnModal item={returningItem} onClose={() => setReturningItem(null)} onSuccess={handleReturnSuccess} />
       ) : null}
+
+      {showReceipt ? <OrderReceipt order={order} onClose={() => setShowReceipt(false)} /> : null}
     </div>
   );
 }

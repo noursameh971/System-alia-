@@ -25,17 +25,23 @@ body {
   font-family: var(--font-sans), Arial, Helvetica, sans-serif;
 }
 
-/* QR sticker printing: isolate #qr-print-area so only the sticker prints,
-   not the rest of the dashboard chrome behind the modal. */
+/* Print isolation: any element carrying the .print-area class (or the
+   original #qr-print-area id, kept for back-compat) is the only thing that
+   prints — everything else in the dashboard chrome behind it is hidden.
+   Used by the single QR sticker modal, batch label printing, and the order
+   receipt view. */
 @media print {
   body * {
     visibility: hidden;
   }
   #qr-print-area,
-  #qr-print-area * {
+  #qr-print-area *,
+  .print-area,
+  .print-area * {
     visibility: visible;
   }
-  #qr-print-area {
+  #qr-print-area,
+  .print-area {
     position: fixed;
     inset: 0;
     box-shadow: none;

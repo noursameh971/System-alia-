@@ -6,18 +6,40 @@ import { Badge } from "@/components/ui/Badge";
 import { QrCodeIcon } from "@/components/layout/icons";
 import { QrCodeModal } from "./QrCodeModal";
 
-export function VariantRow({ variant }: { variant: ProductVariant }) {
+export function VariantRow({
+  variant,
+  selectable = false,
+  selected = false,
+  onToggleSelect,
+}: {
+  variant: ProductVariant;
+  /** When true, renders a checkbox for batch label printing alongside the single Generate QR action. */
+  selectable?: boolean;
+  selected?: boolean;
+  onToggleSelect?: () => void;
+}) {
   const [qrOpen, setQrOpen] = useState(false);
 
   return (
     <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 py-3 first:border-t-0 dark:border-slate-800">
-      <div className="flex min-w-0 flex-col gap-1.5">
-        <span className="font-mono text-xs text-slate-500 dark:text-slate-400">{variant.sku}</span>
-        <div className="flex flex-wrap gap-1.5">
-          {variant.attributes.map((attr) => (
-            <Badge key={`${attr.attributeName}-${attr.value}`}>{attr.value}</Badge>
-          ))}
-          {variant.status !== "active" ? <Badge variant="neutral">{variant.status}</Badge> : null}
+      <div className="flex min-w-0 items-center gap-3">
+        {selectable ? (
+          <input
+            type="checkbox"
+            aria-label={`Select ${variant.sku} for printing`}
+            checked={selected}
+            onChange={onToggleSelect}
+            className="h-4 w-4 shrink-0 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 dark:border-slate-600"
+          />
+        ) : null}
+        <div className="flex min-w-0 flex-col gap-1.5">
+          <span className="font-mono text-xs text-slate-500 dark:text-slate-400">{variant.sku}</span>
+          <div className="flex flex-wrap gap-1.5">
+            {variant.attributes.map((attr) => (
+              <Badge key={`${attr.attributeName}-${attr.value}`}>{attr.value}</Badge>
+            ))}
+            {variant.status !== "active" ? <Badge variant="neutral">{variant.status}</Badge> : null}
+          </div>
         </div>
       </div>
 
