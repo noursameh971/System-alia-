@@ -2,6 +2,8 @@ import { useSyncExternalStore } from "react";
 import { getSession, type UserRole } from "@/lib/auth";
 
 export interface CurrentUser {
+  /** The signed-in user's own id (JWT `sub`) — e.g. to disable "deactivate" on their own row in the Users list. */
+  id: string | null;
   role: UserRole | null;
   brandCode: string | null;
   brandId: string | null;
@@ -15,7 +17,7 @@ export interface CurrentUser {
 // getServerSnapshot sidesteps that by returning a stable "still loading"
 // object for both the server render and the client's hydration-matching
 // pass, then resolving to the real session right after hydration commits.
-const SERVER_SNAPSHOT: CurrentUser = { role: null, brandCode: null, brandId: null, isLoading: true };
+const SERVER_SNAPSHOT: CurrentUser = { id: null, role: null, brandCode: null, brandId: null, isLoading: true };
 
 let cachedKey: string | null = null;
 let cachedSnapshot: CurrentUser = SERVER_SNAPSHOT;
@@ -30,8 +32,8 @@ function getSnapshot(): CurrentUser {
   if (key !== cachedKey) {
     cachedKey = key;
     cachedSnapshot = session
-      ? { role: session.role, brandCode: session.brandCode, brandId: session.brandId, isLoading: false }
-      : { role: null, brandCode: null, brandId: null, isLoading: false };
+      ? { id: session.sub, role: session.role, brandCode: session.brandCode, brandId: session.brandId, isLoading: false }
+      : { id: null, role: null, brandCode: null, brandId: null, isLoading: false };
   }
   return cachedSnapshot;
 }

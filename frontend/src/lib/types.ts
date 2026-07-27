@@ -254,3 +254,11 @@ export interface CreateUserInput {
   /** Required when role is "warehouse_staff", must be omitted for "admin". */
   brandId?: string;
 }
+
+export interface UpdateUserInput {
+  fullName?: string;
+  role?: Role;
+  /** Explicit null clears the assignment (switching to admin); omit to leave unchanged. */
+  brandId?: string | null;
+  isActive?: boolean;
+}

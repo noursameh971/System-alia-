@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import useSWR from "swr";
@@ -9,15 +9,23 @@ import { ApiError } from "@/lib/apiClient";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { Spinner } from "@/components/ui/Spinner";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { MovementStatusBanner, type MovementStatus } from "@/components/inventory/MovementStatusBanner";
 import { AddUserForm } from "@/components/users/AddUserForm";
 import { UserList } from "@/components/users/UserList";
+import { EditUserModal } from "@/components/users/EditUserModal";
+import { ResetPasswordModal } from "@/components/users/ResetPasswordModal";
+import type { UserListItem } from "@/lib/types";
 
 export default function UsersPage() {
   const router = useRouter();
-  const { role, isLoading: isSessionLoading } = useCurrentUser();
+  const { id: currentUserId, role, isLoading: isSessionLoading } = useCurrentUser();
   const isAdmin = role === "admin";
 
   const { data, error, isLoading, mutate } = useSWR(isAdmin ? "users" : null, listUsers);
+
+  const [editingUser, setEditingUser] = useState<UserListItem | null>(null);
+  const [resettingUser, setResettingUser] = useState<UserListItem | null>(null);
+  const [status, setStatus] = useState<MovementStatus | null>(null);
 
   useEffect(() => {
     // Client-side convenience only — every /api/users route and proxy.ts
@@ -53,6 +61,8 @@ export default function UsersPage() {
       <main className="mx-auto flex max-w-3xl flex-col gap-6 px-4 py-6 sm:px-6">
         <AddUserForm onCreated={() => void mutate()} />
 
+        <MovementStatusBanner status={status} />
+
         {isLoading ? (
           <div className="flex justify-center py-16">
             <Spinner label="Loading users..." />
@@ -63,9 +73,35 @@ export default function UsersPage() {
             description={error instanceof ApiError ? error.message : "Check that the backend API is running."}
           />
         ) : (
-          <UserList users={data ?? []} />
+          <UserList
+            users={data ?? []}
+            currentUserId={currentUserId}
+            onEdit={setEditingUser}
+            onResetPassword={setResettingUser}
+            onChanged={() => void mutate()}
+            onError={(message) => setStatus({ kind: "error", message })}
+          />
         )}
       </main>
+
+      {editingUser ? (
+        <EditUserModal
+          user={editingUser}
+          onClose={() => setEditingUser(null)}
+          onSaved={(updated) => {
+            setStatus({ kind: "success", message: `${updated.fullName} was updated.` });
+            void mutate();
+          }}
+        />
+      ) : null}
+
+      {resettingUser ? (
+        <ResetPasswordModal
+          user={resettingUser}
+          onClose={() => setResettingUser(null)}
+          onSaved={() => setStatus({ kind: "success", message: `Password reset for ${resettingUser.fullName}.` })}
+        />
+      ) : null}
     </div>
   );
 }

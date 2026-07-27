@@ -85,3 +85,27 @@ There's no self-registration — accounts are provisioned by an admin.
   requires `brandId`; creating an `admin` account forbids it — enforced by
   `users.schema.ts`'s Zod refine, same rule `auth.service.ts#login` already
   relies on.
+
+## Edit, deactivate & password reset (Step 9)
+
+- `PATCH /api/users/:userId` — partial update of `fullName`/`role`/`brandId`/
+  `isActive`. The role/brand pairing is re-validated against the *resulting*
+  state even when only one field changes (e.g. an `isActive`-only request
+  still gets the existing role checked against the existing brand), in
+  `users.service.ts#updateUser`.
+- **Self-deactivation is blocked server-side**: `updateUser` takes the
+  acting admin's own id and rejects `isActive: false` against that same id
+  with a 400, so there's no way to lock every admin out with one click (no
+  one left with permission to flip it back). The UI mirrors this by
+  disabling that admin's own "Deactivate" button, but the real guard is the
+  backend check.
+- `PATCH /api/users/:userId/password` — admin-initiated reset, no current-
+  password check (this is an admin action on someone else's account, not
+  self-service).
+- Login already rejected `is_active = false` accounts from Step 8
+  (`auth.service.ts#login`) — deactivating a user here takes effect on
+  their *next* login attempt. Their existing session's JWT stays valid
+  until it expires (`JWT_EXPIRES_IN`, default 8h); there's no server-side
+  session revocation, so a deactivated user isn't cut off mid-session. Worth
+  a token-blocklist or shorter-lived tokens if that gap matters for a given
+  deployment.
