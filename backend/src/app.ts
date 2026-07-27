@@ -16,15 +16,21 @@ import { stockMovementsRouter } from "./modules/stock-movements/stockMovements.r
 import { usersRouter } from "./modules/users/users.routes.js";
 import { warehouseRouter } from "./modules/warehouse/warehouse.routes.js";
 
+/** Strips a trailing slash — an Origin header never has one, so a config value with one would never match. */
+function normalizeOrigin(origin: string): string {
+  return origin.replace(/\/+$/, "");
+}
+
 export function createApp(): Express {
   const app = express();
 
+  const allowedOrigins = [
+    ...env.CORS_ORIGIN.split(",").map((origin) => origin.trim()),
+    ...(env.FRONTEND_URL ? [env.FRONTEND_URL] : []),
+  ].map(normalizeOrigin);
+
   app.use(helmet());
-  app.use(
-    cors({
-      origin: env.CORS_ORIGIN.split(",").map((origin) => origin.trim()),
-    }),
-  );
+  app.use(cors({ origin: allowedOrigins }));
   app.use(express.json());
 
   app.get("/health", (_req, res) => {

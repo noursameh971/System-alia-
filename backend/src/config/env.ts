@@ -8,6 +8,11 @@ const envSchema = z.object({
   JWT_SECRET: z.string().min(16, "JWT_SECRET must be at least 16 characters"),
   JWT_EXPIRES_IN: z.string().default("8h"),
   CORS_ORIGIN: z.string().default("http://localhost:3000"),
+  // The deployed Next.js frontend's origin (e.g. https://app.vercel.app),
+  // separate from CORS_ORIGIN so local dev's default keeps working
+  // unmodified — production just adds this on top. No trailing slash
+  // (an Origin header never has one; see app.ts's normalizeOrigin).
+  FRONTEND_URL: z.string().url().optional(),
 });
 
 const parsed = envSchema.safeParse(process.env);

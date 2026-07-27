@@ -7,6 +7,13 @@ export const pool = new Pool({
   connectionString: env.DATABASE_URL,
   max: 10,
   idleTimeoutMillis: 30_000,
+  // Managed Postgres on Render/Railway requires TLS, and presents a
+  // certificate chain that isn't in Node's default trust store when
+  // connected to from outside their own network — hence
+  // rejectUnauthorized: false rather than a plain `ssl: true`. Gated on
+  // NODE_ENV=production so a local Postgres install (no TLS listener at
+  // all) is unaffected; see docs/DEPLOYMENT.md.
+  ssl: env.NODE_ENV === "production" ? { rejectUnauthorized: false } : undefined,
 });
 
 pool.on("error", (err) => {
