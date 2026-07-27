@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useVariantStock } from "@/hooks/useVariantStock";
+import { useWorkspace } from "@/context/WorkspaceContext";
 import { recordOutboundMovement } from "@/lib/inventory";
 import { ApiError } from "@/lib/apiClient";
 import type { VariantLookupResult } from "@/lib/types";
@@ -11,6 +12,7 @@ import { QuantityInput } from "./QuantityInput";
 import { MovementStatusBanner, type MovementStatus } from "./MovementStatusBanner";
 
 export function OutboundForm() {
+  const { brand } = useWorkspace();
   const [variant, setVariant] = useState<VariantLookupResult | null>(null);
   const { stock, isLoading: stockLoading, refresh: refreshStock } = useVariantStock(variant?.id ?? null);
   const [binId, setBinId] = useState("");
@@ -82,7 +84,7 @@ export function OutboundForm() {
     <form onSubmit={handleSubmit} className="flex flex-col gap-4">
       <p className="text-sm text-slate-500 dark:text-slate-400">Stock leaving the warehouse (sale/shipping).</p>
 
-      <VariantScanInput variant={variant} onResolved={setVariant} onClear={reset} />
+      <VariantScanInput variant={variant} onResolved={setVariant} onClear={reset} expectedBrand={brand} />
 
       {variant ? (
         stockLoading ? (

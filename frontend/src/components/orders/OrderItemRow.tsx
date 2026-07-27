@@ -1,6 +1,7 @@
 "use client";
 
 import { useVariantStock } from "@/hooks/useVariantStock";
+import { useWorkspace } from "@/context/WorkspaceContext";
 import type { VariantLookupResult } from "@/lib/types";
 import { VariantScanInput } from "@/components/inventory/VariantScanInput";
 import { BinSelect } from "@/components/inventory/BinSelect";
@@ -23,6 +24,7 @@ export function OrderItemRow({
   onRemove: () => void;
   canRemove: boolean;
 }) {
+  const { brand } = useWorkspace();
   const { stock, isLoading: stockLoading } = useVariantStock(item.variant?.id ?? null);
   const stockedBins = stock.filter((row) => row.quantity > 0);
 
@@ -36,6 +38,7 @@ export function OrderItemRow({
             variant={item.variant}
             onResolved={(variant) => onChange({ ...item, variant, binId: "" })}
             onClear={() => onChange({ variant: null, binId: "", quantity: "" })}
+            expectedBrand={brand}
           />
         </div>
         {canRemove ? (

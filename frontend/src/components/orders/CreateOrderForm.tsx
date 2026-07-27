@@ -2,11 +2,9 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import useSWR from "swr";
-import { listBrands } from "@/lib/brands";
 import { createOrder } from "@/lib/orders";
 import { ApiError } from "@/lib/apiClient";
-import { useBrand } from "@/context/BrandContext";
+import { useWorkspace } from "@/context/WorkspaceContext";
 import { MovementStatusBanner, type MovementStatus } from "@/components/inventory/MovementStatusBanner";
 import { OrderItemRow, type OrderItemState } from "./OrderItemRow";
 
@@ -16,10 +14,8 @@ function emptyItem(): OrderItemState {
 
 export function CreateOrderForm() {
   const router = useRouter();
-  const { selectedBrandId } = useBrand();
-  const { data: brands } = useSWR("brands", listBrands, { revalidateOnFocus: false });
+  const { brand } = useWorkspace();
 
-  const [brandId, setBrandId] = useState(selectedBrandId ?? "");
   const [customerName, setCustomerName] = useState("");
   const [customerPhone, setCustomerPhone] = useState("");
   const [customerAddress, setCustomerAddress] = useState("");
@@ -44,10 +40,6 @@ export function CreateOrderForm() {
     e.preventDefault();
     setStatus(null);
 
-    if (!brandId) {
-      setStatus({ kind: "error", message: "Select a brand for this order." });
-      return;
-    }
     const readyItems = items.filter((item) => item.variant && item.binId && item.quantity);
     if (readyItems.length === 0) {
       setStatus({ kind: "error", message: "Add at least one item with a bin and quantity." });
@@ -57,7 +49,7 @@ export function CreateOrderForm() {
     setSubmitting(true);
     try {
       const order = await createOrder({
-        brandId,
+        brandId: brand.id,
         customerName: customerName || undefined,
         customerPhone: customerPhone || undefined,
         customerAddress: customerAddress || undefined,
@@ -67,7 +59,7 @@ export function CreateOrderForm() {
           quantity: Number(item.quantity),
         })),
       });
-      router.push(`/orders/${order.id}`);
+      router.push(`/${brand.code.toLowerCase()}/orders/${order.id}`);
     } catch (err) {
       setStatus({ kind: "error", message: err instanceof ApiError ? err.message : "Failed to create order" });
       setSubmitting(false);
@@ -77,24 +69,8 @@ export function CreateOrderForm() {
   return (
     <form onSubmit={handleSubmit} className="flex flex-col gap-5">
       <div className="rounded-xl border border-slate-200 bg-white p-4 sm:p-5 dark:border-slate-800 dark:bg-slate-900">
-        <h2 className="mb-3 text-sm font-semibold text-slate-900 dark:text-slate-100">Order details</h2>
+        <h2 className="mb-3 text-sm font-semibold text-slate-900 dark:text-slate-100">Customer</h2>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          <div>
-            <label className="mb-1.5 block text-sm font-medium text-slate-700 dark:text-slate-300">Brand</label>
-            <select
-              aria-label="Order brand"
-              value={brandId}
-              onChange={(e) => setBrandId(e.target.value)}
-              className="w-full rounded-lg border border-slate-300 py-2.5 px-3 text-sm text-slate-900 shadow-sm dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
-            >
-              <option value="">Select a brand...</option>
-              {(brands ?? []).map((b) => (
-                <option key={b.id} value={b.id}>
-                  {b.name}
-                </option>
-              ))}
-            </select>
-          </div>
           <div>
             <label className="mb-1.5 block text-sm font-medium text-slate-700 dark:text-slate-300">
               Customer name

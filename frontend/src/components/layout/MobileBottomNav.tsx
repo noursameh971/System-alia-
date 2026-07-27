@@ -2,13 +2,14 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useWorkspace } from "@/context/WorkspaceContext";
 import { InventoryIcon, OrdersIcon, ProductsIcon } from "./icons";
-import { NAV_ITEMS, isNavItemActive } from "./navigation";
+import { NAV_ITEMS, buildNavHref, isNavItemActive } from "./navigation";
 
 const ICONS: Record<string, (props: { className?: string }) => React.ReactElement> = {
-  "/products": ProductsIcon,
-  "/inventory": InventoryIcon,
-  "/orders": OrdersIcon,
+  products: ProductsIcon,
+  inventory: InventoryIcon,
+  orders: OrdersIcon,
 };
 
 /**
@@ -18,6 +19,7 @@ const ICONS: Record<string, (props: { className?: string }) => React.ReactElemen
  */
 export function MobileBottomNav() {
   const pathname = usePathname();
+  const { brand } = useWorkspace();
 
   return (
     <nav
@@ -26,12 +28,13 @@ export function MobileBottomNav() {
       style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
     >
       {NAV_ITEMS.map((item) => {
-        const Icon = ICONS[item.href];
-        const active = isNavItemActive(pathname, item.href);
+        const Icon = ICONS[item.segment];
+        const href = buildNavHref(brand.code, item.segment);
+        const active = isNavItemActive(pathname, href);
         return (
           <Link
-            key={item.href}
-            href={item.href}
+            key={item.segment}
+            href={href}
             className={`flex flex-1 flex-col items-center gap-1 py-2.5 text-xs font-medium ${
               active ? "text-indigo-700 dark:text-indigo-300" : "text-slate-500 dark:text-slate-400"
             }`}

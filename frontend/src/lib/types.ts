@@ -200,3 +200,36 @@ export interface ReturnListItem {
   notes: string | null;
   createdAt: string;
 }
+
+export interface DashboardBrandSummary {
+  id: string;
+  name: string;
+  code: string;
+  revenue: number;
+  orderCount: number;
+  inventoryValue: number;
+  inventoryUnitCount: number;
+}
+
+export interface DashboardTotals {
+  revenue: number;
+  orderCount: number;
+  inventoryValue: number;
+  inventoryUnitCount: number;
+}
+
+export interface DashboardMovement {
+  id: string;
+  movementType: string;
+  quantity: number;
+  createdAt: string;
+  sku: string;
+  productName: string;
+  brand: Brand;
+}
+
+export interface DashboardSummary {
+  brands: DashboardBrandSummary[];
+  totals: DashboardTotals;
+  recentMovements: DashboardMovement[];
+}

@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useAllBins } from "@/hooks/useAllBins";
 import { useVariantStock } from "@/hooks/useVariantStock";
+import { useWorkspace } from "@/context/WorkspaceContext";
 import { recordTransferMovement } from "@/lib/inventory";
 import { ApiError } from "@/lib/apiClient";
 import type { VariantLookupResult } from "@/lib/types";
@@ -12,6 +13,7 @@ import { QuantityInput } from "./QuantityInput";
 import { MovementStatusBanner, type MovementStatus } from "./MovementStatusBanner";
 
 export function TransferForm() {
+  const { brand } = useWorkspace();
   const { bins } = useAllBins();
   const [variant, setVariant] = useState<VariantLookupResult | null>(null);
   const { stock, isLoading: stockLoading, refresh: refreshStock } = useVariantStock(variant?.id ?? null);
@@ -97,7 +99,7 @@ export function TransferForm() {
     <form onSubmit={handleSubmit} className="flex flex-col gap-4">
       <p className="text-sm text-slate-500 dark:text-slate-400">Move stock between bins.</p>
 
-      <VariantScanInput variant={variant} onResolved={setVariant} onClear={reset} />
+      <VariantScanInput variant={variant} onResolved={setVariant} onClear={reset} expectedBrand={brand} />
 
       {variant ? (
         stockLoading ? (

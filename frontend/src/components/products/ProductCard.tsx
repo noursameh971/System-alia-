@@ -13,7 +13,6 @@ export function ProductCard({ product }: { product: Product }) {
           ) : null}
         </div>
         <div className="flex gap-1.5">
-          <Badge variant="brand">{product.brand.name}</Badge>
           <Badge>{product.category.name}</Badge>
         </div>
       </div>

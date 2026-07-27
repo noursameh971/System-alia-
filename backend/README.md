@@ -151,6 +151,7 @@ npm run db:studio     # drizzle-kit: browse the DB in a local GUI
 | GET    | `/api/orders/:orderId`                        | any authenticated    | order detail: items with attributes, price snapshot, returned/returnable quantity |
 | GET    | `/api/returns`                                | any authenticated    | list returns, optional `?orderId=` |
 | POST   | `/api/returns`                                | any authenticated    | process a return against an order item; restocks inventory only if `disposition: "restock"` |
+| GET    | `/api/dashboard/summary`                      | **admin only**        | cross-brand aggregate: revenue/inventory value/orders per brand + totals + recent global stock movements |
 
 `POST /api/products` request shape:
 
@@ -269,6 +270,26 @@ before — nothing about their behavior changed. `orders.service.ts` and
   `order_item.quantity - (sum of quantities already returned for that item)`
   before anything is written, so over-returning is rejected outright.
 
+## Master Executive Dashboard: the one deliberately cross-brand endpoint
+
+Every other endpoint in this API either takes an optional `brandId` filter
+or is inherently variant/order/bin-scoped — nothing forces cross-brand
+data together. `GET /api/dashboard/summary` is the single exception: it
+exists specifically to give an admin the combined company view, so it's
+gated with `requireRole('admin')` at the route (`modules/dashboard/`), not
+just hidden in the frontend.
+
+- **Revenue** is `sum(order_items.subtotal)` grouped by brand, excluding
+  `status = 'cancelled'` orders — a cancelled order was never actually
+  fulfilled revenue.
+- **Inventory value** is `sum(inventory.quantity * variant's active price)`
+  per brand, `LEFT JOIN`ed against `variant_prices` so a variant with no
+  active price still counts its units (contributing 0 to value) instead of
+  disappearing from the total.
+- **Recent movements** is the latest 20 `stock_movements` rows across
+  *both* brands, each joined back to its brand for display — the only
+  place in the app a single list intentionally mixes both brands' activity.
+
 ## Concurrency & data integrity in stock movements
 
 Every movement (`inbound`, `outbound`, `transfer`, `return_in`) runs inside
@@ -361,3 +382,11 @@ applied, server run with `AUTH_BYPASS=true`, requests fired via `curl`):
   `outbound` (referencing the order), `return_in` (referencing the return)
   — with **no row at all** for the write-off, matching the "only restock
   touches inventory" design.
+- **Step 7 (Master Dashboard + strict brand isolation)**: seeded a second
+  product/stock/order under Noori alongside the existing Alia Hijab data,
+  then confirmed `GET /api/dashboard/summary` returned exactly the expected
+  combined totals (revenue 750 + 660 = 1410, inventory value 3750 + 2640 =
+  6390, 37 total units) with both brands' movements correctly interleaved
+  by recency in `recentMovements`; confirmed a `warehouse_staff`-role
+  request to the same endpoint is rejected with `403` — the real,
+  server-side enforcement behind the frontend's admin-only gate.

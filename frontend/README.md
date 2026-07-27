@@ -27,25 +27,29 @@ production build).
 frontend/
   src/
     app/
-      layout.tsx          # root layout — wraps everything in BrandProvider + DashboardShell
-      page.tsx              # redirects "/" -> "/products"
-      products/page.tsx      # Products page
-      inventory/page.tsx      # Inventory page: Stock Levels / Record Movement tabs
-      orders/page.tsx          # Order History dashboard
-      orders/new/page.tsx        # manual order entry form
-      orders/[id]/page.tsx         # order detail + Process Return
+      layout.tsx              # root layout — fonts/globals only, no brand chrome (see below)
+      page.tsx                  # workspace picker, or auto-redirect to the last-visited workspace
+      dashboard/page.tsx          # Master Executive Dashboard — admin-only, cross-brand
+      [brand]/
+        layout.tsx                 # resolves+locks the brand from the URL segment, renders WorkspaceShell
+        products/page.tsx            # Products page
+        inventory/page.tsx             # Inventory page: Stock Levels / Record Movement tabs
+        orders/page.tsx                  # Order History dashboard
+        orders/new/page.tsx                # manual order entry form
+        orders/[id]/page.tsx                 # order detail + Process Return
     components/
       layout/
-        DashboardShell.tsx      # Header + Sidebar + MobileBottomNav + content slot
-        Header.tsx                # top bar: logo + BrandToggle
-        BrandToggle.tsx            # brand switcher (All / Alia Hijab / Noori), persisted
-        Sidebar.tsx                  # desktop/tablet-landscape nav (hidden below md)
-        MobileBottomNav.tsx           # phone/tablet-portrait bottom tab bar (hidden md+)
-        navigation.ts                  # shared nav item list + active-route check
-        icons.tsx                       # small inline SVG icons, no icon library dependency
+        WorkspaceShell.tsx        # WorkspaceProvider + DashboardShell, mounted by [brand]/layout.tsx
+        DashboardShell.tsx          # Header + Sidebar + MobileBottomNav + content slot
+        Header.tsx                    # top bar: locked brand's badge/name + WorkspaceSwitcher
+        WorkspaceSwitcher.tsx           # navigates to the equivalent page under a different /[brand]/
+        Sidebar.tsx                       # desktop/tablet-landscape nav (hidden below md)
+        MobileBottomNav.tsx                 # phone/tablet-portrait bottom tab bar (hidden md+)
+        navigation.ts                         # nav item list (relative segments) + brand-prefixed href builder
+        icons.tsx                               # small inline SVG icons, no icon library dependency
       products/
-        ProductList.tsx    # SWR fetch + brand filter -> ProductCard grid
-        ProductCard.tsx      # one product: name, brand/category badges, variant list
+        ProductList.tsx    # SWR fetch, locked to the workspace brand -> ProductCard grid
+        ProductCard.tsx      # one product: name, category badge, variant list
         VariantRow.tsx         # one variant: SKU, attribute badges, price, Generate QR button
         QrCodeModal.tsx           # fetches the QR PNG, shows it, Download/Print
       inventory/
@@ -56,26 +60,34 @@ frontend/
         InboundForm.tsx, OutboundForm.tsx, TransferForm.tsx   # one form per movement type
         MovementForms.tsx                                       # tab switcher between the three
       orders/
-        OrderList.tsx           # dashboard: status filter + brand (global toggle) -> order rows
+        OrderList.tsx           # dashboard: status filter, locked to the workspace brand -> order rows
         OrderStatusBadge.tsx      # status -> Badge color/label map
-        CreateOrderForm.tsx         # manual order entry: brand/customer fields + repeatable items
+        CreateOrderForm.tsx         # manual order entry: customer fields + repeatable items (brand implicit)
         OrderItemRow.tsx               # one order line: reuses VariantScanInput/BinSelect/QuantityInput
         OrderDetail.tsx                   # order header + items + return history, "Process Return" per item
         ReturnModal.tsx                      # quantity/reason/disposition(+bin)/notes -> POST /api/returns
+      dashboard/
+        StatTile.tsx              # one KPI number (Total Revenue, Total Orders, ...)
+        BrandComparison.tsx         # per-brand revenue bar + stats row, links into that brand's workspace
+        RecentMovementsList.tsx       # global (both-brand) stock movement feed
       ui/
         Badge.tsx, Spinner.tsx, EmptyState.tsx, ComingSoon.tsx
     context/
-      BrandContext.tsx    # brand list (SWR) + selected brand (persisted, cross-tab synced)
+      WorkspaceContext.tsx    # the locked brand for this route subtree, resolved from the URL — no setter
     hooks/
-      useAllBins.ts          # every bin across the warehouse, flattened with zone code
-      useVariantStock.ts       # per-bin on-hand quantity for one variant
+      useAllBins.ts               # every bin across the warehouse, flattened with zone code
+      useVariantStock.ts            # per-bin on-hand quantity for one variant
+      useCurrentUser.ts                # TEMPORARY: hardcoded { role: 'admin' } until login exists
+      useLastWorkspaceCode.ts            # SSR-safe read of the last-visited workspace (for "/"'s auto-redirect)
     lib/
       apiClient.ts          # fetch wrapper: unwraps the backend's {success,data} envelope
       auth.ts                 # placeholder for attaching a JWT once login exists
       env.ts                    # NEXT_PUBLIC_API_URL
       types.ts                    # TS types mirroring backend response shapes
+      brandColor.ts                 # deterministic per-brand accent color (hash of brand.code)
+      lastWorkspace.ts                # write side of "last visited workspace" (read side is the hook above)
       brands.ts, categories.ts, products.ts, variants.ts, warehouses.ts, inventory.ts,
-      reasonCodes.ts, orders.ts, returns.ts                                             # typed API functions per domain
+      reasonCodes.ts, orders.ts, returns.ts, dashboard.ts                              # typed API functions per domain
 ```
 
 ## Layout & responsiveness
@@ -87,15 +99,62 @@ while walking the warehouse floor. Both navs share one `NAV_ITEMS` list
 (`components/layout/navigation.ts`) so adding a page only means updating one
 array plus its icon.
 
-## Brand toggle
+## Strict brand isolation: workspaces, not a filter (Step 7)
 
-`GET /api/brands` (added this step) backs the toggle — brand names aren't
-hardcoded in the frontend, since Step 1's whole point of a `brand_id`
-foreign key was to let a 3rd/4th brand exist without a redeploy. Selection
-persists to `localStorage` and syncs across browser tabs via
-`useSyncExternalStore` (not a `useEffect` + `setState` on mount, which both
-risks an SSR/hydration mismatch and trips the `react-hooks/set-state-in-effect`
-lint rule that ships with this Next.js version).
+Earlier steps had a single unified app with a header dropdown that filtered
+every list by brand — including an "All Brands" option. That's exactly the
+kind of thing that lets a mistake happen: nothing stopped a warehouse worker
+from having the wrong brand selected while recording a movement. Step 7
+replaces the filter with **workspace isolation**: the active brand lives in
+the URL (`/[brand]/products`, `/[brand]/inventory`, ...), and there is no
+client-side control anywhere that can silently change what brand a page's
+data belongs to.
+
+- **`WorkspaceContext`** (`context/WorkspaceContext.tsx`) replaces the old
+  `BrandContext`. It has no setter. `WorkspaceProvider`, mounted by
+  `app/[brand]/layout.tsx`, resolves the `[brand]` URL segment (a lowercased
+  brand code, e.g. `alh`) against `GET /api/brands` and locks the entire
+  subtree to that brand. An unknown code (`/xyz/products`) redirects to `/`
+  — there's no way to render the shell "locked to nothing."
+- **`WorkspaceSwitcher`** (replaces `BrandToggle`) is a real navigation, not
+  a state mutation: picking a different brand calls `router.push` to the
+  *equivalent* page under that brand's `/[brand]/...` (dropping anything
+  brand-specific and deeper, like a specific order id, since it wouldn't
+  translate).
+- **The header** shows only the locked brand's badge and name — the old
+  combined "Alia Hijab & Noori" logo and "All Brands" option are both gone.
+  Each brand gets a deterministic accent color (`lib/brandColor.ts`, a hash
+  of `brand.code` into a small palette — not a hardcoded per-brand
+  if/else, so a 3rd/4th brand gets a consistent color automatically) shown
+  as the header badge, the workspace-picker cards, and the dashboard's
+  brand rows, so "which brand am I in" stays visually obvious everywhere.
+- **`/` is a workspace picker**, not a redirect to a fixed page. A returning
+  visitor is auto-redirected straight to their last-visited workspace
+  (`hooks/useLastWorkspaceCode.ts`, read via `useSyncExternalStore` for the
+  same SSR-safety reason `BrandContext` used it — see below); a first-time
+  visitor (or one with no matching last workspace) sees brand-picker cards.
+- **The cross-brand SKU guard** is the mechanism that actually prevents the
+  mistake this refactor is about. `VariantScanInput` takes an optional
+  `expectedBrand` prop; every caller inside a workspace (`InboundForm`,
+  `OutboundForm`, `TransferForm`, `OrderItemRow`) passes the locked
+  `workspace.brand`. The by-SKU lookup endpoint has no brand awareness (any
+  SKU resolves regardless of which workspace you're in), so without this
+  check a Noori staff member scanning an Alia Hijab label inside the Noori
+  workspace would have been silently allowed to move Alia Hijab stock.
+  Now it's rejected inline: `"ALH-HIJ-00001-... belongs to Alia Hijab, not
+  Noori — wrong workspace."`
+- **`CreateOrderForm`** no longer has a brand `<select>` at all — the order's
+  brand is `workspace.brand.id`, full stop. There's nothing to pick wrong.
+
+Two lint-rule-driven design notes carried over/extended from earlier
+steps: `useSyncExternalStore` (not `useEffect` + `setState` on mount) is
+used for every localStorage read that affects initial render output,
+because that pattern both risks an SSR/hydration mismatch and trips the
+`react-hooks/set-state-in-effect` lint rule this Next.js version ships
+with. `app/page.tsx`'s auto-redirect effect only ever calls
+`router.replace` (a navigation, not a state setter) — the "should we
+redirect" decision is a derived value from SWR data + the synced-store
+read, not separate `useState`, so there's no `setState`-in-effect at all.
 
 ## QR code integration
 
@@ -131,8 +190,8 @@ the mobile bottom nav only has three slots):
   from the backend is translated into `Only 20 available in that bin (you
   asked for 9999)` instead of a raw error.
 - **Stock Levels**: the dashboard. Filters by Category, Zone, and Bin
-  (Brand reuses the header's existing global toggle rather than a second,
-  redundant brand control) against the new `GET /api/inventory` endpoint.
+  against the new `GET /api/inventory` endpoint — brand isn't a filter
+  option here at all, since the whole page is already locked to one.
 
 ### QR/SKU entry
 
@@ -149,8 +208,8 @@ variant with SKU ...` inline.
 
 ## Orders & Returns (Step 6)
 
-`/orders` has three views: a **history dashboard** (list, filterable by
-status and — via the header's global toggle — brand), a **New Order** form,
+`/[brand]/orders` has three views: a **history dashboard** (list,
+filterable by status; brand is implicit in the URL), a **New Order** form,
 and a **detail page** per order with return processing.
 
 - `CreateOrderForm` reuses `VariantScanInput`, `BinSelect`, and
@@ -176,7 +235,40 @@ and a **detail page** per order with return processing.
   the order and the returns list so the returned/returnable counts and
   history update immediately without a page reload.
 
+## Master Executive Dashboard (Step 7)
+
+`/dashboard` is the one page that deliberately isn't inside `/[brand]/...`
+— it's the admin's cross-brand view, so it can't be brand-locked. It has
+its own minimal header (not `DashboardShell`, which is brand-specific
+chrome) with a link back to the workspace picker.
+
+- Gated by `useCurrentUser().role === 'admin'`
+  (`hooks/useCurrentUser.ts`, the same kind of temporary hardcoded
+  placeholder as `lib/auth.ts` — there's no login yet, so there's no real
+  role to check). A non-admin is redirected to `/`. This is a **UI
+  convenience only**; the real enforcement is server-side
+  (`requireRole('admin')` on `GET /api/dashboard/summary`), so it doesn't
+  matter that the frontend check is currently hardcoded to always pass.
+- **`StatTile`** ×4: Total Revenue, Total Orders, Inventory Value, Units in
+  Stock — combined across both brands.
+- **`BrandComparison`**: one row per brand (revenue, inventory value, units,
+  order count) with a simple width-percentage revenue bar — no charting
+  library, just a styled div — colored with the same deterministic
+  per-brand accent used everywhere else. Each row links into that brand's
+  workspace, so "drill down from company view into a specific brand" is one
+  click.
+- **`RecentMovementsList`**: the latest 20 stock movements across *both*
+  brands (from `GET /api/dashboard/summary`), each tagged with a small
+  brand-colored dot — the one list in the whole app that intentionally
+  mixes brands.
+
 ## Backend additions needed for this step
+
+- `GET /api/dashboard/summary` (**admin-only**, enforced server-side) —
+  per-brand revenue/inventory value/order count + totals + the last 20
+  stock movements across both brands. See the backend README's "Master
+  Executive Dashboard: the one deliberately cross-brand endpoint" for the
+  revenue/inventory-value query design.
 
 Before Step 6, none of these existed:
 
@@ -237,3 +329,25 @@ not just built:
   from form submit through the backend's composed transaction back to the
   dashboard query agrees exactly. Zero browser console errors across the
   whole run. `npm run build` and `npm run lint` pass clean.
+- **Step 7**: seeded products/stock/orders under *both* brands. Fresh
+  browser, no localStorage: `/` showed the workspace picker (two brand
+  cards + an admin "View Company Dashboard" link, no leftover "All Brands"
+  or combined-logo text anywhere — asserted directly against the page's
+  text content). Picked Alia Hijab → landed on `/alh/products`, sidebar/
+  bottom-nav links all correctly prefixed. On the Inventory Inbound form,
+  scanned a real Noori SKU while inside the Alia Hijab workspace and got
+  the expected `belongs to Noori, not Alia Hijab — wrong workspace`
+  rejection. Used the WorkspaceSwitcher to jump to Noori, landing on the
+  *equivalent* page (`/noo/inventory`, not reset to `/noo/products`);
+  confirmed the reverse cross-brand rejection (an Alia Hijab SKU scanned in
+  the Noori workspace) and that a real Noori SKU resolved normally.
+  Visited an invalid brand code (`/xyz/products`) with no last-visited
+  workspace and confirmed it lands on the picker — then, after visiting
+  Noori again, confirmed `/` now auto-redirects straight there with no
+  picker flash. Finally opened the Company Dashboard and confirmed the
+  combined totals matched the seeded data exactly (revenue 750 + 660 =
+  1410 EGP, inventory value 3750 + 2640 = 6390 EGP, 37 total units, 2
+  orders), the per-brand comparison bars, and all four movements from both
+  brands present and correctly ordered in Recent Activity. Zero browser
+  console errors across the entire run. `npm run build` and `npm run lint`
+  pass clean.

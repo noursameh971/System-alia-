@@ -2,29 +2,32 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useWorkspace } from "@/context/WorkspaceContext";
 import { InventoryIcon, OrdersIcon, ProductsIcon } from "./icons";
-import { NAV_ITEMS, isNavItemActive } from "./navigation";
+import { NAV_ITEMS, buildNavHref, isNavItemActive } from "./navigation";
 
 const ICONS: Record<string, (props: { className?: string }) => React.ReactElement> = {
-  "/products": ProductsIcon,
-  "/inventory": InventoryIcon,
-  "/orders": OrdersIcon,
+  products: ProductsIcon,
+  inventory: InventoryIcon,
+  orders: OrdersIcon,
 };
 
 /** Desktop/tablet-landscape navigation. Hidden on narrow screens in favor of MobileBottomNav. */
 export function Sidebar() {
   const pathname = usePathname();
+  const { brand } = useWorkspace();
 
   return (
     <aside className="hidden w-56 shrink-0 border-r border-slate-200 bg-white md:flex md:flex-col dark:border-slate-800 dark:bg-slate-950">
       <nav className="flex flex-1 flex-col gap-1 p-4">
         {NAV_ITEMS.map((item) => {
-          const Icon = ICONS[item.href];
-          const active = isNavItemActive(pathname, item.href);
+          const Icon = ICONS[item.segment];
+          const href = buildNavHref(brand.code, item.segment);
+          const active = isNavItemActive(pathname, href);
           return (
             <Link
-              key={item.href}
-              href={item.href}
+              key={item.segment}
+              href={href}
               className={`flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors ${
                 active
                   ? "bg-indigo-50 text-indigo-700 dark:bg-indigo-950 dark:text-indigo-300"

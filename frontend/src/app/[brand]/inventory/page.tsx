@@ -25,7 +25,7 @@ export default function InventoryPage() {
           <p className="mt-0.5 text-sm text-slate-500 dark:text-slate-400">
             {tab === "movement"
               ? "Scan or type a SKU, pick a bin, enter a quantity."
-              : "Current stock, filterable by brand (toggle above), category, zone, and bin."}
+              : "This workspace's current stock, filterable by category, zone, and bin."}
           </p>
         </div>
 

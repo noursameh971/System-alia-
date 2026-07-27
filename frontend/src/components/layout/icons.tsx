@@ -42,6 +42,24 @@ export function ChevronDownIcon({ className }: IconProps) {
   );
 }
 
+export function DashboardIcon({ className }: IconProps) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.75} className={className}>
+      <path d="M4.5 19.5v-7.5M10.5 19.5v-12M16.5 19.5v-4.5M4.5 19.5h15" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+export function BuildingIcon({ className }: IconProps) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.75} className={className}>
+      <rect x="5.25" y="3.75" width="13.5" height="16.5" rx="0.75" />
+      <path d="M8.25 7.5h.008M12 7.5h.008M15.75 7.5h.008M8.25 11.25h.008M12 11.25h.008M15.75 11.25h.008M8.25 15h.008M15.75 15h.008" strokeLinecap="round" />
+      <path d="M10.5 20.25V16.5h3v3.75" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
 export function QrCodeIcon({ className }: IconProps) {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.75} className={className}>

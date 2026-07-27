@@ -11,10 +11,22 @@ export function VariantScanInput({
   variant,
   onResolved,
   onClear,
+  expectedBrand,
 }: {
   variant: VariantLookupResult | null;
   onResolved: (variant: VariantLookupResult) => void;
   onClear: () => void;
+  /**
+   * When set, a resolved variant belonging to a different brand is
+   * rejected with an explicit error instead of being handed to onResolved.
+   * This is the actual mechanism behind "strict brand isolation" for
+   * scanning: every SKU lookup hits the same by-sku endpoint regardless of
+   * brand, so without this check a Noori staff member scanning an Alia
+   * Hijab label inside the Noori workspace would silently be allowed to
+   * move Alia Hijab stock — exactly the mistake this refactor exists to
+   * prevent.
+   */
+  expectedBrand?: { id: string; name: string };
 }) {
   const [sku, setSku] = useState("");
   const [loading, setLoading] = useState(false);
@@ -29,6 +41,10 @@ export function VariantScanInput({
     setError(null);
     try {
       const found = await getVariantBySku(trimmed);
+      if (expectedBrand && found.brand.id !== expectedBrand.id) {
+        setError(`${found.sku} belongs to ${found.brand.name}, not ${expectedBrand.name} — wrong workspace.`);
+        return;
+      }
       onResolved(found);
       setSku("");
     } catch (err) {

@@ -1,7 +1,7 @@
 "use client";
 
 import useSWR from "swr";
-import { useBrand } from "@/context/BrandContext";
+import { useWorkspace } from "@/context/WorkspaceContext";
 import { listProducts } from "@/lib/products";
 import { ApiError } from "@/lib/apiClient";
 import { Spinner } from "@/components/ui/Spinner";
@@ -9,13 +9,13 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { ProductCard } from "./ProductCard";
 
 export function ProductList() {
-  const { selectedBrandId } = useBrand();
+  const { brand } = useWorkspace();
 
   const {
     data: products,
     error,
     isLoading,
-  } = useSWR(["products", selectedBrandId], () => listProducts(selectedBrandId));
+  } = useSWR(["products", brand.id], () => listProducts(brand.id));
 
   if (isLoading) {
     return (
@@ -38,7 +38,7 @@ export function ProductList() {
     return (
       <EmptyState
         title="No products yet"
-        description="Products created via the API will show up here, filtered by the brand toggle above."
+        description="Products created for this workspace will show up here."
       />
     );
   }

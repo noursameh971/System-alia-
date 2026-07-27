@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useAllBins } from "@/hooks/useAllBins";
+import { useWorkspace } from "@/context/WorkspaceContext";
 import { recordInboundMovement } from "@/lib/inventory";
 import { ApiError } from "@/lib/apiClient";
 import type { VariantLookupResult } from "@/lib/types";
@@ -11,6 +12,7 @@ import { QuantityInput } from "./QuantityInput";
 import { MovementStatusBanner, type MovementStatus } from "./MovementStatusBanner";
 
 export function InboundForm() {
+  const { brand } = useWorkspace();
   const { bins } = useAllBins();
   const [variant, setVariant] = useState<VariantLookupResult | null>(null);
   const [binId, setBinId] = useState("");
@@ -65,7 +67,7 @@ export function InboundForm() {
     <form onSubmit={handleSubmit} className="flex flex-col gap-4">
       <p className="text-sm text-slate-500 dark:text-slate-400">Stock entering the warehouse (e.g. new purchase).</p>
 
-      <VariantScanInput variant={variant} onResolved={setVariant} onClear={reset} />
+      <VariantScanInput variant={variant} onResolved={setVariant} onClear={reset} expectedBrand={brand} />
 
       {variant ? (
         <>

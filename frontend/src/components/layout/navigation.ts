@@ -1,13 +1,19 @@
 export interface NavItem {
   label: string;
-  href: string;
+  segment: string;
 }
 
+// Relative to /[brand]/ — Sidebar/MobileBottomNav prefix these with the
+// active workspace's brand code, so the same list works for any brand.
 export const NAV_ITEMS: NavItem[] = [
-  { label: "Products", href: "/products" },
-  { label: "Inventory", href: "/inventory" },
-  { label: "Orders", href: "/orders" },
+  { label: "Products", segment: "products" },
+  { label: "Inventory", segment: "inventory" },
+  { label: "Orders", segment: "orders" },
 ];
+
+export function buildNavHref(brandCode: string, segment: string): string {
+  return `/${brandCode.toLowerCase()}/${segment}`;
+}
 
 export function isNavItemActive(pathname: string, href: string): boolean {
   return pathname === href || pathname.startsWith(`${href}/`);

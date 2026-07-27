@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import useSWR from "swr";
-import { useBrand } from "@/context/BrandContext";
+import { useWorkspace } from "@/context/WorkspaceContext";
 import { listInventory } from "@/lib/inventory";
 import { ApiError } from "@/lib/apiClient";
 import { Badge } from "@/components/ui/Badge";
@@ -11,16 +11,14 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { StockFilters, type StockFilterState } from "./StockFilters";
 
 export function StockLevelsTable() {
-  const { selectedBrandId } = useBrand();
+  const { brand } = useWorkspace();
   const [filters, setFilters] = useState<StockFilterState>({ categoryId: null, zoneId: null, binId: null });
 
   const {
     data: rows,
     error,
     isLoading,
-  } = useSWR(["inventory", selectedBrandId, filters], () =>
-    listInventory({ brandId: selectedBrandId, ...filters }),
-  );
+  } = useSWR(["inventory", brand.id, filters], () => listInventory({ brandId: brand.id, ...filters }));
 
   return (
     <div className="flex flex-col gap-4">
@@ -51,7 +49,6 @@ export function StockLevelsTable() {
                 <p className="text-sm font-medium text-slate-900 dark:text-slate-100">{row.productName}</p>
                 <p className="mt-0.5 font-mono text-xs text-slate-500 dark:text-slate-400">{row.sku}</p>
                 <div className="mt-1.5 flex flex-wrap gap-1.5">
-                  <Badge variant="brand">{row.brand.name}</Badge>
                   <Badge>{row.category.name}</Badge>
                   {row.attributes.map((attr) => (
                     <Badge key={`${attr.attributeName}-${attr.value}`}>{attr.value}</Badge>

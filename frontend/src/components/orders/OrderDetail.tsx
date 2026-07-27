@@ -62,7 +62,6 @@ export function OrderDetail({ orderId }: { orderId: string }) {
               {new Date(order.orderDate).toLocaleString()}
             </p>
           </div>
-          <Badge variant="brand">{order.brand.name}</Badge>
         </div>
 
         {order.customerName || order.customerPhone || order.customerAddress ? (
