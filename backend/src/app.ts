@@ -13,6 +13,7 @@ import { productsRouter } from "./modules/products/products.routes.js";
 import { reasonCodesRouter } from "./modules/reason-codes/reasonCodes.routes.js";
 import { returnsRouter } from "./modules/returns/returns.routes.js";
 import { stockMovementsRouter } from "./modules/stock-movements/stockMovements.routes.js";
+import { usersRouter } from "./modules/users/users.routes.js";
 import { warehouseRouter } from "./modules/warehouse/warehouse.routes.js";
 
 export function createApp(): Express {
@@ -41,6 +42,7 @@ export function createApp(): Express {
   app.use("/api/orders", ordersRouter);
   app.use("/api/returns", returnsRouter);
   app.use("/api/dashboard", dashboardRouter);
+  app.use("/api/users", usersRouter);
 
   // Must be registered last — Express only routes here on thrown/forwarded errors.
   app.use(errorHandler);

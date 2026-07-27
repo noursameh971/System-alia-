@@ -25,7 +25,7 @@ backend/
         returns.ts
         index.ts              # re-exports everything
     middleware/
-      auth.ts                # requireAuth (JWT, or AUTH_BYPASS dev shortcut) + requireRole (RBAC)
+      auth.ts                # requireAuth (JWT) + requireRole/requireBrandAccess (RBAC)
       validate.ts             # zod request-body validation
       errorHandler.ts         # central error -> HTTP response mapping
     modules/                  # one folder per business domain
@@ -208,32 +208,34 @@ Orders & Returns request shapes:
 { "orderItemId": "uuid", "quantity": 1, "reasonCodeId": "uuid", "disposition": "write_off" }
 ```
 
-`requireAuth` expects a `Bearer` JWT (`{ sub: userId, role: "admin" | "warehouse_staff" }`)
-signed with `JWT_SECRET` — **unless `AUTH_BYPASS=true`**, see below.
+`requireAuth` expects a `Bearer` JWT (`{ sub, role, brandCode, brandId }`)
+signed with `JWT_SECRET` — every route needs a real, verified token; there
+is no bypass. See `docs/AUTH.md` (repo root) for the full strategy.
 
-## Dev-only auth bypass (temporary)
+## Auth: first login & adding staff
 
-Real login/token issuance doesn't exist yet, so to exercise these APIs from
-Postman set `AUTH_BYPASS=true` in `.env`. Every request is then treated as
-an authenticated user with **no token required at all**:
-
-- Default identity: `role: admin`, `id: 00000000-0000-0000-0000-000000000001`.
-- Override per-request with headers: `x-mock-role: warehouse_staff` to test
-  RBAC-restricted routes as staff, `x-mock-user-id: <uuid>` to attribute
-  writes to a different seeded user.
-- Because `created_by`/`performed_by` columns are `NOT NULL` foreign keys
-  into `users`, a row with id `00000000-0000-0000-0000-000000000001` must
-  exist locally, e.g.:
-  ```sql
-  INSERT INTO users (id, full_name, email, password_hash, role) VALUES
-    ('00000000-0000-0000-0000-000000000001', 'Mock Admin', 'mock-admin@test.local', 'x', 'admin');
-  ```
-
-**This must not reach production.** `env.ts` refuses to boot if
-`AUTH_BYPASS=true` and `NODE_ENV=production`, and the server logs a loud
-warning on startup whenever it's on. Delete the branch in
-`middleware/auth.ts` (`applyMockAuth` and the `if (env.AUTH_BYPASS)` check)
-once the real auth module ships.
+1. **Seed the first admin** (there's no UI for this — you need one admin
+   account before `/dashboard/users` is reachable at all):
+   ```bash
+   npm run seed:admin -- --email=you@company.com --password=SomethingLong --name="Your Name"
+   ```
+   Safe to re-run — it upserts on email, so re-running with a new
+   `--password` just resets that admin's password.
+2. **Log in** via the frontend's `/login` page (calls `POST /api/auth/login`
+   below), or directly:
+   ```bash
+   curl -X POST http://localhost:4000/api/auth/login \
+     -H "Content-Type: application/json" \
+     -d '{"email":"you@company.com","password":"SomethingLong"}'
+   # => { "success": true, "data": { "token": "...", "user": { ... } } }
+   ```
+3. **Add everyone else** from the Master Dashboard's "Manage Users" page
+   (`/dashboard/users`, admin-only), or directly:
+   ```bash
+   # GET  /api/users   — list (admin-only)
+   # POST /api/users   — create; admin: { fullName, email, password, role: "admin" }
+   #                              staff: { fullName, email, password, role: "warehouse_staff", brandId }
+   ```
 
 ## Orders & Returns: composing one transaction, not two
 

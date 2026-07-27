@@ -233,3 +233,24 @@ export interface DashboardSummary {
   totals: DashboardTotals;
   recentMovements: DashboardMovement[];
 }
+
+export type Role = "admin" | "warehouse_staff";
+
+export interface UserListItem {
+  id: string;
+  fullName: string;
+  email: string;
+  role: Role;
+  isActive: boolean;
+  createdAt: string;
+  brand: Brand | null;
+}
+
+export interface CreateUserInput {
+  fullName: string;
+  email: string;
+  password: string;
+  role: Role;
+  /** Required when role is "warehouse_staff", must be omitted for "admin". */
+  brandId?: string;
+}

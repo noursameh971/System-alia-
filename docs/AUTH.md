@@ -70,3 +70,18 @@ Migration: `database/migrations/0004_add_users_brand_id.sql`.
 
 `AUTH_BYPASS` and the `x-mock-user-id`/`x-mock-role` header shortcut are
 gone — every request now needs a real, verified JWT.
+
+## User Management (Step 8)
+
+There's no self-registration — accounts are provisioned by an admin.
+
+- **Bootstrapping the first admin**: `backend/src/scripts/seedAdmin.ts`
+  (`npm run seed:admin` from `backend/`) hashes a password with bcrypt and
+  upserts an `admin` row directly, since there's no admin yet to use the UI.
+- **Everyone after that**: the Master Dashboard's "Manage Users" page
+  (`/dashboard/users`, gated the same way as `/dashboard` itself — `proxy.ts`
+  + `requireRole('admin')`) backed by `GET/POST /api/users`
+  (`backend/src/modules/users/`). Creating a `warehouse_staff` account
+  requires `brandId`; creating an `admin` account forbids it — enforced by
+  `users.schema.ts`'s Zod refine, same rule `auth.service.ts#login` already
+  relies on.

@@ -44,12 +44,20 @@ export default function DashboardPage() {
           <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">Company Dashboard</p>
           <p className="text-xs text-slate-500 dark:text-slate-400">Both brands, combined</p>
         </div>
-        <Link
-          href="/"
-          className="rounded-lg border border-slate-300 px-3 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
-        >
-          ← Workspaces
-        </Link>
+        <div className="flex items-center gap-2">
+          <Link
+            href="/dashboard/users"
+            className="rounded-lg border border-slate-300 px-3 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
+          >
+            Manage Users
+          </Link>
+          <Link
+            href="/"
+            className="rounded-lg border border-slate-300 px-3 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
+          >
+            ← Workspaces
+          </Link>
+        </div>
       </header>
 
       <main className="mx-auto max-w-5xl px-4 py-6 sm:px-6">
