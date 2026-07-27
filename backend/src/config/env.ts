@@ -8,10 +8,6 @@ const envSchema = z.object({
   JWT_SECRET: z.string().min(16, "JWT_SECRET must be at least 16 characters"),
   JWT_EXPIRES_IN: z.string().default("8h"),
   CORS_ORIGIN: z.string().default("http://localhost:3000"),
-
-  // TEMPORARY dev-only auth bypass so Step 3 APIs can be exercised from
-  // Postman before the login/JWT-issuance module exists. See middleware/auth.ts.
-  AUTH_BYPASS: z.coerce.boolean().default(false),
 });
 
 const parsed = envSchema.safeParse(process.env);
@@ -23,10 +19,3 @@ if (!parsed.success) {
 }
 
 export const env = parsed.data;
-
-if (env.AUTH_BYPASS && env.NODE_ENV === "production") {
-  throw new Error(
-    "AUTH_BYPASS=true is not allowed when NODE_ENV=production — this would let anyone call every " +
-      "API as an admin with no token. Remove AUTH_BYPASS from the production environment.",
-  );
-}

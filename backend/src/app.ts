@@ -3,6 +3,7 @@ import express, { type Express } from "express";
 import helmet from "helmet";
 import { env } from "./config/env.js";
 import { errorHandler } from "./middleware/errorHandler.js";
+import { authRouter } from "./modules/auth/auth.routes.js";
 import { brandsRouter } from "./modules/brands/brands.routes.js";
 import { categoriesRouter } from "./modules/categories/categories.routes.js";
 import { dashboardRouter } from "./modules/dashboard/dashboard.routes.js";
@@ -17,14 +18,6 @@ import { warehouseRouter } from "./modules/warehouse/warehouse.routes.js";
 export function createApp(): Express {
   const app = express();
 
-  if (env.AUTH_BYPASS) {
-    console.warn(
-      "\n⚠️  AUTH_BYPASS is enabled — every request is treated as an authenticated user with " +
-        "NO token check. This is for local Postman testing only. Never set this in production " +
-        "(env.ts already refuses to boot with AUTH_BYPASS=true + NODE_ENV=production, but double-check).\n",
-    );
-  }
-
   app.use(helmet());
   app.use(
     cors({
@@ -37,6 +30,7 @@ export function createApp(): Express {
     res.json({ status: "ok" });
   });
 
+  app.use("/api/auth", authRouter);
   app.use("/api/brands", brandsRouter);
   app.use("/api/categories", categoriesRouter);
   app.use("/api/products", productsRouter);

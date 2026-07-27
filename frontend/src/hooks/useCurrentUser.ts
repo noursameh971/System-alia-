@@ -1,18 +1,59 @@
+import { useSyncExternalStore } from "react";
+import { getSession, type UserRole } from "@/lib/auth";
+
 export interface CurrentUser {
-  role: "admin" | "warehouse_staff";
+  role: UserRole | null;
+  brandCode: string | null;
+  brandId: string | null;
+  /** True until the session cookie has been read on the client (avoids an SSR/hydration mismatch — see lib/auth.ts). */
+  isLoading: boolean;
+}
+
+// Same useSyncExternalStore pattern as useLastWorkspaceCode.ts: reading the
+// cookie during render (even guarded by typeof document) would mismatch
+// between the server render and the client's first hydration pass.
+// getServerSnapshot sidesteps that by returning a stable "still loading"
+// object for both the server render and the client's hydration-matching
+// pass, then resolving to the real session right after hydration commits.
+const SERVER_SNAPSHOT: CurrentUser = { role: null, brandCode: null, brandId: null, isLoading: true };
+
+let cachedKey: string | null = null;
+let cachedSnapshot: CurrentUser = SERVER_SNAPSHOT;
+
+function getSnapshot(): CurrentUser {
+  const session = getSession();
+  const key = session ? `${session.sub}:${session.exp}` : null;
+  // Only build a new object when the underlying session actually changed —
+  // useSyncExternalStore compares snapshots with Object.is and treats a new
+  // reference as a change, so returning a fresh object every call would
+  // re-render (and re-invoke subscribers) on every single read.
+  if (key !== cachedKey) {
+    cachedKey = key;
+    cachedSnapshot = session
+      ? { role: session.role, brandCode: session.brandCode, brandId: session.brandId, isLoading: false }
+      : { role: null, brandCode: null, brandId: null, isLoading: false };
+  }
+  return cachedSnapshot;
+}
+
+function subscribe(): () => void {
+  // The session only ever changes via login/logout, both of which do a full
+  // navigation (router.replace + router.refresh) rather than mutating state
+  // in place, so there's nothing to listen for here.
+  return () => {};
+}
+
+function getServerSnapshot(): CurrentUser {
+  return SERVER_SNAPSHOT;
 }
 
 /**
- * TEMPORARY placeholder, same spirit as lib/auth.ts: there's no login yet,
- * so there's no real signed-in user to read a role from. Hardcoded to
- * 'admin' because the backend's AUTH_BYPASS dev flag also treats every
- * request as admin by default — this keeps the frontend gate consistent
- * with what the backend will actually let through right now. This is a
- * UI-layer convenience only (hide the Dashboard link, redirect non-admins
- * away from /dashboard); the real enforcement is server-side
- * (requireRole('admin') on GET /api/dashboard/summary), which doesn't
- * change when this hook is later replaced with a real session lookup.
+ * UI-layer convenience only — reflects the session cookie for things like
+ * "hide the Dashboard link" or "default a form to the right brand". The real
+ * enforcement is proxy.ts (route access) and each backend route's
+ * requireAuth/requireRole/requireBrandAccess, none of which change if this
+ * hook is ever bypassed.
  */
 export function useCurrentUser(): CurrentUser {
-  return { role: "admin" };
+  return useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);
 }

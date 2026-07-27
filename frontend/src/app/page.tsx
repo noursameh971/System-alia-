@@ -8,14 +8,21 @@ import { listBrands } from "@/lib/brands";
 import { useLastWorkspaceCode } from "@/hooks/useLastWorkspaceCode";
 import { getBrandAccentClass } from "@/lib/brandColor";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
+import { logout } from "@/lib/auth";
 import { Spinner } from "@/components/ui/Spinner";
-import { BuildingIcon } from "@/components/layout/icons";
+import { BuildingIcon, LogoutIcon } from "@/components/layout/icons";
 
 export default function Home() {
   const router = useRouter();
   const { data: brands, isLoading } = useSWR("brands", listBrands, { revalidateOnFocus: false });
   const { role } = useCurrentUser();
   const lastCode = useLastWorkspaceCode();
+
+  function handleLogout() {
+    logout();
+    router.replace("/login");
+    router.refresh();
+  }
 
   const matchedBrand = brands?.find((b) => lastCode && b.code.toLowerCase() === lastCode.toLowerCase()) ?? null;
 
@@ -57,15 +64,25 @@ export default function Home() {
         ))}
       </div>
 
-      {role === "admin" ? (
-        <Link
-          href="/dashboard"
+      <div className="flex items-center gap-4">
+        {role === "admin" ? (
+          <Link
+            href="/dashboard"
+            className="flex items-center gap-1.5 text-sm font-medium text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200"
+          >
+            <BuildingIcon className="h-4 w-4" />
+            View Company Dashboard
+          </Link>
+        ) : null}
+        <button
+          type="button"
+          onClick={handleLogout}
           className="flex items-center gap-1.5 text-sm font-medium text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200"
         >
-          <BuildingIcon className="h-4 w-4" />
-          View Company Dashboard
-        </Link>
-      ) : null}
+          <LogoutIcon className="h-4 w-4" />
+          Sign out
+        </button>
+      </div>
     </div>
   );
 }

@@ -6,6 +6,10 @@ import { ApiError } from "../utils/apiError.js";
 export interface AuthenticatedUser {
   id: string;
   role: "admin" | "warehouse_staff";
+  /** Assigned workspace, lowercased (e.g. "alh"). Null for admins. */
+  brandCode: string | null;
+  /** Assigned workspace's id — lets brand-scoped routes compare against the ?brandId= query/body param directly. Null for admins. */
+  brandId: string | null;
 }
 
 declare global {
@@ -18,50 +22,11 @@ declare global {
 }
 
 /**
- * Placeholder user id used by the AUTH_BYPASS dev shortcut below when the
- * caller doesn't supply x-mock-user-id. created_by/performed_by columns are
- * NOT NULL FKs into `users`, so a row with this exact id must exist locally
- * (see backend/README.md's seed snippet) or every write will fail its FK
- * check — that's intentional, it keeps the bypass from silently attributing
- * writes to a user that doesn't really exist.
- */
-export const DEV_MOCK_ADMIN_ID = "00000000-0000-0000-0000-000000000001";
-
-/**
- * TEMPORARY, Step-3-only: when AUTH_BYPASS=true, every request is treated as
- * an authenticated user with no token check at all, so the warehouse/
- * inventory APIs can be exercised from Postman before the real login/JWT
- * module exists. Override the identity per-request with `x-mock-user-id`
- * and `x-mock-role` headers (e.g. to test the admin-only routes as
- * warehouse_staff and confirm they 403).
- *
- * Guardrails: env.ts refuses to boot with AUTH_BYPASS=true when
- * NODE_ENV=production, and server startup logs a loud warning whenever it's
- * on. Still, this whole branch should be deleted once real auth ships —
- * don't let it linger past local testing.
- */
-function applyMockAuth(req: Request): void {
-  const roleHeader = req.header("x-mock-role");
-  const role = roleHeader === "warehouse_staff" ? "warehouse_staff" : "admin";
-  req.user = {
-    id: req.header("x-mock-user-id") || DEV_MOCK_ADMIN_ID,
-    role,
-  };
-}
-
-/**
- * Verifies the Bearer JWT and attaches the caller to req.user.
- * Login/token-issuance is out of scope for these early steps and lands with
- * the dedicated auth module — this only guards routes that need an
- * already-authenticated caller (e.g. to stamp created_by/performed_by).
+ * Verifies the Bearer JWT (issued by POST /api/auth/login) and attaches the
+ * caller to req.user. Every route below this must be mounted after this
+ * middleware to be protected — there is no bypass.
  */
 export function requireAuth(req: Request, _res: Response, next: NextFunction): void {
-  if (env.AUTH_BYPASS) {
-    applyMockAuth(req);
-    next();
-    return;
-  }
-
   const header = req.headers.authorization;
   if (!header?.startsWith("Bearer ")) {
     throw ApiError.unauthorized("Missing bearer token");
@@ -70,11 +35,21 @@ export function requireAuth(req: Request, _res: Response, next: NextFunction): v
   const token = header.slice("Bearer ".length);
 
   try {
-    const payload = jwt.verify(token, env.JWT_SECRET) as { sub: string; role: string };
+    const payload = jwt.verify(token, env.JWT_SECRET) as {
+      sub: string;
+      role: string;
+      brandCode: string | null;
+      brandId: string | null;
+    };
     if (payload.role !== "admin" && payload.role !== "warehouse_staff") {
       throw ApiError.unauthorized("Invalid token payload");
     }
-    req.user = { id: payload.sub, role: payload.role };
+    req.user = {
+      id: payload.sub,
+      role: payload.role,
+      brandCode: payload.brandCode ?? null,
+      brandId: payload.brandId ?? null,
+    };
     next();
   } catch {
     throw ApiError.unauthorized("Invalid or expired token");
@@ -88,6 +63,41 @@ export function requireRole(...allowedRoles: AuthenticatedUser["role"][]) {
     }
     if (!allowedRoles.includes(req.user.role)) {
       throw ApiError.forbidden(`Requires role: ${allowedRoles.join(" or ")}`);
+    }
+    next();
+  };
+}
+
+/**
+ * Defense-in-depth for brand-scoped routes: the [brand] URL segment and
+ * proxy.ts (the Next.js frontend's route guard) already keep a warehouse_staff user's browser from
+ * navigating outside their workspace, but that's a client-side redirect and
+ * doesn't stop a direct API call with a different ?brandId=. This confirms
+ * the brandId the caller is asking for (in query or body — wherever the
+ * route puts it) matches the workspace baked into their token.
+ *
+ * Admins pass through untouched — they aren't scoped to one brand.
+ * A warehouse_staff request with no brandId at all is also rejected: every
+ * brand-scoped list/create endpoint should always be called with one from
+ * that role, and silently defaulting to "all brands" would be a bigger hole
+ * than requiring it explicitly.
+ */
+export function requireBrandAccess(source: "query" | "body" = "query") {
+  return (req: Request, _res: Response, next: NextFunction): void => {
+    if (!req.user) {
+      throw ApiError.unauthorized();
+    }
+    if (req.user.role === "admin") {
+      next();
+      return;
+    }
+
+    const requestedBrandId = (source === "query" ? req.query.brandId : req.body?.brandId) as
+      | string
+      | undefined;
+
+    if (!requestedBrandId || requestedBrandId !== req.user.brandId) {
+      throw ApiError.forbidden("You don't have access to that brand's data");
     }
     next();
   };

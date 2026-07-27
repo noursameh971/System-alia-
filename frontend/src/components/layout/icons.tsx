@@ -60,6 +60,15 @@ export function BuildingIcon({ className }: IconProps) {
   );
 }
 
+export function LogoutIcon({ className }: IconProps) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.75} className={className}>
+      <path d="M15.75 8.25V6a1.5 1.5 0 0 0-1.5-1.5H6A1.5 1.5 0 0 0 4.5 6v12A1.5 1.5 0 0 0 6 19.5h8.25a1.5 1.5 0 0 0 1.5-1.5v-2.25" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M9.75 12h10.5m0 0-3-3m3 3-3 3" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
 export function QrCodeIcon({ className }: IconProps) {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.75} className={className}>

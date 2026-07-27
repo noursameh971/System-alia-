@@ -15,19 +15,21 @@ import { RecentMovementsList } from "@/components/dashboard/RecentMovementsList"
 
 export default function DashboardPage() {
   const router = useRouter();
-  const { role } = useCurrentUser();
+  const { role, isLoading: isSessionLoading } = useCurrentUser();
   const isAdmin = role === "admin";
 
   const { data, error, isLoading } = useSWR(isAdmin ? "dashboard-summary" : null, getDashboardSummary);
 
   useEffect(() => {
-    // Client-side convenience only — GET /api/dashboard/summary is the
-    // real enforcement (requireRole('admin')), which doesn't change if
-    // this check is ever bypassed.
-    if (!isAdmin) router.replace("/");
-  }, [isAdmin, router]);
+    // Client-side convenience only — GET /api/dashboard/summary and
+    // proxy.ts are the real enforcement, which doesn't change if this
+    // check is ever bypassed. Wait for the session to actually load first:
+    // isAdmin is false during that brief window too, and redirecting on it
+    // would bounce a legitimate admin before their role is known.
+    if (!isSessionLoading && !isAdmin) router.replace("/");
+  }, [isSessionLoading, isAdmin, router]);
 
-  if (!isAdmin) {
+  if (isSessionLoading || !isAdmin) {
     return (
       <div className="flex min-h-screen items-center justify-center">
         <Spinner label="Redirecting..." />

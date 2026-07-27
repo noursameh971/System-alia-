@@ -1,13 +1,22 @@
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useWorkspace } from "@/context/WorkspaceContext";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
+import { logout } from "@/lib/auth";
 import { getBrandAccentClass } from "@/lib/brandColor";
-import { BuildingIcon } from "./icons";
+import { BuildingIcon, LogoutIcon } from "./icons";
 import { WorkspaceSwitcher } from "./WorkspaceSwitcher";
 
 export function Header() {
+  const router = useRouter();
   const { brand } = useWorkspace();
   const { role } = useCurrentUser();
+
+  function handleLogout() {
+    logout();
+    router.replace("/login");
+    router.refresh();
+  }
 
   return (
     <header className="sticky top-0 z-10 flex items-center justify-between gap-4 border-b border-slate-200 bg-white/95 px-4 py-3 backdrop-blur sm:px-6 dark:border-slate-800 dark:bg-slate-950/95">
@@ -35,6 +44,15 @@ export function Header() {
           </Link>
         ) : null}
         <WorkspaceSwitcher />
+        <button
+          type="button"
+          onClick={handleLogout}
+          aria-label="Sign out"
+          title="Sign out"
+          className="flex items-center gap-1.5 rounded-lg border border-slate-300 px-2.5 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
+        >
+          <LogoutIcon className="h-4 w-4 shrink-0" />
+        </button>
       </div>
     </header>
   );
