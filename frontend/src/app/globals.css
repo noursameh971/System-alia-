@@ -1,0 +1,67 @@
+@import "tailwindcss";
+
+:root {
+  --background: #ffffff;
+  --foreground: #171717;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: #0a0a0a;
+    --foreground: #ededed;
+  }
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  /* Geist first for Latin, Noto Sans Arabic next — the browser resolves the
+     stack per-glyph, so mixed strings ("Alia Hijab — الطلبات") render each
+     script in the font that actually has it. */
+  font-family: var(--font-sans), var(--font-arabic), Arial, Helvetica, sans-serif;
+}
+
+/* Arabic runs ~15% shorter in x-height than Latin at the same px size and
+   reads cramped in dense table cells, so nudge the line box up when the
+   document is in Arabic. Scoped to [lang="ar"] so English is untouched. */
+:root[lang="ar"] body {
+  line-height: 1.6;
+}
+
+/* Print isolation: any element carrying the .print-area class is the only
+   thing that prints — everything else in the dashboard chrome behind it is
+   hidden. Used by the QR sticker printing (single + batch) and the order
+   receipt view. */
+@media print {
+  body * {
+    visibility: hidden;
+  }
+  .print-area,
+  .print-area * {
+    visibility: visible;
+  }
+  .print-area {
+    position: fixed;
+    inset: 0;
+    box-shadow: none;
+    border: none;
+  }
+}
+
+/* Named page, applied only to QR sticker print areas (via the
+   .qr-label-print-area class) so it doesn't affect the order receipt's
+   normal-paper printing, which keeps the browser's default @page size. */
+@page qr-label {
+  size: 50mm 25mm;
+  margin: 0;
+}
+.qr-label-print-area {
+  page: qr-label;
+}
