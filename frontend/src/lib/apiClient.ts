@@ -30,10 +30,21 @@ export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> 
     },
   });
 
-  const body = (await res.json().catch(() => null)) as ApiEnvelope<T> | null;
+  const isJson = (res.headers.get("content-type") ?? "").includes("application/json");
+  const body = isJson ? ((await res.json().catch(() => null)) as ApiEnvelope<T> | null) : null;
 
   if (!res.ok || !body?.success) {
-    throw new ApiError(body?.error?.message ?? `Request failed with status ${res.status}`, res.status, body?.error?.details);
+    // A 2xx response with a non-JSON body (most often HTML) almost always
+    // means this request never reached the API at all — see env.ts's
+    // NEXT_PUBLIC_API_URL check for the most common cause (a relative
+    // fetch("" + path) landing back on this very Next.js app, e.g.
+    // redirected to /login by proxy.ts, instead of the backend).
+    const message =
+      body?.error?.message ??
+      (res.ok && !isJson
+        ? `Got a non-JSON response from ${API_BASE_URL} — check NEXT_PUBLIC_API_URL is set to the live backend's URL`
+        : `Request failed with status ${res.status}`);
+    throw new ApiError(message, res.status, body?.error?.details);
   }
 
   return body.data as T;
