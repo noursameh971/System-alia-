@@ -20,9 +20,12 @@ import { stockMovementsRouter } from "./modules/stock-movements/stockMovements.r
 import { usersRouter } from "./modules/users/users.routes.js";
 import { warehouseRouter } from "./modules/warehouse/warehouse.routes.js";
 
-/** Strips a trailing slash — an Origin header never has one, so a config value with one would never match. */
+// Strips a trailing slash and any surrounding quotes — an Origin header
+// never has either, but a value pasted into a host's env var UI
+// (e.g. Railway) sometimes keeps literal quote characters, which would
+// otherwise silently make every origin fail to match.
 function normalizeOrigin(origin: string): string {
-  return origin.replace(/\/+$/, "");
+  return origin.trim().replace(/^["']|["']$/g, "").replace(/\/+$/, "");
 }
 
 export function createApp(): Express {
@@ -31,7 +34,11 @@ export function createApp(): Express {
   const allowedOrigins = [
     ...env.CORS_ORIGIN.split(",").map((origin) => origin.trim()),
     ...(env.FRONTEND_URL ? [env.FRONTEND_URL] : []),
-  ].map(normalizeOrigin);
+  ]
+    .map(normalizeOrigin)
+    .filter(Boolean);
+
+  console.log(`CORS: allowing origins: ${allowedOrigins.join(", ") || "(none configured)"}`);
 
   // crossOriginResourcePolicy relaxed to "cross-origin": the default
   // "same-origin" would block the frontend (a different origin/port) from
@@ -40,7 +47,23 @@ export function createApp(): Express {
   // `cors` middleware below (which only governs fetch/XHR) can't fix this
   // on its own.
   app.use(helmet({ crossOriginResourcePolicy: { policy: "cross-origin" } }));
-  app.use(cors({ origin: allowedOrigins }));
+  app.use(
+    cors({
+      // A function (rather than a static array) lets a rejected request log
+      // exactly which Origin header it sent and what was allowed — visible
+      // in Railway's logs — instead of leaving "no Access-Control-Allow-Origin
+      // header" as the only clue in the browser console.
+      origin(requestOrigin, callback) {
+        if (!requestOrigin || allowedOrigins.includes(requestOrigin)) {
+          callback(null, true);
+          return;
+        }
+        console.warn(`CORS: rejected origin "${requestOrigin}" — allowed: ${allowedOrigins.join(", ")}`);
+        callback(new Error(`Origin ${requestOrigin} is not allowed by CORS`));
+      },
+      credentials: true,
+    }),
+  );
   app.use(express.json());
 
   // Uploaded product images (see products.image.service.ts) — no cloud
