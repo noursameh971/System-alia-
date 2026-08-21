@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Boxes, SlidersHorizontal, Users } from "lucide-react";
+import { AlertTriangle, Boxes, SlidersHorizontal, Users } from "lucide-react";
 import { useWorkspace } from "@/context/WorkspaceContext";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { useLocale } from "@/context/LocaleContext";
@@ -11,6 +11,7 @@ import { Spinner } from "@/components/ui/Spinner";
 import { UserManagementTab } from "@/components/settings/UserManagementTab";
 import { GeneralLanguageTab } from "@/components/settings/GeneralLanguageTab";
 import { InventoryRulesTab } from "@/components/settings/InventoryRulesTab";
+import { DangerZoneTab } from "@/components/settings/DangerZoneTab";
 
 const SECTIONS = [
   {
@@ -28,8 +29,14 @@ const SECTIONS = [
   {
     key: "inventory",
     label: "Inventory Rules",
-    description: "Stock alerts, shipping rates",
+    description: "Stock alerts",
     icon: Boxes,
+  },
+  {
+    key: "danger",
+    label: "Danger Zone",
+    description: "Reset all data",
+    icon: AlertTriangle,
   },
 ] as const;
 
@@ -115,6 +122,7 @@ export default function BrandSettingsPage() {
           {section === "general" ? <GeneralLanguageTab /> : null}
           {section === "users" ? <UserManagementTab /> : null}
           {section === "inventory" ? <InventoryRulesTab /> : null}
+          {section === "danger" ? <DangerZoneTab /> : null}
         </div>
       </div>
     </div>

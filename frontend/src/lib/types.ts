@@ -535,20 +535,6 @@ export interface UpdateSettingsInput {
   defaultLanguage?: AppLocale;
 }
 
-/** Settings page's "Default Shipping Rates per city" list. */
-export interface ShippingRate {
-  id: string;
-  brandId: string;
-  city: string;
-  rate: number;
-}
-
-export interface UpsertShippingRateInput {
-  brandId: string;
-  city: string;
-  rate: number;
-}
-
 /** Settings page's "Brand Profile" tab. */
 export interface BrandProfile {
   id: string;

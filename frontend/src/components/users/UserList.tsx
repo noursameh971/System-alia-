@@ -19,6 +19,7 @@ export function UserList({
   currentUserId,
   onEdit,
   onResetPassword,
+  onDelete,
   onChanged,
   onError,
   onAddUser,
@@ -27,6 +28,7 @@ export function UserList({
   currentUserId: string | null;
   onEdit: (user: UserListItem) => void;
   onResetPassword: (user: UserListItem) => void;
+  onDelete: (user: UserListItem) => void;
   onChanged: () => void;
   onError: (message: string) => void;
   onAddUser?: () => void;
@@ -55,10 +57,10 @@ export function UserList({
     setTogglingId(user.id);
     try {
       await updateUser(user.id, { isActive: !user.isActive });
-      toast.success(user.isActive ? `${user.fullName} deactivated.` : `${user.fullName} reactivated.`);
+      toast.success(`${user.fullName} ${t(user.isActive ? "deactivated." : "reactivated.")}`);
       onChanged();
     } catch (err) {
-      onError(err instanceof ApiError ? err.message : `Failed to update ${user.fullName}`);
+      onError(err instanceof ApiError ? err.message : `${t("Failed to update")} ${user.fullName}`);
     } finally {
       setTogglingId(null);
     }
@@ -115,7 +117,7 @@ export function UserList({
                 <TableCell className="py-3 text-end">
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
-                      <Button variant="ghost" size="icon" aria-label={`Actions for ${user.fullName}`}>
+                      <Button variant="ghost" size="icon" aria-label={`${t("Actions for")} ${user.fullName}`}>
                         <MoreVertical className="size-4" />
                       </Button>
                     </DropdownMenuTrigger>
@@ -127,7 +129,10 @@ export function UserList({
                         disabled={isSelf || togglingId === user.id}
                         onSelect={() => void handleToggleActive(user)}
                       >
-                        {togglingId === user.id ? "Working..." : t(user.isActive ? "Deactivate" : "Reactivate")}
+                        {togglingId === user.id ? t("Working...") : t(user.isActive ? "Deactivate" : "Reactivate")}
+                      </DropdownMenuItem>
+                      <DropdownMenuItem variant="destructive" disabled={isSelf} onSelect={() => onDelete(user)}>
+                        {t("Delete user")}
                       </DropdownMenuItem>
                     </DropdownMenuContent>
                   </DropdownMenu>

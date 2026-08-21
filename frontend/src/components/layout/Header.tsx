@@ -1,13 +1,14 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Plus } from "lucide-react";
+import { KeyRound, Plus } from "lucide-react";
 import { useWorkspace } from "@/context/WorkspaceContext";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { useLocale } from "@/context/LocaleContext";
 import { logout } from "@/lib/auth";
 import { getBrandAccentClass, getBrandInitials } from "@/lib/brandColor";
 import { Button } from "@/components/ui/button";
+import { ChangePasswordModal } from "@/components/users/ChangePasswordModal";
 import { BuildingIcon, LogoutIcon } from "./icons";
 import { WorkspaceSwitcher } from "./WorkspaceSwitcher";
 import { CreateWorkspaceModal } from "./CreateWorkspaceModal";
@@ -18,6 +19,7 @@ export function Header() {
   const { role } = useCurrentUser();
   const { t } = useLocale();
   const [createWorkspaceOpen, setCreateWorkspaceOpen] = useState(false);
+  const [changePasswordOpen, setChangePasswordOpen] = useState(false);
 
   function handleLogout() {
     logout();
@@ -63,6 +65,16 @@ export function Header() {
             <Plus className="size-4" />
           </Button>
         ) : null}
+        <Button
+          type="button"
+          variant="outline"
+          size="icon"
+          aria-label="Change password"
+          title={t("Change password")}
+          onClick={() => setChangePasswordOpen(true)}
+        >
+          <KeyRound className="size-4" />
+        </Button>
         <button
           type="button"
           onClick={handleLogout}
@@ -75,6 +87,7 @@ export function Header() {
       </div>
 
       {role === "admin" ? <CreateWorkspaceModal open={createWorkspaceOpen} onOpenChange={setCreateWorkspaceOpen} /> : null}
+      <ChangePasswordModal open={changePasswordOpen} onOpenChange={setChangePasswordOpen} />
     </header>
   );
 }

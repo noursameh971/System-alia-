@@ -378,6 +378,31 @@ export const ar: Record<string, string> = {
   you: "أنت",
   active: "نشط",
   total: "الإجمالي",
+  "Actions for": "الإجراءات لـ",
+  "Working...": "جارٍ العمل...",
+  "Delete user": "حذف المستخدم",
+  "Deleting...": "جارٍ الحذف...",
+  "was updated.": "تم تحديثه.",
+  "was deleted.": "تم حذفه.",
+  "was deactivated (still referenced by existing records).": "تم تعطيله (لا يزال مرتبطًا بسجلات موجودة).",
+  "deactivated.": "تم التعطيل.",
+  "reactivated.": "تمت إعادة التفعيل.",
+  "Failed to update": "فشل تحديث",
+  "Failed to delete": "فشل حذف",
+  "If they've created orders, movements, or other records, the account is deactivated instead so that history stays intact.":
+    "إذا كان قد أنشأ طلبات أو حركات أو سجلات أخرى، سيتم تعطيل الحساب بدلًا من حذفه للحفاظ على السجل التاريخي.",
+  "Couldn't load users": "تعذّر تحميل المستخدمين",
+  "Password reset for": "تمت إعادة تعيين كلمة السر لـ",
+
+  // Change password modal (self-service)
+  "Change password": "تغيير كلمة السر",
+  "Update the password for your own account.": "حدّث كلمة السر الخاصة بحسابك.",
+  "Current password": "كلمة السر الحالية",
+  "New password": "كلمة السر الجديدة",
+  "Confirm new password": "تأكيد كلمة السر الجديدة",
+  "Password must be at least 8 characters.": "يجب أن تتكون كلمة السر من 8 أحرف على الأقل.",
+  "New passwords don't match.": "كلمتا السر الجديدتان غير متطابقتين.",
+  "Failed to change password": "فشل تغيير كلمة السر",
 
   // ------------------------------------------------------------------ Settings
   "Workspace configuration": "إعدادات مساحة العمل",
@@ -387,6 +412,27 @@ export const ar: Record<string, string> = {
   "Language, brand identity, currency": "اللغة وهوية العلامة التجارية والعملة",
   "Staff accounts, roles, access": "حسابات الموظفين والأدوار والصلاحيات",
   "Stock alerts, shipping rates": "تنبيهات المخزون وأسعار الشحن",
+  "Stock alerts": "تنبيهات المخزون",
+  "Danger Zone": "منطقة الخطر",
+  "Reset all data": "إعادة تعيين كل البيانات",
+  "Enter a whole number, 0 or more": "أدخل رقمًا صحيحًا، صفر فأكثر",
+  "Failed to save threshold": "فشل حفظ الحد",
+
+  // Danger Zone tab
+  "Reset All Data": "إعادة تعيين كل البيانات",
+  "Permanently wipes every workspace's transactional history across the entire system. This cannot be undone.":
+    "يمسح نهائيًا السجل التشغيلي لكل مساحات العمل في النظام بأكمله. لا يمكن التراجع عن هذا الإجراء.",
+  "This will permanently delete, for every brand:": "سيؤدي هذا إلى حذف ما يلي نهائيًا لكل علامة تجارية:",
+  "All orders and returns": "جميع الطلبات والمرتجعات",
+  "All stock movements and on-hand inventory counts": "جميع حركات المخزون وأرصدة المخزون المتاح",
+  "All expenses and supplier/debt ledger transactions": "جميع المصروفات ومعاملات دفتر الموردين/المديونيات",
+  "Products, brands, staff accounts, and settings are kept — only transactional history is cleared.":
+    "يتم الاحتفاظ بالمنتجات والعلامات التجارية وحسابات الموظفين والإعدادات — يُمسح السجل التشغيلي فقط.",
+  'Type "RESET" to confirm': 'اكتب "RESET" للتأكيد',
+  "I understand this action is permanent and cannot be undone.": "أدرك أن هذا الإجراء نهائي ولا يمكن التراجع عنه.",
+  "Resetting...": "جارٍ إعادة التعيين...",
+  "All transactional data has been cleared.": "تم مسح جميع البيانات التشغيلية.",
+  "Failed to reset data": "فشل إعادة تعيين البيانات",
 
   "Language & Region": "اللغة والمنطقة",
   "Applies to everyone in this organization.": "يُطبَّق على جميع المستخدمين في هذه المؤسسة.",

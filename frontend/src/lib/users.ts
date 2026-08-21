@@ -25,3 +25,17 @@ export async function resetUserPassword(userId: string, password: string): Promi
     body: JSON.stringify({ password }),
   });
 }
+
+export async function deleteUser(userId: string): Promise<{ deleted: boolean }> {
+  return apiFetch<{ deleted: boolean }>(`/api/users/${encodeURIComponent(userId)}`, {
+    method: "DELETE",
+  });
+}
+
+/** Self-service password change — the currently signed-in user changing their own password. */
+export async function changeOwnPassword(currentPassword: string, newPassword: string): Promise<void> {
+  await apiFetch<{ success: boolean }>("/api/users/me/password", {
+    method: "PATCH",
+    body: JSON.stringify({ currentPassword, newPassword }),
+  });
+}

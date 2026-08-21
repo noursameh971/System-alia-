@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useLocale } from "@/context/LocaleContext";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 
@@ -18,9 +19,10 @@ export function ConfirmDialog({
   onOpenChange,
   title,
   description,
-  confirmLabel = "Delete",
+  confirmLabel,
   onConfirm,
 }: ConfirmDialogProps) {
+  const { t } = useLocale();
   const [submitting, setSubmitting] = useState(false);
 
   async function handleConfirm() {
@@ -42,14 +44,14 @@ export function ConfirmDialog({
         </DialogHeader>
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)} disabled={submitting}>
-            Cancel
+            {t("Cancel")}
           </Button>
           <Button
             onClick={handleConfirm}
             disabled={submitting}
             className="bg-red-600 text-white hover:bg-red-500 dark:bg-red-600 dark:text-white dark:hover:bg-red-500"
           >
-            {submitting ? "Deleting..." : confirmLabel}
+            {submitting ? t("Deleting...") : (confirmLabel ?? t("Delete"))}
           </Button>
         </DialogFooter>
       </DialogContent>

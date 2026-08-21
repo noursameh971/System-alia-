@@ -4,13 +4,14 @@ import { useState } from "react";
 import useSWR from "swr";
 import { toast } from "sonner";
 import { UserPlus } from "lucide-react";
-import { listUsers } from "@/lib/users";
+import { deleteUser, listUsers } from "@/lib/users";
 import { ApiError } from "@/lib/apiClient";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { useLocale } from "@/context/LocaleContext";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/Spinner";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { AddUserModal } from "@/components/users/AddUserModal";
 import { UserList } from "@/components/users/UserList";
 import { EditUserModal } from "@/components/users/EditUserModal";
@@ -26,9 +27,22 @@ export function UserManagementTab() {
   const [addOpen, setAddOpen] = useState(false);
   const [editingUser, setEditingUser] = useState<UserListItem | null>(null);
   const [resettingUser, setResettingUser] = useState<UserListItem | null>(null);
+  const [deletingUser, setDeletingUser] = useState<UserListItem | null>(null);
 
   const users = data ?? [];
   const activeCount = users.filter((u) => u.isActive).length;
+
+  async function handleDeleteConfirmed() {
+    if (!deletingUser) return;
+    const target = deletingUser;
+    try {
+      const result = await deleteUser(target.id);
+      toast.success(result.deleted ? `${target.fullName} ${t("was deleted.")}` : `${target.fullName} ${t("was deactivated (still referenced by existing records).")}`);
+      void mutate();
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : `${t("Failed to delete")} ${target.fullName}`);
+    }
+  }
 
   return (
     <div className="flex min-w-0 flex-col gap-5">
@@ -49,12 +63,12 @@ export function UserManagementTab() {
 
       {isLoading ? (
         <div className="flex justify-center py-16">
-          <Spinner label="Loading users..." />
+          <Spinner label={t("Loading...")} />
         </div>
       ) : error ? (
         <EmptyState
-          title="Couldn't load users"
-          description={error instanceof ApiError ? error.message : "Check that the backend API is running."}
+          title={t("Couldn't load users")}
+          description={error instanceof ApiError ? error.message : t("Check that the backend API is running.")}
         />
       ) : (
         <UserList
@@ -62,6 +76,7 @@ export function UserManagementTab() {
           currentUserId={currentUserId}
           onEdit={setEditingUser}
           onResetPassword={setResettingUser}
+          onDelete={setDeletingUser}
           onChanged={() => void mutate()}
           onError={(message) => toast.error(message)}
           onAddUser={() => setAddOpen(true)}
@@ -75,7 +90,7 @@ export function UserManagementTab() {
           user={editingUser}
           onClose={() => setEditingUser(null)}
           onSaved={(updated) => {
-            toast.success(`${updated.fullName} was updated.`);
+            toast.success(`${updated.fullName} ${t("was updated.")}`);
             void mutate();
           }}
         />
@@ -85,7 +100,18 @@ export function UserManagementTab() {
         <ResetPasswordModal
           user={resettingUser}
           onClose={() => setResettingUser(null)}
-          onSaved={() => toast.success(`Password reset for ${resettingUser.fullName}.`)}
+          onSaved={() => toast.success(`${t("Password reset for")} ${resettingUser.fullName}.`)}
+        />
+      ) : null}
+
+      {deletingUser ? (
+        <ConfirmDialog
+          open
+          onOpenChange={(next) => !next && setDeletingUser(null)}
+          title={t("Delete user")}
+          description={`${t("This permanently removes")} ${deletingUser.fullName} (${deletingUser.email}). ${t("If they've created orders, movements, or other records, the account is deactivated instead so that history stays intact.")}`}
+          confirmLabel={t("Delete user")}
+          onConfirm={handleDeleteConfirmed}
         />
       ) : null}
     </div>
