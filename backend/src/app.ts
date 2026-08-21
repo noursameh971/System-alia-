@@ -28,6 +28,13 @@ function normalizeOrigin(origin: string): string {
   return origin.trim().replace(/^["']|["']$/g, "").replace(/\/+$/, "");
 }
 
+// Every Vercel deployment — production, a custom alias, or a per-branch/PR
+// preview — gets an *.vercel.app subdomain, and preview URLs are generated
+// per-deploy so they can't be pinned in FRONTEND_URL ahead of time. Scoped to
+// vercel.app specifically (not a bare "contains vercel" check) so it can't be
+// satisfied by an unrelated domain with "vercel.app" as a path or query.
+const VERCEL_PREVIEW_ORIGIN = /^https:\/\/[a-z0-9-]+(?:\.[a-z0-9-]+)*\.vercel\.app$/i;
+
 export function createApp(): Express {
   const app = express();
 
@@ -54,11 +61,15 @@ export function createApp(): Express {
       // in Railway's logs — instead of leaving "no Access-Control-Allow-Origin
       // header" as the only clue in the browser console.
       origin(requestOrigin, callback) {
-        if (!requestOrigin || allowedOrigins.includes(requestOrigin)) {
+        if (
+          !requestOrigin ||
+          allowedOrigins.includes(requestOrigin) ||
+          VERCEL_PREVIEW_ORIGIN.test(requestOrigin)
+        ) {
           callback(null, true);
           return;
         }
-        console.warn(`CORS: rejected origin "${requestOrigin}" — allowed: ${allowedOrigins.join(", ")}`);
+        console.warn(`CORS: rejected origin "${requestOrigin}" — allowed: ${allowedOrigins.join(", ")}, *.vercel.app`);
         callback(new Error(`Origin ${requestOrigin} is not allowed by CORS`));
       },
       credentials: true,
