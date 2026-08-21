@@ -22,6 +22,7 @@ import { createOrder } from "@/lib/orders";
 import { formatPrice } from "@/lib/formatPrice";
 import { useVariantStock } from "@/hooks/useVariantStock";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
+import { useLocale } from "@/context/LocaleContext";
 import type { CreatedOrder, OrderPaymentMethod } from "@/lib/types";
 import { ProductThumbnail } from "@/components/products/ProductThumbnail";
 
@@ -54,6 +55,7 @@ export function NewOrderModal({
   brandId: string;
   onSuccess: (order: CreatedOrder) => void;
 }) {
+  const { t } = useLocale();
   const { data: products } = useSWR(["products", brandId], () => listProducts(brandId), {
     revalidateOnFocus: false,
   });
@@ -98,24 +100,24 @@ export function NewOrderModal({
 
   function handleAddToCart() {
     if (!selectedProduct || !selectedVariant) {
-      toast.error("Select a product and variant first");
+      toast.error(t("Select a product and variant first"));
       return;
     }
     if (selectedVariant.price == null) {
-      toast.error("This variant has no price set");
+      toast.error(t("This variant has no price set"));
       return;
     }
     if (!selectedBin) {
-      toast.error("Select a bin to fulfill this item from");
+      toast.error(t("Select a bin to fulfill this item from"));
       return;
     }
     const qty = Number(quantity);
     if (!Number.isInteger(qty) || qty <= 0) {
-      toast.error("Enter a whole quantity greater than 0");
+      toast.error(t("Enter a whole quantity greater than 0"));
       return;
     }
     if (qty > selectedBin.quantity) {
-      toast.error(`Only ${selectedBin.quantity} in stock in ${selectedBin.zoneCode}/${selectedBin.binCode}`);
+      toast.error(`${t("Only")} ${selectedBin.quantity} ${t("in stock in")} ${selectedBin.zoneCode}/${selectedBin.binCode}`);
       return;
     }
 
@@ -174,7 +176,7 @@ export function NewOrderModal({
 
   async function handleSubmit() {
     if (cart.length === 0) {
-      toast.error("Add at least one item to the order");
+      toast.error(t("Add at least one item to the order"));
       return;
     }
 
@@ -189,12 +191,12 @@ export function NewOrderModal({
         shippingFee: shippingFeeValue,
         items: cart.map((line) => ({ variantId: line.variantId, binId: line.binId, quantity: line.quantity })),
       });
-      toast.success(`Order ${order.orderNumber} created`);
+      toast.success(`${t("Order")} ${order.orderNumber} ${t("created")}`);
       onSuccess(order);
       onOpenChange(false);
       resetForm();
     } catch (err) {
-      toast.error(err instanceof ApiError ? err.message : "Failed to create order");
+      toast.error(err instanceof ApiError ? err.message : t("Failed to create order"));
     } finally {
       setSubmitting(false);
     }
@@ -211,19 +213,20 @@ export function NewOrderModal({
     >
       <DialogContent className="max-w-2xl">
         <DialogHeader>
-          <DialogTitle>New order</DialogTitle>
+          <DialogTitle>{t("New Order")}</DialogTitle>
           <DialogDescription>
-            Pick products and variants from stock, add shipping details, and submit — the ordered quantities are
-            deducted from inventory immediately.
+            {t(
+              "Pick products and variants from stock, add shipping details, and submit — the ordered quantities are deducted from inventory immediately.",
+            )}
           </DialogDescription>
         </DialogHeader>
 
         <div className="flex flex-col gap-4">
           <div className="rounded-lg border border-slate-200 p-3 dark:border-slate-800">
-            <p className="mb-2 text-sm font-medium text-slate-700 dark:text-slate-300">Add item</p>
+            <p className="mb-2 text-sm font-medium text-slate-700 dark:text-slate-300">{t("Add item")}</p>
             <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-[2fr_2fr_1fr]">
               <Select
-                aria-label="Product"
+                aria-label={t("Product")}
                 value={productId}
                 onChange={(e) => {
                   setProductId(e.target.value);
@@ -231,7 +234,7 @@ export function NewOrderModal({
                 }}
                 disabled={submitting}
               >
-                <option value="">Select product...</option>
+                <option value="">{t("Select product...")}</option>
                 {(products ?? []).map((p) => (
                   <option key={p.id} value={p.id}>
                     {p.name}
@@ -240,7 +243,7 @@ export function NewOrderModal({
               </Select>
 
               <Select
-                aria-label="Variant"
+                aria-label={t("Variant")}
                 value={variantId}
                 onChange={(e) => {
                   setVariantId(e.target.value);
@@ -248,11 +251,16 @@ export function NewOrderModal({
                 }}
                 disabled={submitting || !selectedProduct}
               >
-                <option value="">Select color/size...</option>
+                <option value="">{t("Select color/size...")}</option>
                 {(selectedProduct?.variants ?? []).map((v) => (
                   <option key={v.id} value={v.id} disabled={v.price == null || v.stock === 0}>
                     {(v.attributes.map((a) => a.value).join(" / ") || v.sku) +
-                      (v.price == null ? " — no price" : v.stock === 0 ? " — out of stock" : ` — ${v.stock} in stock`)}
+                      " — " +
+                      (v.price == null
+                        ? t("no price")
+                        : v.stock === 0
+                          ? t("out of stock")
+                          : `${v.stock} ${t("in stock")}`)}
                   </option>
                 ))}
               </Select>
@@ -261,7 +269,7 @@ export function NewOrderModal({
                 type="number"
                 min={1}
                 step={1}
-                aria-label="Quantity"
+                aria-label={t("Quantity")}
                 value={quantity}
                 onChange={(e) => setQuantity(e.target.value)}
                 disabled={submitting}
@@ -270,27 +278,27 @@ export function NewOrderModal({
 
             {selectedVariant ? (
               stockLoading ? (
-                <p className="mt-2.5 text-xs text-slate-500 dark:text-slate-400">Checking bin stock...</p>
+                <p className="mt-2.5 text-xs text-slate-500 dark:text-slate-400">{t("Checking bin stock...")}</p>
               ) : stockedBins.length === 0 ? (
                 <p className="mt-2.5 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:bg-amber-950 dark:text-amber-300">
-                  No stock recorded for this variant in any bin.
+                  {t("No stock recorded for this variant in any bin.")}
                 </p>
               ) : (
                 <div className="mt-2.5 flex flex-wrap items-end gap-2.5">
                   <div className="min-w-[10rem] flex-1">
-                    <Label className="mb-1 block text-xs">Bin</Label>
-                    <Select aria-label="Bin" value={binId} onChange={(e) => setBinId(e.target.value)} disabled={submitting}>
-                      <option value="">Select bin...</option>
+                    <Label className="mb-1 block text-xs">{t("Bin")}</Label>
+                    <Select aria-label={t("Bin")} value={binId} onChange={(e) => setBinId(e.target.value)} disabled={submitting}>
+                      <option value="">{t("Select a bin...")}</option>
                       {stockedBins.map((b) => (
                         <option key={b.binId} value={b.binId}>
-                          {b.zoneCode} / {b.binCode} — {b.quantity} in stock
+                          {b.zoneCode} / {b.binCode} — {b.quantity} {t("in stock")}
                         </option>
                       ))}
                     </Select>
                   </div>
                   <Button type="button" size="sm" onClick={handleAddToCart} disabled={submitting}>
                     <Plus className="size-3.5" />
-                    Add to order
+                    {t("Add to order")}
                   </Button>
                 </div>
               )
@@ -299,14 +307,14 @@ export function NewOrderModal({
 
           <div className="flex flex-col gap-2">
             <div className="flex items-center justify-between">
-              <Label>Items in this order</Label>
+              <Label>{t("Items in this order")}</Label>
               <span className="text-xs text-slate-500 dark:text-slate-400">
-                {cart.length} line{cart.length === 1 ? "" : "s"}
+                {cart.length} {cart.length === 1 ? t("line") : t("lines")}
               </span>
             </div>
             {cart.length === 0 ? (
               <p className="rounded-lg border border-dashed border-slate-300 px-3 py-4 text-center text-sm text-slate-500 dark:border-slate-700 dark:text-slate-400">
-                No items added yet
+                {t("No items added yet")}
               </p>
             ) : (
               <div className="flex max-h-56 flex-col gap-2 overflow-y-auto pe-1">
@@ -329,7 +337,7 @@ export function NewOrderModal({
                       min={1}
                       max={line.availableQty}
                       step={1}
-                      aria-label={`Quantity for ${line.productName}`}
+                      aria-label={`${t("Quantity for")} ${line.productName}`}
                       value={line.quantity}
                       onChange={(e) => updateLineQuantity(line.key, Number(e.target.value) || 1)}
                       disabled={submitting}
@@ -344,7 +352,7 @@ export function NewOrderModal({
                       size="icon"
                       onClick={() => removeLine(line.key)}
                       disabled={submitting}
-                      aria-label="Remove item"
+                      aria-label={t("Remove item")}
                     >
                       <Trash2 className="size-4" />
                     </Button>
@@ -356,7 +364,7 @@ export function NewOrderModal({
 
           <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-3">
             <div className="flex flex-col gap-1.5">
-              <Label htmlFor="new-order-customer-name">Customer name</Label>
+              <Label htmlFor="new-order-customer-name">{t("Customer name")}</Label>
               <Input
                 id="new-order-customer-name"
                 value={customerName}
@@ -365,7 +373,7 @@ export function NewOrderModal({
               />
             </div>
             <div className="flex flex-col gap-1.5">
-              <Label htmlFor="new-order-customer-phone">Phone</Label>
+              <Label htmlFor="new-order-customer-phone">{t("Phone")}</Label>
               <Input
                 id="new-order-customer-phone"
                 value={customerPhone}
@@ -374,7 +382,7 @@ export function NewOrderModal({
               />
             </div>
             <div className="flex flex-col gap-1.5">
-              <Label htmlFor="new-order-customer-address">Address</Label>
+              <Label htmlFor="new-order-customer-address">{t("Address")}</Label>
               <Input
                 id="new-order-customer-address"
                 value={customerAddress}
@@ -386,7 +394,7 @@ export function NewOrderModal({
 
           <div className="flex flex-wrap items-end gap-4 border-t border-slate-100 pt-3 dark:border-slate-800">
             <div>
-              <Label className="mb-1.5 block">Payment method</Label>
+              <Label className="mb-1.5 block">{t("Payment method")}</Label>
               <div className="flex gap-2">
                 <button
                   type="button"
@@ -398,7 +406,7 @@ export function NewOrderModal({
                       : "border-slate-300 text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
                   }`}
                 >
-                  Cash on Delivery
+                  {t("Cash on Delivery")}
                 </button>
                 <button
                   type="button"
@@ -410,13 +418,13 @@ export function NewOrderModal({
                       : "border-slate-300 text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
                   }`}
                 >
-                  Online Payment
+                  {t("Online Payment")}
                 </button>
               </div>
             </div>
 
             <div className="flex flex-col gap-1.5">
-              <Label htmlFor="new-order-shipping-fee">Shipping fee</Label>
+              <Label htmlFor="new-order-shipping-fee">{t("Shipping fee")}</Label>
               <Input
                 id="new-order-shipping-fee"
                 type="number"
@@ -429,9 +437,9 @@ export function NewOrderModal({
               />
             </div>
 
-            <div className="ml-auto text-end">
+            <div className="ms-auto text-end">
               <p className="text-xs text-slate-500 dark:text-slate-400">
-                Items {formatPrice(itemsTotal)} + Shipping {formatPrice(shippingFeeValue)}
+                {t("Items")} {formatPrice(itemsTotal)} + {t("Shipping")} {formatPrice(shippingFeeValue)}
               </p>
               <p className="text-lg font-semibold text-slate-900 dark:text-slate-100">{formatPrice(grandTotal)}</p>
               {isAdmin && cart.length > 0 ? (
@@ -440,7 +448,7 @@ export function NewOrderModal({
                     estimatedProfit >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400"
                   }`}
                 >
-                  Est. profit {formatPrice(estimatedProfit)}
+                  {t("Est. profit")} {formatPrice(estimatedProfit)}
                 </p>
               ) : null}
             </div>
@@ -449,10 +457,10 @@ export function NewOrderModal({
 
         <DialogFooter>
           <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={submitting}>
-            Cancel
+            {t("Cancel")}
           </Button>
           <Button type="button" onClick={handleSubmit} disabled={submitting || cart.length === 0}>
-            {submitting ? "Creating..." : "Create Order"}
+            {submitting ? t("Creating...") : t("Create Order")}
           </Button>
         </DialogFooter>
       </DialogContent>
