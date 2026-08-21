@@ -36,7 +36,19 @@ export async function verifySessionToken(token: string | undefined): Promise<Ses
       role: payload.role,
       brandCode: (payload.brandCode as string | null) ?? null,
     };
-  } catch {
-    return null; // missing, expired, or tampered with
+  } catch (err) {
+    // Logged (not swallowed): a signature-verification failure here looks
+    // identical to "no session" to the caller (redirect to /login) either
+    // way, but a *mismatched* JWT_SECRET between this app and the backend
+    // that signed the token — as opposed to a genuinely missing/expired
+    // cookie — produces this on literally every request, which reads as an
+    // infinite post-login redirect loop with no visible cause otherwise.
+    const reason = err instanceof Error ? err.name : "unknown error";
+    console.error(
+      `serverSession.ts: token verification failed (${reason}). If this fires on every request right after ` +
+        "a successful login, JWT_SECRET on this deployment almost certainly doesn't match the backend's — " +
+        "they must be byte-for-byte identical.",
+    );
+    return null;
   }
 }
