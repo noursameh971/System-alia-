@@ -24,6 +24,9 @@ async function main(): Promise<void> {
       .insert(brands)
       .values({ name: brandName, code: brandName.replace(/\s+/g, "").slice(0, 10).toUpperCase() || "ALIA" })
       .returning({ id: brands.id, name: brands.name });
+    if (!createdBrand) {
+      throw new Error(`Failed to create brand: ${brandName}`);
+    }
     brand = createdBrand;
   }
 
