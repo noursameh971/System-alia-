@@ -2,14 +2,8 @@ import { Router } from "express";
 import { requireAuth, requireRole } from "../../middleware/auth.js";
 import { validateBody } from "../../middleware/validate.js";
 import { asyncHandler } from "../../utils/asyncHandler.js";
-import {
-  deleteShippingRateHandler,
-  getSettingsHandler,
-  getShippingRatesHandler,
-  updateSettingsHandler,
-  upsertShippingRateHandler,
-} from "./settings.controller.js";
-import { updateSettingsSchema, upsertShippingRateSchema } from "./settings.schema.js";
+import { getSettingsHandler, resetDataHandler, updateSettingsHandler } from "./settings.controller.js";
+import { resetDataSchema, updateSettingsSchema } from "./settings.schema.js";
 
 export const settingsRouter = Router();
 
@@ -24,12 +18,13 @@ settingsRouter.patch(
   asyncHandler(updateSettingsHandler),
 );
 
-settingsRouter.get("/shipping-rates", requireAuth, asyncHandler(getShippingRatesHandler));
-settingsRouter.put(
-  "/shipping-rates",
+// Danger Zone — admin-only, and the exact confirmation literal is
+// re-checked server-side (see settings.schema.ts) so this can never be
+// triggered by a bare/scripted request even if the frontend's guard is bypassed.
+settingsRouter.post(
+  "/reset-data",
   requireAuth,
   requireRole("admin"),
-  validateBody(upsertShippingRateSchema),
-  asyncHandler(upsertShippingRateHandler),
+  validateBody(resetDataSchema),
+  asyncHandler(resetDataHandler),
 );
-settingsRouter.delete("/shipping-rates/:id", requireAuth, requireRole("admin"), asyncHandler(deleteShippingRateHandler));

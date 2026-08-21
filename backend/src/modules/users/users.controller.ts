@@ -1,8 +1,8 @@
 import type { Request, Response } from "express";
 import { ApiError } from "../../utils/apiError.js";
 import { sendSuccess } from "../../utils/apiResponse.js";
-import { createUser, listUsers, resetPassword, updateUser } from "./users.service.js";
-import type { CreateUserInput, ResetPasswordInput, UpdateUserInput } from "./users.schema.js";
+import { changeOwnPassword, createUser, deleteUser, listUsers, resetPassword, updateUser } from "./users.service.js";
+import type { ChangeOwnPasswordInput, CreateUserInput, ResetPasswordInput, UpdateUserInput } from "./users.schema.js";
 
 /** GET /api/users — admin-only staff directory. */
 export async function getUsers(_req: Request, res: Response): Promise<void> {
@@ -32,4 +32,22 @@ export async function patchUserPassword(req: Request, res: Response): Promise<vo
 
   await resetPassword(userId, (req.body as ResetPasswordInput).password);
   sendSuccess(res, 200, { success: true });
+}
+
+/** PATCH /api/users/me/password — any logged-in user changing their own password; requires proving the current one. */
+export async function patchOwnPassword(req: Request, res: Response): Promise<void> {
+  const { currentPassword, newPassword } = req.body as ChangeOwnPasswordInput;
+  // requireAuth ran before this handler, so req.user is guaranteed to be set.
+  await changeOwnPassword(req.user!.id, currentPassword, newPassword);
+  sendSuccess(res, 200, { success: true });
+}
+
+/** DELETE /api/users/:userId — admin-only. Hard-deletes if nothing references the account, otherwise deactivates it (see users.service.ts#deleteUser). */
+export async function deleteUserHandler(req: Request, res: Response): Promise<void> {
+  const userId = String(req.params.userId ?? "");
+  if (!userId) throw ApiError.badRequest("userId is required");
+
+  // requireAuth ran before this handler, so req.user is guaranteed to be set.
+  const result = await deleteUser(userId, req.user!.id);
+  sendSuccess(res, 200, result);
 }

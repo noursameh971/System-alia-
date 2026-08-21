@@ -1,8 +1,7 @@
-import { asc, eq, sql } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { db } from "../../db/client.js";
-import { appSettings, shippingRates } from "../../db/schema/index.js";
-import { ApiError } from "../../utils/apiError.js";
-import type { UpdateSettingsInput, UpsertShippingRateInput } from "./settings.schema.js";
+import { appSettings, expenses, inventory, ledgerTransactions, orders, returns, stockMovements } from "../../db/schema/index.js";
+import type { UpdateSettingsInput } from "./settings.schema.js";
 
 export interface AppSettingsResult {
   lowStockThreshold: number;
@@ -48,36 +47,27 @@ export async function updateSettings(input: UpdateSettingsInput): Promise<AppSet
   };
 }
 
-export interface ShippingRateResult {
-  id: string;
-  brandId: string;
-  city: string;
-  rate: number;
-}
-
-export async function listShippingRates(brandId?: string): Promise<ShippingRateResult[]> {
-  const rows = await db
-    .select()
-    .from(shippingRates)
-    .where(brandId ? eq(shippingRates.brandId, brandId) : undefined)
-    .orderBy(asc(shippingRates.city));
-  return rows.map((r) => ({ id: r.id, brandId: r.brandId, city: r.city, rate: Number(r.rate) }));
-}
-
-/** Insert-or-update by (brandId, city) — backs the Inventory & Operations tab's shipping-rate row editor. */
-export async function upsertShippingRate(input: UpsertShippingRateInput): Promise<ShippingRateResult> {
-  const [row] = await db
-    .insert(shippingRates)
-    .values({ brandId: input.brandId, city: input.city.trim(), rate: input.rate.toFixed(2) })
-    .onConflictDoUpdate({
-      target: [shippingRates.brandId, shippingRates.city],
-      set: { rate: input.rate.toFixed(2), updatedAt: sql`now()` },
-    })
-    .returning();
-  return { id: row!.id, brandId: row!.brandId, city: row!.city, rate: Number(row!.rate) };
-}
-
-export async function deleteShippingRate(id: string): Promise<void> {
-  const [deleted] = await db.delete(shippingRates).where(eq(shippingRates.id, id)).returning({ id: shippingRates.id });
-  if (!deleted) throw ApiError.notFound(`No shipping rate with id ${id}`);
+/**
+ * Settings > Danger Zone — wipes every brand's operational history (orders,
+ * returns, stock movements, live bin quantities, expenses, ledger
+ * transactions) while leaving the catalog, brands, users, and settings
+ * untouched, so the system is immediately usable again afterward instead of
+ * needing to be reconfigured from scratch.
+ *
+ * Deletion order respects the schema's ON DELETE RESTRICT edges (returns ->
+ * orders/order_items would otherwise block the orders delete); order_items
+ * cascades automatically. ledger_entities (the supplier/courier directory)
+ * is deliberately kept — only its transactions are transactional data.
+ * Inventory rows are zeroed rather than deleted so existing (variant, bin)
+ * pairings don't need to be recreated on the next stock movement.
+ */
+export async function resetTransactionalData(): Promise<void> {
+  await db.transaction(async (tx) => {
+    await tx.delete(returns);
+    await tx.delete(orders); // cascades order_items
+    await tx.delete(stockMovements);
+    await tx.update(inventory).set({ quantity: 0, updatedAt: sql`now()` });
+    await tx.delete(expenses);
+    await tx.delete(ledgerTransactions);
+  });
 }

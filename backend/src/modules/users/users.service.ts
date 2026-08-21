@@ -3,7 +3,7 @@ import { eq, sql } from "drizzle-orm";
 import { db } from "../../db/client.js";
 import { brands, users } from "../../db/schema/index.js";
 import { ApiError } from "../../utils/apiError.js";
-import { withUniqueConstraint } from "../../utils/pgErrors.js";
+import { pgErrorCode, POSTGRES_FOREIGN_KEY_VIOLATION_CODES, withUniqueConstraint } from "../../utils/pgErrors.js";
 import type { CreateUserInput, UpdateUserInput } from "./users.schema.js";
 
 const BCRYPT_ROUNDS = 10;
@@ -158,4 +158,43 @@ export async function resetPassword(userId: string, password: string): Promise<v
     .where(eq(users.id, userId))
     .returning({ id: users.id });
   if (!row) throw ApiError.notFound(`User ${userId} does not exist`);
+}
+
+/** Self-service password change — unlike resetPassword (admin action), this requires proving the current password first. */
+export async function changeOwnPassword(userId: string, currentPassword: string, newPassword: string): Promise<void> {
+  const [row] = await db.select({ passwordHash: users.passwordHash }).from(users).where(eq(users.id, userId)).limit(1);
+  if (!row) throw ApiError.notFound(`User ${userId} does not exist`);
+
+  const matches = await bcrypt.compare(currentPassword, row.passwordHash);
+  if (!matches) throw ApiError.unauthorized("Current password is incorrect");
+
+  const passwordHash = await bcrypt.hash(newPassword, BCRYPT_ROUNDS);
+  await db.update(users).set({ passwordHash, updatedAt: sql`now()` }).where(eq(users.id, userId));
+}
+
+/**
+ * Hard-deletes when nothing references this account; falls back to
+ * deactivating when it does (e.g. they created orders/stock movements —
+ * every such FK is ON DELETE RESTRICT to preserve the audit trail). Mirrors
+ * products.service.ts#deleteVariant's same fallback for the same reason.
+ */
+export async function deleteUser(userId: string, actingUserId: string): Promise<{ deleted: boolean }> {
+  if (userId === actingUserId) {
+    throw ApiError.badRequest("You can't delete your own account");
+  }
+
+  const [existing] = await db.select({ id: users.id }).from(users).where(eq(users.id, userId)).limit(1);
+  if (!existing) throw ApiError.notFound(`User ${userId} does not exist`);
+
+  try {
+    await db.delete(users).where(eq(users.id, userId));
+    return { deleted: true };
+  } catch (err) {
+    const code = pgErrorCode(err);
+    if (!code || !POSTGRES_FOREIGN_KEY_VIOLATION_CODES.includes(code as (typeof POSTGRES_FOREIGN_KEY_VIOLATION_CODES)[number])) {
+      throw err;
+    }
+    await db.update(users).set({ isActive: false, updatedAt: sql`now()` }).where(eq(users.id, userId));
+    return { deleted: false };
+  }
 }
