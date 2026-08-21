@@ -1,7 +1,7 @@
 "use client";
 
 import { Suspense, useState, useSyncExternalStore, type FormEvent } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import { Eye, EyeOff, Layers, Loader2 } from "lucide-react";
 import { login } from "@/lib/auth";
 import { ApiError } from "@/lib/apiClient";
@@ -153,7 +153,6 @@ function LanguageToggle() {
 }
 
 function LoginForm() {
-  const router = useRouter();
   const searchParams = useSearchParams();
   const { t } = useLocale();
 
@@ -195,8 +194,14 @@ function LoginForm() {
       // An explicit ?redirect= (set by proxy.ts when it intercepted a
       // deep link) wins — otherwise fall back to the role's home.
       const redirectTo = searchParams.get("redirect") || landingPathFor(user.role, user.brandCode);
-      router.replace(redirectTo);
-      router.refresh();
+      // Hard navigation, not router.replace/refresh: the session cookie was
+      // just written via document.cookie above, and a full page load
+      // guarantees the browser sends it on the very next request and
+      // proxy.ts/every Server Component re-evaluates against it — a
+      // client-side transition risked landing before that cookie was
+      // reliably visible to the next request, which read as a stuck/looping
+      // redirect.
+      window.location.href = redirectTo;
     } catch (err) {
       setError(err instanceof ApiError ? err.message : t("Something went wrong. Please try again."));
       setIsSubmitting(false);
