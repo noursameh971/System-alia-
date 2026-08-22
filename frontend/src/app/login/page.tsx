@@ -3,7 +3,7 @@
 import { Suspense, useState, useSyncExternalStore, type FormEvent } from "react";
 import { useSearchParams } from "next/navigation";
 import { Eye, EyeOff, Layers, Loader2 } from "lucide-react";
-import { login } from "@/lib/auth";
+import { devLogin, login } from "@/lib/auth";
 import { ApiError } from "@/lib/apiClient";
 import { useLocale } from "@/context/LocaleContext";
 import { PLATFORM_CAPTION, PLATFORM_EDITION, PLATFORM_NAME } from "@/lib/platform";
@@ -177,31 +177,46 @@ function LoginForm() {
     setSeededFromStorage(true);
   }
 
+  // Shared by a real submit and the dev-only quick login below, so the
+  // redirect target and "remember me" persistence can't drift between them.
+  function completeLogin(user: { role: "admin" | "warehouse_staff"; brandCode: string | null }) {
+    try {
+      if (rememberMe) window.localStorage.setItem(REMEMBERED_EMAIL_KEY, email);
+      else window.localStorage.removeItem(REMEMBERED_EMAIL_KEY);
+    } catch {
+      // Non-fatal: failing to persist a convenience shouldn't block the login.
+    }
+
+    // An explicit ?redirect= (set by proxy.ts when it intercepted a
+    // deep link) wins — otherwise fall back to the role's home.
+    const redirectTo = searchParams.get("redirect") || landingPathFor(user.role, user.brandCode);
+    // Hard navigation, not router.replace/refresh: the session cookie was
+    // just written via document.cookie above, and a full page load
+    // guarantees the browser sends it on the very next request and
+    // proxy.ts/every Server Component re-evaluates against it — a
+    // client-side transition risked landing before that cookie was
+    // reliably visible to the next request, which read as a stuck/looping
+    // redirect.
+    window.location.href = redirectTo;
+  }
+
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
     setError(null);
     setIsSubmitting(true);
     try {
-      const user = await login(email, password);
+      completeLogin(await login(email, password));
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : t("Something went wrong. Please try again."));
+      setIsSubmitting(false);
+    }
+  }
 
-      try {
-        if (rememberMe) window.localStorage.setItem(REMEMBERED_EMAIL_KEY, email);
-        else window.localStorage.removeItem(REMEMBERED_EMAIL_KEY);
-      } catch {
-        // Non-fatal: failing to persist a convenience shouldn't block the login.
-      }
-
-      // An explicit ?redirect= (set by proxy.ts when it intercepted a
-      // deep link) wins — otherwise fall back to the role's home.
-      const redirectTo = searchParams.get("redirect") || landingPathFor(user.role, user.brandCode);
-      // Hard navigation, not router.replace/refresh: the session cookie was
-      // just written via document.cookie above, and a full page load
-      // guarantees the browser sends it on the very next request and
-      // proxy.ts/every Server Component re-evaluates against it — a
-      // client-side transition risked landing before that cookie was
-      // reliably visible to the next request, which read as a stuck/looping
-      // redirect.
-      window.location.href = redirectTo;
+  async function handleDevLogin() {
+    setError(null);
+    setIsSubmitting(true);
+    try {
+      completeLogin(await devLogin());
     } catch (err) {
       setError(err instanceof ApiError ? err.message : t("Something went wrong. Please try again."));
       setIsSubmitting(false);
@@ -325,6 +340,21 @@ function LoginForm() {
           t("Sign in")
         )}
       </button>
+
+      {/* Inlined by Next.js at build time — this branch does not exist in a
+          production build, and the endpoint it calls doesn't exist outside
+          NODE_ENV !== "production" on the backend either (see
+          auth.routes.ts). Local-dev convenience only. */}
+      {process.env.NODE_ENV === "development" ? (
+        <button
+          type="button"
+          onClick={() => void handleDevLogin()}
+          disabled={isSubmitting}
+          className="flex w-full items-center justify-center gap-2 rounded-xl border border-dashed border-amber-300 bg-amber-50 px-4 py-2.5 text-xs font-semibold text-amber-800 transition-colors hover:bg-amber-100 disabled:opacity-60"
+        >
+          Dev quick sign-in (skips password)
+        </button>
+      ) : null}
     </form>
   );
 }

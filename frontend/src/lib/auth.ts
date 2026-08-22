@@ -110,6 +110,21 @@ export async function login(email: string, password: string): Promise<LoginRespo
   return user;
 }
 
+/**
+ * Local-development convenience only — the backend never mounts
+ * /api/auth/dev-login outside NODE_ENV !== "production" (see
+ * backend/src/modules/auth/auth.routes.ts), so this 404s anywhere but a
+ * developer's own machine even if it were somehow called. The login page
+ * only renders the button that calls this when
+ * process.env.NODE_ENV === "development", which Next.js inlines at build
+ * time — a production build can never contain that branch.
+ */
+export async function devLogin(): Promise<LoginResponseUser> {
+  const { token, user } = await apiFetch<LoginResponse>("/api/auth/dev-login", { method: "POST" });
+  writeSessionCookie(token);
+  return user;
+}
+
 export function logout(): void {
   clearSessionCookie();
 }
