@@ -387,9 +387,9 @@ export function ProductProfileDrawer({ product, onOpenChange, canManage, onMutat
         <SheetContent>
           {product ? (
             <>
-              <SheetHeader>
-                <div className="flex items-start gap-3">
-                  <ProductThumbnail imageUrl={product.imageUrl} name={product.name} size={56} className="mt-0.5" />
+              <SheetHeader className="gap-4 py-5">
+                <div className="flex items-start gap-4">
+                  <ProductThumbnail imageUrl={product.imageUrl} name={product.name} size={64} className="mt-0.5" />
                   <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-center gap-2">
                       <SheetTitle>{product.name}</SheetTitle>
@@ -401,47 +401,48 @@ export function ProductProfileDrawer({ product, onOpenChange, canManage, onMutat
                         display="badge"
                       />
                     </div>
-                    <SheetDescription>
+                    <SheetDescription className="mt-0.5">
                       {product.variants.length} variant{product.variants.length === 1 ? "" : "s"} &middot; {totalStock} total
                       in stock
                     </SheetDescription>
-                    <div className="mt-1 flex flex-wrap items-start gap-x-6 gap-y-2">
-                      <div>
-                        <p className="text-xs font-medium tracking-wide text-slate-500 uppercase dark:text-slate-400">Price</p>
-                        <ProductPriceEditor
-                          productId={product.id}
-                          price={priceInfo.price}
-                          currency={priceInfo.currency}
-                          canManage={canManage}
-                          onSaved={onMutate}
-                        />
-                        {!priceInfo.uniform ? (
-                          <p className="mt-0.5 text-xs text-amber-600 dark:text-amber-400">
-                            Variants currently have different prices — saving sets all of them to one price.
-                          </p>
-                        ) : null}
-                      </div>
+                  </div>
+                </div>
 
-                      {canManage ? (
-                        <div>
-                          <p className="text-xs font-medium tracking-wide text-slate-500 uppercase dark:text-slate-400">
-                            Production cost
-                          </p>
-                          <ProductCostEditor productId={product.id} cost={costInfo.cost} onSaved={onMutate} />
-                          {!costInfo.uniform ? (
-                            <p className="mt-0.5 text-xs text-amber-600 dark:text-amber-400">
-                              Variants currently have different costs — saving sets all of them to one cost.
-                            </p>
-                          ) : null}
-                        </div>
+                <div className="flex flex-wrap items-start gap-3">
+                  <div className="min-w-[7rem] rounded-lg bg-slate-50 px-3.5 py-2.5 dark:bg-slate-900">
+                    <p className="text-xs font-medium tracking-wide text-slate-500 uppercase dark:text-slate-400">Price</p>
+                    <ProductPriceEditor
+                      productId={product.id}
+                      price={priceInfo.price}
+                      currency={priceInfo.currency}
+                      canManage={canManage}
+                      onSaved={onMutate}
+                    />
+                    {!priceInfo.uniform ? (
+                      <p className="mt-1 text-xs text-amber-600 dark:text-amber-400">
+                        Variants currently have different prices — saving sets all of them to one price.
+                      </p>
+                    ) : null}
+                  </div>
+
+                  {canManage ? (
+                    <div className="min-w-[7rem] rounded-lg bg-slate-50 px-3.5 py-2.5 dark:bg-slate-900">
+                      <p className="text-xs font-medium tracking-wide text-slate-500 uppercase dark:text-slate-400">
+                        Production cost
+                      </p>
+                      <ProductCostEditor productId={product.id} cost={costInfo.cost} onSaved={onMutate} />
+                      {!costInfo.uniform ? (
+                        <p className="mt-1 text-xs text-amber-600 dark:text-amber-400">
+                          Variants currently have different costs — saving sets all of them to one cost.
+                        </p>
                       ) : null}
                     </div>
-                  </div>
+                  ) : null}
                 </div>
               </SheetHeader>
 
               <SheetBody>
-                <div className="overflow-hidden rounded-lg border border-slate-200 dark:border-slate-800">
+                <div className="overflow-hidden rounded-xl border border-slate-200 shadow-sm dark:border-slate-800">
                   <Table>
                     <TableHeader>
                       <TableRow className="hover:bg-transparent">

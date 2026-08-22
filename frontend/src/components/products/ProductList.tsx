@@ -95,17 +95,17 @@ export function ProductList() {
   }
 
   return (
-    <div className="flex flex-col gap-4">
-      <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
-        <h1 className="text-lg font-semibold text-slate-900 sm:shrink-0 dark:text-slate-100">{t("Products")}</h1>
+    <div className="flex flex-col gap-6">
+      <h1 className="text-2xl font-semibold tracking-tight text-slate-900 dark:text-slate-100">{t("Products")}</h1>
 
-        <div className="relative w-full sm:max-w-md">
-          <Search className="pointer-events-none absolute start-2.5 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
+      <div className="flex flex-col gap-3 rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:flex-row sm:flex-wrap sm:items-center dark:border-slate-800 dark:bg-slate-950">
+        <div className="relative w-full sm:max-w-md sm:flex-1">
+          <Search className="pointer-events-none absolute start-3 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
           <Input
             value={search}
             onChange={(event) => setSearch(event.target.value)}
             placeholder={t("Search product, category, color, or SKU")}
-            className="ps-8"
+            className="ps-9"
           />
         </div>
 
@@ -123,28 +123,30 @@ export function ProductList() {
           ))}
         </Select>
 
-        <Button variant="outline" onClick={() => void handleExport()} disabled={exporting} className="sm:shrink-0">
-          <Download className="size-4" />
-          {exporting ? t("Exporting...") : t("Export Excel")}
-        </Button>
-
-        {canManage ? (
-          <Button variant="outline" onClick={() => setImportOpen(true)} className="sm:shrink-0">
-            <Upload className="size-4" />
-            {t("Import Excel")}
+        <div className="flex flex-wrap items-center gap-2 sm:ms-auto sm:shrink-0">
+          <Button variant="outline" onClick={() => void handleExport()} disabled={exporting}>
+            <Download className="size-4" />
+            {exporting ? t("Exporting...") : t("Export Excel")}
           </Button>
-        ) : null}
 
-        {canManage ? (
-          <Button onClick={() => setAddOpen(true)} className="sm:shrink-0">
-            <Plus className="size-4" />
-            {t("Add Product")}
-          </Button>
-        ) : null}
+          {canManage ? (
+            <Button variant="outline" onClick={() => setImportOpen(true)}>
+              <Upload className="size-4" />
+              {t("Import Excel")}
+            </Button>
+          ) : null}
+
+          {canManage ? (
+            <Button onClick={() => setAddOpen(true)}>
+              <Plus className="size-4" />
+              {t("Add Product")}
+            </Button>
+          ) : null}
+        </div>
       </div>
 
       {canManage && selectedIds.size > 0 ? (
-        <div className="flex items-center justify-between rounded-lg border border-indigo-200 bg-indigo-50 px-4 py-2.5 dark:border-indigo-900 dark:bg-indigo-950/40">
+        <div className="flex items-center justify-between rounded-xl border border-indigo-200 bg-indigo-50 px-4 py-3 dark:border-indigo-900 dark:bg-indigo-950/40">
           <p className="text-sm font-medium text-indigo-900 dark:text-indigo-200">
             {selectedIds.size} {t(selectedIds.size === 1 ? "product selected" : "products selected")}
           </p>

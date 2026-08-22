@@ -188,7 +188,7 @@ export function ProductsGroupedTable({
                     </TableCell>
                   ) : null}
                   <TableCell className="py-4">
-                    <ProductThumbnail imageUrl={row.product.imageUrl} name={row.product.name} size={40} />
+                    <ProductThumbnail imageUrl={row.product.imageUrl} name={row.product.name} size={44} />
                   </TableCell>
                   <TableCell className="py-4 font-semibold text-slate-900 dark:text-slate-100">
                     <div className="flex items-center gap-2">
@@ -231,7 +231,7 @@ export function ProductsGroupedTable({
         </TableBody>
       </Table>
 
-      <div className="flex flex-col gap-3 border-t border-slate-200 px-4 py-3 sm:flex-row sm:items-center sm:justify-between dark:border-slate-800">
+      <div className="flex flex-col gap-3 border-t border-slate-200 px-5 py-3.5 sm:flex-row sm:items-center sm:justify-between dark:border-slate-800">
         <p className="text-sm text-slate-500 dark:text-slate-400">
           {t("Showing")} {filtered.length === 0 ? 0 : (currentPage - 1) * PAGE_SIZE + 1}–
           {Math.min(filtered.length, currentPage * PAGE_SIZE)} {t("of")} {filtered.length}
