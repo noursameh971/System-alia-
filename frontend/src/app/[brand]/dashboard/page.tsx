@@ -43,9 +43,9 @@ export default function BrandDashboardPage() {
   const [restockItem, setRestockItem] = useState<LowStockItem | null>(null);
 
   return (
-    <div className="mx-auto flex max-w-6xl flex-col gap-5">
+    <div className="mx-auto flex max-w-6xl flex-col gap-6">
       <div>
-        <h1 className="text-xl font-semibold tracking-tight text-slate-900 dark:text-slate-100">{t("Dashboard")}</h1>
+        <h1 className="text-2xl font-semibold tracking-tight text-slate-900 dark:text-slate-100">{t("Dashboard")}</h1>
         <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
           {brand.name} — {t("inventory and sales at a glance")}
         </p>
@@ -62,7 +62,7 @@ export default function BrandDashboardPage() {
         />
       ) : !data ? null : (
         <>
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 xl:grid-cols-4">
             <StatTile
               label={t("Inventory value")}
               value={formatPrice(data.inventoryValue)}
@@ -124,7 +124,7 @@ export default function BrandDashboardPage() {
                   iconColor="violet"
                 />
               </div>
-              <div className="mt-4 min-w-0">
+              <div className="mt-5 min-w-0">
                 <FinancialBreakdownChart
                   data={data.trend.map((point) => ({
                     name: new Date(point.day).toLocaleDateString("en-US", { month: "short", day: "numeric" }),
@@ -211,7 +211,7 @@ export default function BrandDashboardPage() {
           {/* Not a DashboardCard: BrandActivityList already renders its own
               bordered table shell, and wrapping it would double the border. */}
           <div className="min-w-0">
-            <h2 className={`mb-3 ${CARD_TITLE_CLASS}`}>{t("Recent activity")}</h2>
+            <h2 className={`mb-4 ${CARD_TITLE_CLASS}`}>{t("Recent activity")}</h2>
             <BrandActivityList movements={data.recentMovements} />
           </div>
         </>

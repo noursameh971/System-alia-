@@ -31,21 +31,21 @@ export function SettingsCard({
     <Wrapper
       onSubmit={onSubmit}
       className={cn(
-        "flex min-w-0 flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xs dark:border-slate-800 dark:bg-slate-900",
+        "flex min-w-0 flex-col overflow-hidden rounded-xl border border-slate-200/80 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900",
         className,
       )}
     >
-      <div className="border-b border-slate-100 px-5 py-4 dark:border-slate-800">
+      <div className="border-b border-slate-100 px-6 py-5 dark:border-slate-800">
         <h2 className="text-sm font-semibold text-slate-900 dark:text-slate-100">{title}</h2>
         {description ? (
-          <p className="mt-0.5 text-xs leading-relaxed text-slate-500 dark:text-slate-400">{description}</p>
+          <p className="mt-1 text-xs leading-relaxed text-slate-500 dark:text-slate-400">{description}</p>
         ) : null}
       </div>
 
-      <div className="flex flex-col gap-5 px-5 py-5">{children}</div>
+      <div className="flex flex-col gap-5 px-6 py-6">{children}</div>
 
       {footer ? (
-        <div className="flex items-center justify-end gap-2 border-t border-slate-100 bg-slate-50/60 px-5 py-3 dark:border-slate-800 dark:bg-slate-950/40">
+        <div className="flex items-center justify-end gap-2 border-t border-slate-100 bg-slate-50/60 px-6 py-4 dark:border-slate-800 dark:bg-slate-950/40">
           {footer}
         </div>
       ) : null}

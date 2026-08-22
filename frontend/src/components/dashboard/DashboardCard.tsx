@@ -29,12 +29,12 @@ export function DashboardCard({
   return (
     <div
       className={cn(
-        "flex min-w-0 flex-col rounded-xl border border-slate-100 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900",
+        "flex min-w-0 flex-col rounded-xl border border-slate-200/80 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900",
         className,
       )}
     >
       {title || action ? (
-        <div className="mb-4 flex items-center justify-between gap-3">
+        <div className="mb-5 flex items-center justify-between gap-3">
           {title ? <h2 className={CARD_TITLE_CLASS}>{title}</h2> : <span />}
           {action}
         </div>

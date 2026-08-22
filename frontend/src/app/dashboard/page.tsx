@@ -58,7 +58,7 @@ export default function DashboardPage() {
         </div>
       </header>
 
-      <main className="mx-auto flex max-w-7xl flex-col gap-5 px-4 py-6 sm:px-6">
+      <main className="mx-auto flex max-w-7xl flex-col gap-6 px-4 py-6 sm:px-6">
         {isLoading ? (
           <div className="flex justify-center py-16">
             <Spinner label="Loading company data..." />
@@ -70,14 +70,14 @@ export default function DashboardPage() {
           />
         ) : !data ? null : (
           <>
-            <section className="rounded-2xl border border-slate-100 bg-white/90 p-5 shadow-sm">
+            <section className="rounded-2xl border border-slate-200/80 bg-white/90 p-6 shadow-sm">
               <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-                <h2 className="text-lg font-semibold tracking-tight text-slate-900">{t("Company performance at a glance")}</h2>
+                <h2 className="text-xl font-semibold tracking-tight text-slate-900">{t("Company performance at a glance")}</h2>
                 <div className="w-fit rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-0.5 text-xs font-medium text-emerald-700">
                   {data.activeBrandCount} {t(data.activeBrandCount === 1 ? "active workspace" : "active workspaces")}
                 </div>
               </div>
-              <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-5">
+              <div className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-5">
                 <StatTile variant="flat" label={t("Combined inventory value")} value={formatPrice(data.totals.inventoryValue)} icon={Wallet} iconColor="indigo" />
                 <StatTile variant="flat" label={t("Total items in stock")} value={String(data.totals.inventoryUnitCount)} icon={Package} iconColor="blue" />
                 <StatTile variant="flat" label={t("Active brands")} value={String(data.activeBrandCount)} icon={Building2} iconColor="amber" />
@@ -86,9 +86,9 @@ export default function DashboardPage() {
               </div>
             </section>
 
-            <section className="rounded-2xl border border-slate-100 bg-white/90 p-5 shadow-sm">
+            <section className="rounded-2xl border border-slate-200/80 bg-white/90 p-6 shadow-sm">
               <h2 className={CARD_TITLE_CLASS}>{t("Financial Overview")}</h2>
-              <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
+              <div className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-3">
                 <StatTile variant="flat" label={t("Total Revenue")} value={formatPrice(data.totals.revenue)} icon={DollarSign} iconColor="emerald" />
                 <StatTile
                   variant="flat"
@@ -114,9 +114,9 @@ export default function DashboardPage() {
               </div>
             </section>
 
-            <section className="rounded-2xl border border-slate-100 bg-white/90 p-5 shadow-sm">
+            <section className="rounded-2xl border border-slate-200/80 bg-white/90 p-6 shadow-sm">
               <h3 className={CARD_TITLE_CLASS}>{t("Revenue & inventory value by brand")}</h3>
-              <div className="mt-4">
+              <div className="mt-5">
                 <BrandComparisonChart brands={data.brands} />
               </div>
             </section>
@@ -127,13 +127,13 @@ export default function DashboardPage() {
                 Activity card instead of ending short of it. */}
             <section className="grid grid-cols-1 items-stretch gap-6 lg:grid-cols-2">
               <div className="min-w-0">
-                <h3 className={`mb-3 ${CARD_TITLE_CLASS}`}>{t("By brand")}</h3>
+                <h3 className={`mb-4 ${CARD_TITLE_CLASS}`}>{t("By brand")}</h3>
                 <BrandComparison brands={data.brands} />
               </div>
 
               <div className="flex min-w-0 flex-col">
-                <h3 className={`mb-3 ${CARD_TITLE_CLASS}`}>{t("Recent activity")}</h3>
-                <div className="min-w-0 rounded-xl border border-slate-100 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+                <h3 className={`mb-4 ${CARD_TITLE_CLASS}`}>{t("Recent activity")}</h3>
+                <div className="min-w-0 rounded-xl border border-slate-200/80 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
                   {/* pe-2, not pr-2: the gutter has to sit on the scrollbar's
                       side, which is the left edge in Arabic. */}
                   <div className="max-h-[380px] overflow-y-auto pe-2">

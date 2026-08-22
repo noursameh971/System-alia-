@@ -69,7 +69,7 @@ export function StatTile({
       className={
         variant === "flat"
           ? "min-w-0 rounded-lg bg-slate-50/70 p-4 dark:bg-slate-950/40"
-          : "min-w-0 rounded-xl border border-slate-100 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900"
+          : "min-w-0 rounded-xl border border-slate-200/80 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900"
       }
     >
       {/* The label wraps rather than truncates: at 11px uppercase, two short
