@@ -177,7 +177,7 @@ export function ProductsGroupedTable({
                   data-state={isSelected ? "selected" : undefined}
                 >
                   {selection ? (
-                    <TableCell className="py-3.5" onClick={(e) => e.stopPropagation()}>
+                    <TableCell className="py-4" onClick={(e) => e.stopPropagation()}>
                       <input
                         type="checkbox"
                         checked={isSelected}
@@ -187,19 +187,19 @@ export function ProductsGroupedTable({
                       />
                     </TableCell>
                   ) : null}
-                  <TableCell className="py-3.5">
+                  <TableCell className="py-4">
                     <ProductThumbnail imageUrl={row.product.imageUrl} name={row.product.name} size={40} />
                   </TableCell>
-                  <TableCell className="py-3.5 font-semibold text-slate-900 dark:text-slate-100">
+                  <TableCell className="py-4 font-semibold text-slate-900 dark:text-slate-100">
                     <div className="flex items-center gap-2">
                       <span>{row.product.name}</span>
                       {row.allDiscontinued ? <Badge variant="warning">{t("discontinued")}</Badge> : null}
                     </div>
-                    <div className="mt-0.5 text-xs font-normal text-slate-500 dark:text-slate-400">
+                    <div className="mt-1 text-xs font-normal text-slate-500 dark:text-slate-400">
                       {row.product.variants.length} {t(row.product.variants.length === 1 ? "variant" : "variants")}
                     </div>
                   </TableCell>
-                  <TableCell className="py-3.5 text-slate-600 dark:text-slate-400">
+                  <TableCell className="py-4 text-slate-600 dark:text-slate-400">
                     <ProductCategorySelect
                       productId={row.product.id}
                       categoryName={row.categoryName}
@@ -207,14 +207,14 @@ export function ProductsGroupedTable({
                       onSaved={() => onProductUpdated?.()}
                     />
                   </TableCell>
-                  <TableCell className="py-3.5 font-semibold tabular-nums text-slate-900 dark:text-slate-100">
+                  <TableCell className="py-4 font-semibold tabular-nums text-slate-900 dark:text-slate-100">
                     {row.priceLabel}
                   </TableCell>
-                  <TableCell className="py-3.5 font-semibold tabular-nums text-slate-900 dark:text-slate-100">
+                  <TableCell className="py-4 font-semibold tabular-nums text-slate-900 dark:text-slate-100">
                     {row.totalStock}
                   </TableCell>
-                  <TableCell className="py-3.5">
-                    <div className="flex flex-wrap gap-1">
+                  <TableCell className="py-4">
+                    <div className="flex flex-wrap gap-1.5">
                       {row.colors.slice(0, MAX_COLOR_CHIPS).map((color) => (
                         <Badge key={color} variant="brand">
                           {color}

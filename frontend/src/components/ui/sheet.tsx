@@ -29,8 +29,8 @@ const sheetVariants = cva(
       // edge in RTL, so the drawer always slides in from the side the reader
       // is reading toward instead of colliding with the sidebar in Arabic.
       side: {
-        end: "inset-y-0 end-0 h-full w-full max-w-2xl border-s",
-        start: "inset-y-0 start-0 h-full w-full max-w-2xl border-e",
+        end: "inset-y-0 end-0 h-full w-full max-w-3xl border-s",
+        start: "inset-y-0 start-0 h-full w-full max-w-3xl border-e",
       },
     },
     defaultVariants: { side: "end" },

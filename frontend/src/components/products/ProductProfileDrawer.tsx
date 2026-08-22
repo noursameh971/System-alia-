@@ -445,13 +445,13 @@ export function ProductProfileDrawer({ product, onOpenChange, canManage, onMutat
                   <Table>
                     <TableHeader>
                       <TableRow className="hover:bg-transparent">
-                        <TableHead className="px-2">{t("Color")}</TableHead>
-                        <TableHead className="px-2">{t("Size")}</TableHead>
-                        <TableHead className="px-2">{t("SKU")}</TableHead>
-                        <TableHead className="px-2">{t("Price")}</TableHead>
-                        {canManage ? <TableHead className="px-2">{t("Cost")}</TableHead> : null}
-                        <TableHead className="px-2">{t("Stock")}</TableHead>
-                        <TableHead className="px-2 text-end">{t("Actions")}</TableHead>
+                        <TableHead className="px-3">{t("Color")}</TableHead>
+                        <TableHead className="px-3">{t("Size")}</TableHead>
+                        <TableHead className="px-3">{t("SKU")}</TableHead>
+                        <TableHead className="px-3">{t("Price")}</TableHead>
+                        {canManage ? <TableHead className="px-3">{t("Cost")}</TableHead> : null}
+                        <TableHead className="px-3">{t("Stock")}</TableHead>
+                        <TableHead className="px-3 text-end">{t("Actions")}</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -460,27 +460,27 @@ export function ProductProfileDrawer({ product, onOpenChange, canManage, onMutat
                         const size = attributeValue(variant.attributes, "size");
                         return (
                           <TableRow key={variant.id}>
-                            <TableCell className="max-w-[72px] truncate px-2 py-2.5 font-medium" title={color}>
+                            <TableCell className="max-w-[100px] truncate px-3 py-3 font-medium" title={color}>
                               {color}
                             </TableCell>
-                            <TableCell className="max-w-[64px] truncate px-2 py-2.5" title={size}>
+                            <TableCell className="max-w-[84px] truncate px-3 py-3" title={size}>
                               {size}
                             </TableCell>
                             <TableCell
-                              className="max-w-[110px] truncate px-2 py-2.5 font-mono text-xs text-slate-500 dark:text-slate-400"
+                              className="max-w-[150px] truncate px-3 py-3 font-mono text-xs text-slate-500 dark:text-slate-400"
                               title={variant.sku}
                             >
                               {variant.sku}
                             </TableCell>
-                            <TableCell className="px-2 py-2.5 whitespace-nowrap tabular-nums">
+                            <TableCell className="px-3 py-3 whitespace-nowrap tabular-nums">
                               {formatPrice(variant.price, variant.currency)}
                             </TableCell>
                             {canManage ? (
-                              <TableCell className="px-2 py-2.5 whitespace-nowrap tabular-nums text-slate-600 dark:text-slate-400">
+                              <TableCell className="px-3 py-3 whitespace-nowrap tabular-nums text-slate-600 dark:text-slate-400">
                                 {formatPrice(variant.cost)}
                               </TableCell>
                             ) : null}
-                            <TableCell className="px-2 py-2">
+                            <TableCell className="px-3 py-2.5">
                               <StockStepper
                                 key={`${variant.id}:${variant.stock}`}
                                 variantId={variant.id}
@@ -489,8 +489,8 @@ export function ProductProfileDrawer({ product, onOpenChange, canManage, onMutat
                                 onSaved={onMutate}
                               />
                             </TableCell>
-                            <TableCell className="px-2 py-2 text-end">
-                              <div className="flex items-center justify-end gap-0.5">
+                            <TableCell className="px-3 py-2.5 text-end">
+                              <div className="flex items-center justify-end gap-1.5">
                                 <VariantPrintButton
                                   variant={{
                                     sku: variant.sku,
