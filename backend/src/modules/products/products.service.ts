@@ -1,4 +1,4 @@
-import { and, eq, inArray, isNull, sql } from "drizzle-orm";
+import { and, eq, inArray, isNull, notExists, sql } from "drizzle-orm";
 import type { PgTransaction } from "drizzle-orm/pg-core";
 import { db } from "../../db/client.js";
 import { decrementInventory, incrementInventory } from "../../db/inventoryOperations.js";
@@ -8,8 +8,10 @@ import {
   brands,
   categories,
   inventory,
+  orderItems,
   productVariants,
   products,
+  returns,
   stockMovements,
   variantAttributeValues,
   variantCosts,
@@ -966,37 +968,90 @@ export interface BulkDeleteProductsResult {
 }
 
 /**
- * The products table's bulk-select "Delete Selected" action. Deletes each
- * selected product's variants one at a time through deleteProductVariant —
- * reusing its existing hard-delete-or-archive fallback rather than
- * duplicating that logic, so a product with real order/stock history on any
- * variant ends up with those variants discontinued (and the product row
- * left in place) instead of silently losing that history or half-failing
- * partway through. A productId with no variants (already deleted, or a
- * stale id from a stale selection) is skipped rather than erroring the
- * whole batch.
+ * The products table's bulk-select "Delete Selected" action.
+ *
+ * Originally called deleteProductVariant() once per variant in a sequential
+ * loop — correct, but O(variants) awaited DB round-trips. Against the real
+ * network hop to Neon (not localhost), a selection of even a few dozen
+ * products routinely blew past a 20s client timeout. Rewritten as a
+ * constant number of set-based queries (one per "layer": find variants,
+ * find which are removable, bulk-delete, bulk-archive, bulk-delete emptied
+ * products) inside a single transaction, so the cost no longer scales with
+ * selection size.
+ *
+ * "Removable" mirrors deleteProductVariant's FK-restrict fallback exactly,
+ * just checked up front instead of caught as an exception per row: a
+ * variant is safe to hard-delete only if nothing in stock_movements,
+ * order_items, or returns references it (all three are ON DELETE RESTRICT
+ * on variant_id) — otherwise it's archived (status: "discontinued") in
+ * place. idx_stock_movements_variant / idx_order_items_variant /
+ * idx_returns_variant (database/schema.sql) keep those existence checks
+ * index-backed rather than full scans.
  */
 export async function bulkDeleteProducts(productIds: string[]): Promise<BulkDeleteProductsResult> {
-  let deletedCount = 0;
-  let archivedCount = 0;
+  return db.transaction(async (tx) => {
+    const variantRows = await tx
+      .select({ id: productVariants.id, productId: productVariants.productId })
+      .from(productVariants)
+      .where(inArray(productVariants.productId, productIds));
 
-  for (const productId of productIds) {
-    const variants = await db
+    if (variantRows.length === 0) {
+      return { requestedCount: productIds.length, deletedCount: 0, archivedCount: 0 };
+    }
+    const variantIds = variantRows.map((v) => v.id);
+
+    const removableRows = await tx
       .select({ id: productVariants.id })
       .from(productVariants)
-      .where(eq(productVariants.productId, productId));
-    if (variants.length === 0) continue;
+      .where(
+        and(
+          inArray(productVariants.id, variantIds),
+          notExists(tx.select({ one: sql`1` }).from(stockMovements).where(eq(stockMovements.variantId, productVariants.id))),
+          notExists(tx.select({ one: sql`1` }).from(orderItems).where(eq(orderItems.variantId, productVariants.id))),
+          notExists(tx.select({ one: sql`1` }).from(returns).where(eq(returns.variantId, productVariants.id))),
+        ),
+      );
+    const removableIds = new Set(removableRows.map((v) => v.id));
+    const archivedIds = variantIds.filter((id) => !removableIds.has(id));
 
-    let anyArchived = false;
-    for (const variant of variants) {
-      const result = await deleteProductVariant(variant.id);
-      if (!result.deleted) anyArchived = true;
+    if (removableIds.size > 0) {
+      await tx.delete(productVariants).where(inArray(productVariants.id, [...removableIds]));
     }
-    if (anyArchived) archivedCount++;
-    else deletedCount++;
-  }
+    if (archivedIds.length > 0) {
+      await tx
+        .update(productVariants)
+        .set({ status: "discontinued", updatedAt: sql`now()` })
+        .where(inArray(productVariants.id, archivedIds));
+    }
 
-  return { requestedCount: productIds.length, deletedCount, archivedCount };
+    // Same rule deleteProductVariant applies per-item ("delete the product
+    // once its last variant is gone"), expressed as a set operation: any
+    // selected product left with zero remaining variants gets removed too.
+    const emptiedProducts = await tx
+      .select({ id: products.id })
+      .from(products)
+      .where(
+        and(
+          inArray(products.id, productIds),
+          notExists(tx.select({ one: sql`1` }).from(productVariants).where(eq(productVariants.productId, products.id))),
+        ),
+      );
+    const deletedProductIds = new Set(emptiedProducts.map((p) => p.id));
+    if (deletedProductIds.size > 0) {
+      await tx.delete(products).where(inArray(products.id, [...deletedProductIds]));
+    }
+
+    const productIdsWithVariants = new Set(variantRows.map((v) => v.productId));
+    let deletedCount = 0;
+    let archivedCount = 0;
+    for (const productId of productIds) {
+      if (!productIdsWithVariants.has(productId)) continue;
+      if (deletedProductIds.has(productId)) deletedCount++;
+      else archivedCount++;
+    }
+
+    return { requestedCount: productIds.length, deletedCount, archivedCount };
+  });
 }
 
 export interface SetVariantStockResult {
