@@ -5,6 +5,7 @@ import { validateBody } from "../../middleware/validate.js";
 import { asyncHandler } from "../../utils/asyncHandler.js";
 import {
   createBrandHandler,
+  deleteBrandHandler,
   getBrandProfileHandler,
   getBrands,
   updateBrandProfileHandler,
@@ -33,3 +34,6 @@ brandsRouter.patch(
   asyncHandler(updateBrandProfileHandler),
 );
 brandsRouter.post("/:brandId/logo", requireAuth, requireRole("admin"), rawImageBody, asyncHandler(uploadBrandLogoHandler));
+
+// The workspace picker's delete action — admin only, same as every other destructive catalog-level action.
+brandsRouter.delete("/:brandId", requireAuth, requireRole("admin"), asyncHandler(deleteBrandHandler));

@@ -488,7 +488,7 @@ export interface CreateBrandInput {
 
 export type CreateBrandResult = Brand;
 
-export type Role = "admin" | "warehouse_staff";
+export type Role = "admin" | "warehouse_staff" | "finance";
 
 export interface UserListItem {
   id: string;
@@ -505,7 +505,7 @@ export interface CreateUserInput {
   email: string;
   password: string;
   role: Role;
-  /** Required when role is "warehouse_staff", must be omitted for "admin". */
+  /** Required unless role is "admin" (i.e. for "warehouse_staff" and "finance"), must be omitted for "admin". */
   brandId?: string;
 }
 

@@ -20,17 +20,19 @@ const rawXlsxBody = rawBody("15mb");
 export const expensesRouter = Router();
 
 /**
- * Finance is admin-only across the board. Cost, margin, and payroll are
- * exactly the numbers warehouse staff shouldn't see — the same reasoning
- * that gates production cost on the Products page. requireBrandAccess is
- * still applied so the routes stay correct if that ever loosens.
+ * Finance is restricted to the admin and finance roles across the board.
+ * Cost, margin, and payroll are exactly the numbers warehouse staff
+ * shouldn't see — the same reasoning that gates production cost on the
+ * Products page. requireBrandAccess still applies to both roles, so a
+ * finance user (brand-scoped, like warehouse_staff) can only reach their
+ * own workspace's data.
  */
 
 // Registered before "/:id" so the literal segments aren't swallowed as an id.
 expensesRouter.get(
   "/summary",
   requireAuth,
-  requireRole("admin"),
+  requireRole("admin", "finance"),
   requireBrandAccess("query"),
   asyncHandler(financeSummaryHandler),
 );
@@ -38,7 +40,7 @@ expensesRouter.get(
 expensesRouter.get(
   "/export",
   requireAuth,
-  requireRole("admin"),
+  requireRole("admin", "finance"),
   requireBrandAccess("query"),
   asyncHandler(exportExpensesHandler),
 );
@@ -46,18 +48,18 @@ expensesRouter.get(
 expensesRouter.post(
   "/import",
   requireAuth,
-  requireRole("admin"),
+  requireRole("admin", "finance"),
   requireBrandAccess("query"),
   rawXlsxBody,
   asyncHandler(importExpensesHandler),
 );
 
-expensesRouter.get("/", requireAuth, requireRole("admin"), requireBrandAccess("query"), asyncHandler(listExpensesHandler));
+expensesRouter.get("/", requireAuth, requireRole("admin", "finance"), requireBrandAccess("query"), asyncHandler(listExpensesHandler));
 
 expensesRouter.post(
   "/",
   requireAuth,
-  requireRole("admin"),
+  requireRole("admin", "finance"),
   requireBrandAccess("body"),
   validateBody(createExpenseSchema),
   asyncHandler(createExpenseHandler),
@@ -68,9 +70,9 @@ expensesRouter.post(
 expensesRouter.patch(
   "/:id",
   requireAuth,
-  requireRole("admin"),
+  requireRole("admin", "finance"),
   validateBody(updateExpenseSchema),
   asyncHandler(updateExpenseHandler),
 );
 
-expensesRouter.delete("/:id", requireAuth, requireRole("admin"), asyncHandler(deleteExpenseHandler));
+expensesRouter.delete("/:id", requireAuth, requireRole("admin", "finance"), asyncHandler(deleteExpenseHandler));

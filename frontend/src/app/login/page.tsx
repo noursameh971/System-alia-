@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useState, useSyncExternalStore, type FormEvent } from "react";
+import { Suspense, useEffect, useRef, useState, useSyncExternalStore, type FormEvent } from "react";
 import { useSearchParams } from "next/navigation";
 import { Eye, EyeOff, Layers, Loader2 } from "lucide-react";
 import { devLogin, login } from "@/lib/auth";
@@ -179,7 +179,7 @@ function LoginForm() {
 
   // Shared by a real submit and the dev-only quick login below, so the
   // redirect target and "remember me" persistence can't drift between them.
-  function completeLogin(user: { role: "admin" | "warehouse_staff"; brandCode: string | null }) {
+  function completeLogin(user: { role: "admin" | "warehouse_staff" | "finance"; brandCode: string | null }) {
     try {
       if (rememberMe) window.localStorage.setItem(REMEMBERED_EMAIL_KEY, email);
       else window.localStorage.removeItem(REMEMBERED_EMAIL_KEY);
@@ -222,6 +222,24 @@ function LoginForm() {
       setIsSubmitting(false);
     }
   }
+
+  // Dev-mode auto-bypass: fires once on mount so local UI testing never
+  // touches the credential form at all — no typing, no click. Still goes
+  // through devLogin() (real signed JWT via the dev-only backend route), not
+  // a fabricated session, because a forged/unsigned cookie would just get
+  // rejected by proxy.ts and every backend requireAuth call, making the
+  // dashboard and product tables the user wants to review come up empty.
+  // Guarded by a ref (not state) so React 18 dev-mode's double-invoke of
+  // effects can't fire two concurrent logins. Stripped from production
+  // builds the same way the button below is — see the NODE_ENV check.
+  const autoDevLoginAttempted = useRef(false);
+  useEffect(() => {
+    if (process.env.NODE_ENV !== "development") return;
+    if (autoDevLoginAttempted.current) return;
+    autoDevLoginAttempted.current = true;
+    void handleDevLogin();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Fixed light styling rather than `dark:` variants: the card is white on a
   // dark canvas by design, so a dark variant would only ever fire in the

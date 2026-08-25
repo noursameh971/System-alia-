@@ -11,7 +11,7 @@ export interface SessionUser {
   id: string;
   fullName: string;
   email: string;
-  role: "admin" | "warehouse_staff";
+  role: "admin" | "warehouse_staff" | "finance";
   /** Assigned workspace, lowercased (e.g. "alh"). Null for admins — they aren't scoped to one brand. */
   brandCode: string | null;
   brandId: string | null;
@@ -27,7 +27,7 @@ export interface SessionUser {
  */
 export interface SessionTokenPayload {
   sub: string;
-  role: "admin" | "warehouse_staff";
+  role: "admin" | "warehouse_staff" | "finance";
   brandCode: string | null;
   brandId: string | null;
 }
@@ -37,7 +37,7 @@ function issueSession(row: {
   id: string;
   fullName: string;
   email: string;
-  role: "admin" | "warehouse_staff";
+  role: "admin" | "warehouse_staff" | "finance";
   brandId: string | null;
   brandCode: string | null;
 }): { token: string; user: SessionUser } {
@@ -82,8 +82,8 @@ export async function login({ email, password }: LoginInput): Promise<{ token: s
     throw ApiError.unauthorized("Invalid email or password");
   }
 
-  if (row.role === "warehouse_staff" && !row.brandCode) {
-    // Data-integrity guard: a staff account with no brand assigned would
+  if (row.role !== "admin" && !row.brandCode) {
+    // Data-integrity guard: a non-admin account with no brand assigned would
     // otherwise get a token that passes every brand check trivially.
     throw ApiError.forbidden("This account has no workspace assigned — contact an admin");
   }

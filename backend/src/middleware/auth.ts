@@ -8,7 +8,7 @@ import { ApiError } from "../utils/apiError.js";
 
 export interface AuthenticatedUser {
   id: string;
-  role: "admin" | "warehouse_staff";
+  role: "admin" | "warehouse_staff" | "finance";
   /** Assigned workspace, lowercased (e.g. "alh"). Null for admins. */
   brandCode: string | null;
   /** Assigned workspace's id — lets brand-scoped routes compare against the ?brandId= query/body param directly. Null for admins. */

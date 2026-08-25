@@ -12,7 +12,7 @@ export interface UserListItem {
   id: string;
   fullName: string;
   email: string;
-  role: "admin" | "warehouse_staff";
+  role: "admin" | "warehouse_staff" | "finance";
   isActive: boolean;
   createdAt: Date;
   brand: { id: string; name: string; code: string } | null;
@@ -22,7 +22,7 @@ function toUserListItem(row: {
   id: string;
   fullName: string;
   email: string;
-  role: "admin" | "warehouse_staff";
+  role: "admin" | "warehouse_staff" | "finance";
   isActive: boolean;
   createdAt: Date;
   brandId: string | null;
@@ -103,8 +103,8 @@ export async function createUser(input: CreateUserInput): Promise<UserListItem> 
  * Partial update of role / brand / isActive / fullName. Role and brand are
  * validated together against the *resulting* state (a request that only
  * changes isActive still has its existing role/brand re-checked against
- * each other), same rule createUser/login already enforce: warehouse_staff
- * requires a brand, admin forbids one.
+ * each other), same rule createUser/login already enforce: every non-admin
+ * role (warehouse_staff, finance) requires a brand, admin forbids one.
  *
  * `actingUserId` guards against an admin deactivating their own account —
  * that's an easy way to lock every admin out of the system with one click,
@@ -125,8 +125,8 @@ export async function updateUser(
   const nextRole = input.role ?? existing.role;
   const nextBrandId = input.brandId !== undefined ? input.brandId : existing.brandId;
 
-  if (nextRole === "warehouse_staff" && !nextBrandId) {
-    throw ApiError.badRequest("brandId is required when role is 'warehouse_staff'");
+  if (nextRole !== "admin" && !nextBrandId) {
+    throw ApiError.badRequest(`brandId is required when role is '${nextRole}'`);
   }
   if (nextRole === "admin" && nextBrandId) {
     throw ApiError.badRequest("brandId must be omitted for 'admin'");

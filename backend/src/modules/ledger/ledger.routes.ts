@@ -14,7 +14,7 @@ import { createOpeningBalanceSchema, recordPaymentSchema } from "./ledger.schema
 export const ledgerRouter = Router();
 
 /**
- * Same access rule as /api/expenses: admin-only across the board. Supplier
+ * Same access rule as /api/expenses: admin and finance roles only. Supplier
  * debt and cash position are exactly the numbers warehouse staff shouldn't
  * see, and importing the Excel ledger is bulk financial data entry.
  * (Bulk import itself rides on /api/expenses/import — see
@@ -26,7 +26,7 @@ export const ledgerRouter = Router();
 ledgerRouter.get(
   "/summary",
   requireAuth,
-  requireRole("admin"),
+  requireRole("admin", "finance"),
   requireBrandAccess("query"),
   asyncHandler(cashFlowSummaryHandler),
 );
@@ -34,7 +34,7 @@ ledgerRouter.get(
 ledgerRouter.get(
   "/export",
   requireAuth,
-  requireRole("admin"),
+  requireRole("admin", "finance"),
   requireBrandAccess("query"),
   asyncHandler(exportLedgerHandler),
 );
@@ -42,7 +42,7 @@ ledgerRouter.get(
 ledgerRouter.get(
   "/entities",
   requireAuth,
-  requireRole("admin"),
+  requireRole("admin", "finance"),
   requireBrandAccess("query"),
   asyncHandler(listLedgerEntitiesHandler),
 );
@@ -50,7 +50,7 @@ ledgerRouter.get(
 ledgerRouter.post(
   "/opening-balance",
   requireAuth,
-  requireRole("admin"),
+  requireRole("admin", "finance"),
   requireBrandAccess("body"),
   validateBody(createOpeningBalanceSchema),
   asyncHandler(createOpeningBalanceHandler),
@@ -60,7 +60,7 @@ ledgerRouter.post(
 ledgerRouter.post(
   "/entities/:id/payments",
   requireAuth,
-  requireRole("admin"),
+  requireRole("admin", "finance"),
   validateBody(recordPaymentSchema),
   asyncHandler(recordPaymentHandler),
 );

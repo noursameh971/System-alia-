@@ -40,8 +40,8 @@ export function EditUserModal({
     e.preventDefault();
     setError(null);
 
-    if (role === "warehouse_staff" && !brandId) {
-      setError("Select a brand for this warehouse staff account.");
+    if (role !== "admin" && !brandId) {
+      setError("Select a brand for this account.");
       return;
     }
 
@@ -50,7 +50,7 @@ export function EditUserModal({
       const updated = await updateUser(user.id, {
         fullName,
         role,
-        brandId: role === "warehouse_staff" ? brandId : null,
+        brandId: role !== "admin" ? brandId : null,
       });
       onSaved(updated);
       onClose();
@@ -95,11 +95,12 @@ export function EditUserModal({
               disabled={submitting}
             >
               <option value="warehouse_staff">Warehouse Staff</option>
+              <option value="finance">Finance</option>
               <option value="admin">Admin</option>
             </Select>
           </div>
 
-          {role === "warehouse_staff" ? (
+          {role !== "admin" ? (
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="edit-brand">Assigned brand</Label>
               <Select

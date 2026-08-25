@@ -53,7 +53,10 @@ export default function FinancePage() {
   const { brand } = useWorkspace();
   const { role, isLoading: isSessionLoading } = useCurrentUser();
   const { t } = useLocale();
-  const isAdmin = role === "admin";
+  // finance has the same read/write access to this page as admin — the
+  // role exists specifically to grant that, scoped to nothing else (see
+  // proxy.ts and the backend's expenses/ledger route guards).
+  const canAccessFinance = role === "admin" || role === "finance";
 
   const [search, setSearch] = useState("");
   const [categoryFilter, setCategoryFilter] = useState<ExpenseCategory | "">("");
@@ -76,10 +79,10 @@ export default function FinancePage() {
   const suppliers = useSWR(["ledger-entities", brand.id], () => listLedgerEntities(brand.id));
 
   useEffect(() => {
-    if (!isSessionLoading && !isAdmin) router.replace(workspaceHomePath(brand.code));
-  }, [isSessionLoading, isAdmin, brand.code, router]);
+    if (!isSessionLoading && !canAccessFinance) router.replace(workspaceHomePath(brand.code));
+  }, [isSessionLoading, canAccessFinance, brand.code, router]);
 
-  if (isSessionLoading || !isAdmin) {
+  if (isSessionLoading || !canAccessFinance) {
     return (
       <div className="flex min-h-[60vh] items-center justify-center">
         <Spinner label="Redirecting..." />

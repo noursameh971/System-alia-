@@ -35,3 +35,8 @@ export function updateBrandProfile(brandId: string, input: UpdateBrandProfileInp
 export function uploadBrandLogo(brandId: string, file: File): Promise<UploadBrandLogoResult> {
   return apiFetchUpload<UploadBrandLogoResult>(`/api/brands/${encodeURIComponent(brandId)}/logo`, file);
 }
+
+/** Backs the workspace picker's delete action. The backend deactivates instead of hard-deleting when the brand still has products/orders/users — either way it drops out of listBrands(). */
+export function deleteBrand(brandId: string): Promise<{ deleted: boolean }> {
+  return apiFetch<{ deleted: boolean }>(`/api/brands/${encodeURIComponent(brandId)}`, { method: "DELETE" });
+}

@@ -44,12 +44,7 @@ export default function BrandDashboardPage() {
 
   return (
     <div className="mx-auto flex max-w-6xl flex-col gap-6">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight text-slate-900 dark:text-slate-100">{t("Dashboard")}</h1>
-        <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-          {brand.name} — {t("inventory and sales at a glance")}
-        </p>
-      </div>
+      <h1 className="text-2xl font-semibold tracking-tight text-slate-900 dark:text-slate-100">{t("Dashboard")}</h1>
 
       {isLoading ? (
         <div className="flex justify-center py-16">
@@ -66,7 +61,6 @@ export default function BrandDashboardPage() {
             <StatTile
               label={t("Inventory value")}
               value={formatPrice(data.inventoryValue)}
-              sublabel={t("vs 7 days ago")}
               icon={Wallet}
               iconColor="indigo"
               trendData={data.trend.map((point) => point.inventoryValue)}
@@ -74,7 +68,6 @@ export default function BrandDashboardPage() {
             <StatTile
               label={t("Units in stock")}
               value={String(data.inventoryUnitCount)}
-              sublabel={t("vs 7 days ago")}
               icon={Package}
               iconColor="blue"
               trendData={data.trend.map((point) => point.inventoryUnits)}
@@ -82,7 +75,6 @@ export default function BrandDashboardPage() {
             <StatTile
               label={t("Revenue")}
               value={formatPrice(data.revenue)}
-              sublabel={t("last 7 days")}
               icon={TrendingUp}
               iconColor="emerald"
               trendData={data.trend.map((point) => point.revenue)}
@@ -90,7 +82,6 @@ export default function BrandDashboardPage() {
             <StatTile
               label={t("Orders")}
               value={String(data.orderCount)}
-              sublabel={t("last 7 days")}
               icon={ShoppingCart}
               iconColor="violet"
               trendData={data.trend.map((point) => point.orderCount)}
@@ -99,7 +90,7 @@ export default function BrandDashboardPage() {
 
           {isAdmin ? (
             <DashboardCard title={t("Financial Overview")}>
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
                 <StatTile
                   variant="flat"
                   label={t("Total Revenue")}
@@ -111,15 +102,13 @@ export default function BrandDashboardPage() {
                   variant="flat"
                   label={t("Total Expenses")}
                   value={formatPrice(data.totalExpenses)}
-                  sublabel={t("Production cost + shipping")}
                   icon={Receipt}
                   iconColor="rose"
                 />
                 <StatTile
                   variant="flat"
-                  label={t("Net Profit")}
+                  label={`${t("Net Profit")} · ${data.profitMargin.toFixed(1)}%`}
                   value={formatPrice(data.netProfit)}
-                  sublabel={`${data.profitMargin.toFixed(1)}% ${t("margin")}`}
                   icon={PiggyBank}
                   iconColor="violet"
                 />

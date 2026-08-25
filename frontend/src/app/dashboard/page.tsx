@@ -42,10 +42,10 @@ export default function DashboardPage() {
 
   return (
     <div className="min-h-screen bg-[radial-gradient(circle_at_top_left,_rgba(129,140,248,0.14),_transparent_28%),linear-gradient(135deg,_#f8fafc_0%,_#eef2ff_100%)]">
-      <header className="sticky top-0 z-10 border-b border-slate-200/80 bg-white/80 px-4 py-4 backdrop-blur sm:px-6">
+      <header className="sticky top-0 z-10 border-b border-slate-200/80 bg-white/80 px-4 py-5 backdrop-blur sm:px-6">
         <div className="mx-auto flex max-w-7xl items-center justify-between gap-4">
           <div>
-            <p className="text-lg font-semibold text-slate-900">{t("Executive dashboard")}</p>
+            <p className="text-lg font-semibold tracking-tight text-slate-900">{t("Executive dashboard")}</p>
           </div>
           <div className="flex items-center gap-2">
             <Link
@@ -58,7 +58,7 @@ export default function DashboardPage() {
         </div>
       </header>
 
-      <main className="mx-auto flex max-w-7xl flex-col gap-6 px-4 py-6 sm:px-6">
+      <main className="mx-auto flex max-w-7xl flex-col gap-6 px-4 py-8 sm:px-6">
         {isLoading ? (
           <div className="flex justify-center py-16">
             <Spinner label="Loading company data..." />
@@ -70,53 +70,69 @@ export default function DashboardPage() {
           />
         ) : !data ? null : (
           <>
-            <section className="rounded-2xl border border-slate-200/80 bg-white/90 p-6 shadow-sm">
+            <section className="rounded-xl border border-slate-200/80 bg-white/90 p-7 shadow-sm">
               <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-                <h2 className="text-xl font-semibold tracking-tight text-slate-900">{t("Company performance at a glance")}</h2>
-                <div className="w-fit rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-0.5 text-xs font-medium text-emerald-700">
+                <h2 className="text-lg font-semibold tracking-tight text-slate-900">{t("Company performance at a glance")}</h2>
+                <div className="w-fit rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-medium text-emerald-700">
                   {data.activeBrandCount} {t(data.activeBrandCount === 1 ? "active workspace" : "active workspaces")}
                 </div>
               </div>
-              <div className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-5">
-                <StatTile variant="flat" label={t("Combined inventory value")} value={formatPrice(data.totals.inventoryValue)} icon={Wallet} iconColor="indigo" />
-                <StatTile variant="flat" label={t("Total items in stock")} value={String(data.totals.inventoryUnitCount)} icon={Package} iconColor="blue" />
-                <StatTile variant="flat" label={t("Active brands")} value={String(data.activeBrandCount)} icon={Building2} iconColor="amber" />
-                <StatTile variant="flat" label={t("Total revenue")} value={formatPrice(data.totals.revenue)} icon={TrendingUp} iconColor="emerald" />
-                <StatTile variant="flat" label={t("Orders")} value={String(data.totals.orderCount)} icon={ShoppingCart} iconColor="violet" />
+              {/* flex-wrap + flex-1 rather than a fixed grid track count: with
+                  5 tiles, no column count (3, 4, or 5) divides evenly at
+                  every breakpoint, so a CSS grid always leaves one row
+                  short and the leftover track empty. Flex items with a
+                  min-width wrap the same way a grid would, but flex-grow
+                  then stretches whatever lands in the last row — including
+                  a lone tile — to fill the full width instead of leaving a
+                  gap beside it. */}
+              <div className="mt-6 flex flex-wrap gap-4">
+                <div className="min-w-[200px] flex-1">
+                  <StatTile variant="flat" label={t("Combined inventory value")} value={formatPrice(data.totals.inventoryValue)} icon={Wallet} iconColor="indigo" />
+                </div>
+                <div className="min-w-[200px] flex-1">
+                  <StatTile variant="flat" label={t("Total items in stock")} value={String(data.totals.inventoryUnitCount)} icon={Package} iconColor="blue" />
+                </div>
+                <div className="min-w-[200px] flex-1">
+                  <StatTile variant="flat" label={t("Active brands")} value={String(data.activeBrandCount)} icon={Building2} iconColor="amber" />
+                </div>
+                <div className="min-w-[200px] flex-1">
+                  <StatTile variant="flat" label={t("Total revenue")} value={formatPrice(data.totals.revenue)} icon={TrendingUp} iconColor="emerald" />
+                </div>
+                <div className="min-w-[200px] flex-1">
+                  <StatTile variant="flat" label={t("Orders")} value={String(data.totals.orderCount)} icon={ShoppingCart} iconColor="violet" />
+                </div>
               </div>
             </section>
 
-            <section className="rounded-2xl border border-slate-200/80 bg-white/90 p-6 shadow-sm">
+            <section className="rounded-xl border border-slate-200/80 bg-white/90 p-7 shadow-sm">
               <h2 className={CARD_TITLE_CLASS}>{t("Financial Overview")}</h2>
-              <div className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-3">
+              <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-3">
                 <StatTile variant="flat" label={t("Total Revenue")} value={formatPrice(data.totals.revenue)} icon={DollarSign} iconColor="emerald" />
                 <StatTile
                   variant="flat"
                   label={t("Total Expenses")}
                   value={formatPrice(data.totals.totalExpenses)}
-                  sublabel={t("Production cost + shipping")}
                   icon={Receipt}
                   iconColor="rose"
                 />
                 <StatTile
                   variant="flat"
-                  label={t("Net Profit")}
+                  label={`${t("Net Profit")} · ${data.totals.profitMargin.toFixed(1)}%`}
                   value={formatPrice(data.totals.netProfit)}
-                  sublabel={`${data.totals.profitMargin.toFixed(1)}% ${t("margin")}`}
                   icon={PiggyBank}
                   iconColor="violet"
                 />
               </div>
-              <div className="mt-5">
+              <div className="mt-6">
                 <FinancialBreakdownChart
                   data={data.brands.map((b) => ({ name: b.name, revenue: b.revenue, expenses: b.totalExpenses, netProfit: b.netProfit }))}
                 />
               </div>
             </section>
 
-            <section className="rounded-2xl border border-slate-200/80 bg-white/90 p-6 shadow-sm">
+            <section className="rounded-xl border border-slate-200/80 bg-white/90 p-7 shadow-sm">
               <h3 className={CARD_TITLE_CLASS}>{t("Revenue & inventory value by brand")}</h3>
-              <div className="mt-5">
+              <div className="mt-6">
                 <BrandComparisonChart brands={data.brands} />
               </div>
             </section>
@@ -127,13 +143,13 @@ export default function DashboardPage() {
                 Activity card instead of ending short of it. */}
             <section className="grid grid-cols-1 items-stretch gap-6 lg:grid-cols-2">
               <div className="min-w-0">
-                <h3 className={`mb-4 ${CARD_TITLE_CLASS}`}>{t("By brand")}</h3>
+                <h3 className={`mb-5 ${CARD_TITLE_CLASS}`}>{t("By brand")}</h3>
                 <BrandComparison brands={data.brands} />
               </div>
 
               <div className="flex min-w-0 flex-col">
-                <h3 className={`mb-4 ${CARD_TITLE_CLASS}`}>{t("Recent activity")}</h3>
-                <div className="min-w-0 rounded-xl border border-slate-200/80 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+                <h3 className={`mb-5 ${CARD_TITLE_CLASS}`}>{t("Recent activity")}</h3>
+                <div className="min-w-0 rounded-xl border border-slate-200/80 bg-white p-7 shadow-sm dark:border-slate-800 dark:bg-slate-900">
                   {/* pe-2, not pr-2: the gutter has to sit on the scrollbar's
                       side, which is the left edge in Arabic. */}
                   <div className="max-h-[380px] overflow-y-auto pe-2">

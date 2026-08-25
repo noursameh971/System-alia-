@@ -2,7 +2,7 @@ import { apiFetch } from "./apiClient";
 
 const SESSION_COOKIE = "alia_session";
 
-export type UserRole = "admin" | "warehouse_staff";
+export type UserRole = "admin" | "warehouse_staff" | "finance";
 
 export interface Session {
   sub: string;

@@ -11,7 +11,7 @@
  * free of React, browser APIs, and Node built-ins.
  */
 
-export type SessionRole = "admin" | "warehouse_staff";
+export type SessionRole = "admin" | "warehouse_staff" | "finance";
 
 /** Executive Company Dashboard — cross-brand, admin only. */
 export const ADMIN_LANDING = "/dashboard";
@@ -33,12 +33,16 @@ export function workspaceHomePath(brandCode: string): string {
  *   signed in for.
  * - warehouse_staff → their assigned workspace's dashboard. They're locked
  *   to one brand by proxy.ts, so there's nothing to choose.
- * - staff with no assigned brand → the picker. Shouldn't happen (the create
- *   -user form requires a brand for staff), but "/null/dashboard" is the
- *   alternative, so fail somewhere navigable.
+ * - finance → their assigned workspace's Finance page directly — that's the
+ *   only module this role can reach (see proxy.ts), so landing on the
+ *   dashboard first would just bounce them again on the next click.
+ * - non-admin with no assigned brand → the picker. Shouldn't happen (the
+ *   create-user form requires a brand for every non-admin role), but
+ *   "/null/dashboard" is the alternative, so fail somewhere navigable.
  */
 export function landingPathFor(role: SessionRole, brandCode: string | null | undefined): string {
   if (role === "admin") return ADMIN_LANDING;
   if (!brandCode) return WORKSPACE_PICKER;
+  if (role === "finance") return `/${brandCode.toLowerCase()}/finance`;
   return workspaceHomePath(brandCode);
 }

@@ -13,7 +13,7 @@ export const SESSION_COOKIE = "alia_session";
 
 export interface SessionPayload {
   sub: string;
-  role: "admin" | "warehouse_staff";
+  role: "admin" | "warehouse_staff" | "finance";
   brandCode: string | null;
 }
 
@@ -30,7 +30,7 @@ export async function verifySessionToken(token: string | undefined): Promise<Ses
 
   try {
     const { payload } = await jwtVerify(token, new TextEncoder().encode(secret));
-    if (payload.role !== "admin" && payload.role !== "warehouse_staff") return null;
+    if (payload.role !== "admin" && payload.role !== "warehouse_staff" && payload.role !== "finance") return null;
     return {
       sub: payload.sub as string,
       role: payload.role,

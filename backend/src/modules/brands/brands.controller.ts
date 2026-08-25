@@ -1,7 +1,7 @@
 import type { Request, Response } from "express";
 import { ApiError } from "../../utils/apiError.js";
 import { sendSuccess } from "../../utils/apiResponse.js";
-import { createBrand, getBrandProfile, listBrands, updateBrandProfile } from "./brands.service.js";
+import { createBrand, deleteBrand, getBrandProfile, listBrands, updateBrandProfile } from "./brands.service.js";
 import { uploadBrandLogo } from "./brands.image.service.js";
 import type { CreateBrandInput, UpdateBrandProfileInput } from "./brands.schema.js";
 
@@ -36,4 +36,10 @@ export async function uploadBrandLogoHandler(req: Request, res: Response): Promi
   const contentType = req.headers["content-type"] ?? "";
 
   sendSuccess(res, 200, await uploadBrandLogo(brandId, req.body, contentType));
+}
+
+/** DELETE /api/brands/:brandId — the workspace picker's delete action. See deleteBrand for the hard-delete-or-deactivate fallback. */
+export async function deleteBrandHandler(req: Request, res: Response): Promise<void> {
+  const brandId = String(req.params.brandId ?? "");
+  sendSuccess(res, 200, await deleteBrand(brandId));
 }

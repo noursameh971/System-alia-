@@ -91,8 +91,10 @@ export function UserList({
                   <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">{user.email}</p>
                 </TableCell>
                 <TableCell className="py-3">
-                  <Badge variant={user.role === "admin" ? "brand" : "neutral"}>
-                    {t(user.role === "admin" ? "Admin" : "Warehouse Staff")}
+                  <Badge
+                    variant={user.role === "admin" ? "brand" : user.role === "finance" ? "success" : "neutral"}
+                  >
+                    {t(user.role === "admin" ? "Admin" : user.role === "finance" ? "Finance" : "Warehouse Staff")}
                   </Badge>
                 </TableCell>
                 <TableCell className="py-3">

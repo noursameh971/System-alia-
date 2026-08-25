@@ -52,8 +52,8 @@ export function AddUserModal({
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
 
-    if (role === "warehouse_staff" && !brandId) {
-      toast.error("Select a brand for this warehouse staff account.");
+    if (role !== "admin" && !brandId) {
+      toast.error("Select a brand for this account.");
       return;
     }
 
@@ -64,7 +64,7 @@ export function AddUserModal({
         email,
         password,
         role,
-        brandId: role === "warehouse_staff" ? brandId : undefined,
+        brandId: role !== "admin" ? brandId : undefined,
       });
       onCreated(user);
       toast.success(`${user.fullName} was added.`);
@@ -147,11 +147,12 @@ export function AddUserModal({
                 disabled={submitting}
               >
                 <option value="warehouse_staff">{t("Warehouse Staff")}</option>
+                <option value="finance">{t("Finance")}</option>
                 <option value="admin">{t("Admin")}</option>
               </Select>
             </div>
 
-            {role === "warehouse_staff" ? (
+            {role !== "admin" ? (
               <div className="flex flex-col gap-1.5">
                 <Label htmlFor="new-user-brand">{t("Assigned Brand")}</Label>
                 <Select

@@ -68,7 +68,7 @@ export function StatTile({
     <div
       className={
         variant === "flat"
-          ? "min-w-0 rounded-lg bg-slate-50/70 p-4 dark:bg-slate-950/40"
+          ? "min-w-0 rounded-lg bg-slate-50/70 p-5 dark:bg-slate-950/40"
           : "min-w-0 rounded-xl border border-slate-200/80 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900"
       }
     >
@@ -82,14 +82,14 @@ export function StatTile({
               <Icon className="size-4" />
             </span>
           ) : null}
-          <p className="min-w-0 text-[11px] font-semibold uppercase leading-tight tracking-wider text-slate-500 dark:text-slate-400">
+          <p className="min-w-0 text-[11px] font-medium uppercase leading-tight tracking-wider text-slate-500 dark:text-slate-400">
             {label}
           </p>
         </div>
         {trendData && trendData.length > 1 ? <Sparkline data={trendData} color={trendColor} /> : null}
       </div>
 
-      <p className="mt-2.5 truncate text-2xl font-bold tracking-tight tabular-nums text-slate-900 dark:text-slate-100">
+      <p className="mt-2.5 truncate text-2xl font-semibold tracking-tight tabular-nums text-slate-900 dark:text-slate-100">
         {value}
       </p>
 

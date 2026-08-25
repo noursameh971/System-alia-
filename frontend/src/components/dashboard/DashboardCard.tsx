@@ -46,4 +46,4 @@ export function DashboardCard({
 
 /** Exported so the few places that need a card-style heading outside a DashboardCard stay on the same scale. */
 export const CARD_TITLE_CLASS =
-  "text-[11px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400";
+  "text-[11px] font-medium uppercase tracking-wider text-slate-500 dark:text-slate-400";

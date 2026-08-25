@@ -4,9 +4,52 @@ import { SESSION_COOKIE, verifySessionToken, type SessionPayload } from "@/lib/s
 
 const PUBLIC_PATHS = ["/login"];
 
+const IS_DEV = process.env.NODE_ENV !== "production";
+
 /** Delegates to the shared policy in lib/routing.ts so the edge redirect and the client-side ones can never disagree. */
 function homeFor(session: SessionPayload): string {
   return landingPathFor(session.role, session.brandCode);
+}
+
+/**
+ * Local-development-only convenience: mints a real session by calling the
+ * backend's dev-only POST /api/auth/dev-login (see backend/auth.routes.ts —
+ * that route is never registered when NODE_ENV is "production", so this
+ * call 404s harmlessly anywhere but a developer's own machine, and the
+ * IS_DEV check above means this function's body never runs in a production
+ * deployment either). Deliberately reuses the backend's real signing path
+ * instead of fabricating a token here — a token minted by hand would need
+ * this app to hold JWT_SECRET for *signing*, not just verification, and
+ * would carry a `sub` that isn't a real user id, breaking anything
+ * downstream that trusts it. Returns null on any failure (backend not
+ * running, no admin seeded yet, network error) so the caller can fall back
+ * to the normal /login redirect instead of breaking the request.
+ */
+async function mintDevSession(req: NextRequest): Promise<{ token: string } | null> {
+  const apiUrl = process.env.NEXT_PUBLIC_API_URL;
+  if (!apiUrl) return null;
+  try {
+    // A hard timeout matters here more than for a normal request: this
+    // runs on the hot path of every unauthenticated request, so a backend
+    // that's unreachable (not just erroring) must fail fast into the
+    // /login fallback rather than hang the whole navigation.
+    const res = await fetch(new URL("/api/auth/dev-login", apiUrl), {
+      method: "POST",
+      signal: AbortSignal.timeout(4000),
+    });
+    if (!res.ok) return null;
+    const body = (await res.json()) as { data?: { token?: string } };
+    const token = body.data?.token;
+    if (!token) return null;
+    // Confirms the token actually verifies before we trust it — same check
+    // every other session on this app has to pass.
+    const verified = await verifySessionToken(token);
+    if (!verified) return null;
+    return { token };
+  } catch (err) {
+    console.error(`proxy.ts: dev-login bypass failed (${req.nextUrl.pathname}):`, err);
+    return null;
+  }
 }
 
 export async function proxy(req: NextRequest) {
@@ -25,6 +68,20 @@ export async function proxy(req: NextRequest) {
   }
 
   if (!session) {
+    if (IS_DEV) {
+      const minted = await mintDevSession(req);
+      if (minted) {
+        // Redirect back to the same URL rather than continuing this same
+        // request with NextResponse.next(): the cookie set below only
+        // reaches the browser on this response, so anything that reads it
+        // server-side (this file's next pass, "/"'s own cookies() read)
+        // needs a real round trip first, not a same-request continuation.
+        const response = NextResponse.redirect(new URL(`${pathname}${search}`, req.url));
+        response.cookies.set(SESSION_COOKIE, minted.token, { path: "/", sameSite: "lax" });
+        return response;
+      }
+    }
+
     const loginUrl = new URL("/login", req.url);
     loginUrl.searchParams.set("redirect", `${pathname}${search}`);
     return NextResponse.redirect(loginUrl);
@@ -38,10 +95,11 @@ export async function proxy(req: NextRequest) {
     return NextResponse.next();
   }
 
-  if (session.role === "warehouse_staff") {
-    // The picker is for people with a choice to make. Staff who have a brand
-    // don't, so send them home — but staff *without* one must be let through,
-    // because homeFor() sends them here and bouncing them would loop forever.
+  if (session.role === "warehouse_staff" || session.role === "finance") {
+    // The picker is for people with a choice to make. Staff/finance users
+    // who have a brand don't, so send them home — but without one must be
+    // let through, because homeFor() sends them here and bouncing them would
+    // loop forever.
     if (pathname === WORKSPACE_PICKER) {
       if (session.brandCode) return NextResponse.redirect(new URL(homeFor(session), req.url));
       return NextResponse.next();
@@ -50,8 +108,15 @@ export async function proxy(req: NextRequest) {
     // Otherwise: locked to their assigned brand's [brand] subtree. "/" has an
     // empty first segment and falls through to the role-based redirector.
     // (Admins skip this block entirely — they can reach every workspace.)
-    const [, brandSegment] = pathname.split("/");
+    const [, brandSegment, moduleSegment] = pathname.split("/");
     if (brandSegment && brandSegment !== session.brandCode) {
+      return NextResponse.redirect(new URL(homeFor(session), req.url));
+    }
+
+    // Finance is further locked to just the Finance module within its
+    // brand — Products, Inventory, Orders, and Settings are exactly the
+    // areas this role exists to not have access to.
+    if (session.role === "finance" && moduleSegment && moduleSegment !== "finance") {
       return NextResponse.redirect(new URL(homeFor(session), req.url));
     }
   }

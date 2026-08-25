@@ -25,7 +25,7 @@ export function Sidebar() {
   const { role } = useCurrentUser();
   const { t } = useLocale();
 
-  const items = NAV_ITEMS.filter((item) => !item.adminOnly || role === "admin");
+  const items = NAV_ITEMS.filter((item) => !item.roles || (role !== null && item.roles.includes(role)));
 
   return (
     <aside className="hidden w-56 shrink-0 border-e border-slate-200 bg-white md:flex md:flex-col dark:border-slate-800 dark:bg-slate-950">
