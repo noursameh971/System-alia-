@@ -120,3 +120,9 @@ export const bulkUpdateCategorySchema = z.object({
 });
 
 export type BulkUpdateCategoryInput = z.infer<typeof bulkUpdateCategorySchema>;
+
+export const bulkDeleteProductsSchema = z.object({
+  productIds: z.array(z.string().uuid()).min(1, "Select at least one product"),
+});
+
+export type BulkDeleteProductsInput = z.infer<typeof bulkDeleteProductsSchema>;

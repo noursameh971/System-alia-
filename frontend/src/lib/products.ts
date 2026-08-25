@@ -1,5 +1,6 @@
 import { apiFetch, apiFetchBlob, apiFetchUpload } from "./apiClient";
 import type {
+  BulkDeleteProductsResult,
   BulkUpdateCategoryResult,
   DeleteVariantResult,
   ImportProductsResult,
@@ -83,6 +84,29 @@ export function bulkUpdateProductsCategory(productIds: string[], category: strin
   return apiFetch<BulkUpdateCategoryResult>("/api/products/bulk/category", {
     method: "PATCH",
     body: JSON.stringify({ productIds, category }),
+  });
+}
+
+/**
+ * Backs the products table's bulk-select "Delete Selected" action. Products
+ * with order/stock history on any variant come back archived rather than
+ * removed — see the backend's bulkDeleteProducts.
+ *
+ * The 20s timeout matters specifically here: this button's confirm dialog
+ * shows a "Deleting..." state that only clears when the request settles
+ * (resolves or rejects) — a network stall with no timeout would otherwise
+ * leave that state stuck indefinitely instead of surfacing an error.
+ */
+export function bulkDeleteProducts(productIds: string[]): Promise<BulkDeleteProductsResult> {
+  // Temporary debug instrumentation — remove once bulk delete is confirmed
+  // working end-to-end. Logs the resolved API base URL too, since a wrong
+  // NEXT_PUBLIC_API_URL (pointing at the wrong backend/port/deployment) is a
+  // classic cause of "the request silently goes nowhere."
+  console.log("[bulk-delete] apiFetch DELETE /api/products/bulk", { productIds, apiBaseUrl: process.env.NEXT_PUBLIC_API_URL });
+  return apiFetch<BulkDeleteProductsResult>("/api/products/bulk", {
+    method: "DELETE",
+    body: JSON.stringify({ productIds }),
+    signal: AbortSignal.timeout(20_000),
   });
 }
 

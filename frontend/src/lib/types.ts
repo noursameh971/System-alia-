@@ -114,6 +114,12 @@ export interface BulkUpdateCategoryResult {
   updatedCount: number;
 }
 
+export interface BulkDeleteProductsResult {
+  requestedCount: number;
+  deletedCount: number;
+  archivedCount: number;
+}
+
 export interface ImportRowError {
   row: number;
   message: string;

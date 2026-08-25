@@ -43,6 +43,7 @@ export const ar: Record<string, string> = {
   "All Categories": "كل التصنيفات",
   "Filter by category": "تصفية حسب التصنيف",
   "Set Category": "تعيين التصنيف",
+  "Delete Selected": "حذف المحدد",
   Clear: "مسح",
   "product selected": "منتج محدد",
   "products selected": "منتجات محددة",

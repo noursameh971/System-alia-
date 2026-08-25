@@ -6,6 +6,7 @@ import { ApiError } from "../../utils/apiError.js";
 import { sendSuccess } from "../../utils/apiResponse.js";
 import { generateVariantQrPng } from "../qrcode/qrcode.util.js";
 import {
+  bulkDeleteProducts,
   bulkSetProductsCategory,
   createProductWithVariants,
   createQuickProduct,
@@ -22,6 +23,7 @@ import { exportProductsWorkbook, importProductRows } from "./products.io.service
 import { uploadProductImage } from "./products.image.service.js";
 import {
   listProductsQuerySchema,
+  type BulkDeleteProductsInput,
   type BulkUpdateCategoryInput,
   type CreateProductInput,
   type QuickCreateProductInput,
@@ -112,6 +114,14 @@ export async function bulkUpdateCategoryHandler(req: Request, res: Response): Pr
   const { productIds, category } = req.body as BulkUpdateCategoryInput;
 
   const result = await bulkSetProductsCategory(productIds, category);
+  sendSuccess(res, 200, result);
+}
+
+/** DELETE /api/products/bulk — the table's bulk-select "Delete Selected" action. */
+export async function bulkDeleteProductsHandler(req: Request, res: Response): Promise<void> {
+  const { productIds } = req.body as BulkDeleteProductsInput;
+
+  const result = await bulkDeleteProducts(productIds);
   sendSuccess(res, 200, result);
 }
 

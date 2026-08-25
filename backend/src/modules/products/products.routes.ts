@@ -4,6 +4,7 @@ import { rawBody } from "../../middleware/rawBody.js";
 import { validateBody } from "../../middleware/validate.js";
 import { asyncHandler } from "../../utils/asyncHandler.js";
 import {
+  bulkDeleteProductsHandler,
   bulkUpdateCategoryHandler,
   createProduct,
   deleteProductVariantHandler,
@@ -21,6 +22,7 @@ import {
   uploadProductImageHandler,
 } from "./products.controller.js";
 import {
+  bulkDeleteProductsSchema,
   bulkUpdateCategorySchema,
   createProductSchema,
   quickCreateProductSchema,
@@ -82,6 +84,15 @@ productsRouter.patch(
   requireRole("admin"),
   validateBody(bulkUpdateCategorySchema),
   asyncHandler(bulkUpdateCategoryHandler),
+);
+
+// The products table's bulk-select "Delete Selected" action — admin only, same as the row-level Delete.
+productsRouter.delete(
+  "/bulk",
+  requireAuth,
+  requireRole("admin"),
+  validateBody(bulkDeleteProductsSchema),
+  asyncHandler(bulkDeleteProductsHandler),
 );
 
 // The Products page's row-level Edit/Delete actions — admin only, same as create.

@@ -3,18 +3,19 @@
 import { useState } from "react";
 import useSWR, { mutate as globalMutate } from "swr";
 import { toast } from "sonner";
-import { Download, Plus, Search, Upload, X } from "lucide-react";
+import { Download, Plus, Search, Trash2, Upload, X } from "lucide-react";
 import { useWorkspace } from "@/context/WorkspaceContext";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { useLocale } from "@/context/LocaleContext";
 import { listCategories } from "@/lib/categories";
-import { listProducts, exportProductsWorkbook } from "@/lib/products";
+import { listProducts, exportProductsWorkbook, bulkDeleteProducts } from "@/lib/products";
 import { ApiError } from "@/lib/apiClient";
 import { Spinner } from "@/components/ui/Spinner";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
+import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { ProductsGroupedTable } from "./ProductsGroupedTable";
 import { ProductProfileDrawer } from "./ProductProfileDrawer";
 import { AddProductModal } from "./AddProductModal";
@@ -41,6 +42,7 @@ export function ProductList() {
   const [importOpen, setImportOpen] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [bulkCategoryOpen, setBulkCategoryOpen] = useState(false);
+  const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false);
   const [selectedProductId, setSelectedProductId] = useState<string | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
@@ -73,6 +75,28 @@ export function ProductList() {
   function handleCategoriesChanged() {
     void mutate();
     void globalMutate("categories");
+  }
+
+  async function handleBulkDelete() {
+    const ids = [...selectedIds];
+    // Temporary debug instrumentation — remove once bulk delete is
+    // confirmed working end-to-end against the environment being tested.
+    console.log("[bulk-delete] sending DELETE /api/products/bulk with productIds:", ids);
+    try {
+      const result = await bulkDeleteProducts(ids);
+      console.log("[bulk-delete] response:", result);
+      toast.success(
+        result.archivedCount > 0
+          ? `${result.deletedCount} product${result.deletedCount === 1 ? "" : "s"} deleted, ${result.archivedCount} archived (had order/stock history)`
+          : `${result.deletedCount} product${result.deletedCount === 1 ? "" : "s"} deleted`,
+      );
+      void mutate();
+      setSelectedIds(new Set());
+    } catch (err) {
+      console.error("[bulk-delete] request failed:", err);
+      toast.error(err instanceof ApiError ? err.message : `Failed to delete selected products: ${err instanceof Error ? err.message : String(err)}`);
+      throw err;
+    }
   }
 
   async function handleExport() {
@@ -154,6 +178,15 @@ export function ProductList() {
             <Button size="sm" onClick={() => setBulkCategoryOpen(true)}>
               {t("Set Category")}
             </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => setBulkDeleteOpen(true)}
+              className="border-red-200 text-red-600 hover:bg-red-50 hover:text-red-700 dark:border-red-900 dark:text-red-400 dark:hover:bg-red-950/40"
+            >
+              <Trash2 className="size-3.5" />
+              {t("Delete Selected")}
+            </Button>
             <Button size="sm" variant="ghost" onClick={() => setSelectedIds(new Set())}>
               <X className="size-3.5" />
               {t("Clear")}
@@ -211,6 +244,14 @@ export function ProductList() {
           handleCategoriesChanged();
           setSelectedIds(new Set());
         }}
+      />
+
+      <ConfirmDialog
+        open={bulkDeleteOpen}
+        onOpenChange={setBulkDeleteOpen}
+        title={t("Delete Selected")}
+        description={`Delete ${selectedIds.size} selected product${selectedIds.size === 1 ? "" : "s"}? Products with existing order or stock history are archived instead of deleted.`}
+        onConfirm={handleBulkDelete}
       />
     </div>
   );

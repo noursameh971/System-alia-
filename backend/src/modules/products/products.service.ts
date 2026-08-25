@@ -957,6 +957,48 @@ export async function deleteProductVariant(variantId: string): Promise<DeleteVar
   }
 }
 
+export interface BulkDeleteProductsResult {
+  requestedCount: number;
+  /** Products with zero order/stock history — every variant (and the product row itself) was actually removed. */
+  deletedCount: number;
+  /** Products where at least one variant had history and was archived (discontinued) instead of removed. */
+  archivedCount: number;
+}
+
+/**
+ * The products table's bulk-select "Delete Selected" action. Deletes each
+ * selected product's variants one at a time through deleteProductVariant —
+ * reusing its existing hard-delete-or-archive fallback rather than
+ * duplicating that logic, so a product with real order/stock history on any
+ * variant ends up with those variants discontinued (and the product row
+ * left in place) instead of silently losing that history or half-failing
+ * partway through. A productId with no variants (already deleted, or a
+ * stale id from a stale selection) is skipped rather than erroring the
+ * whole batch.
+ */
+export async function bulkDeleteProducts(productIds: string[]): Promise<BulkDeleteProductsResult> {
+  let deletedCount = 0;
+  let archivedCount = 0;
+
+  for (const productId of productIds) {
+    const variants = await db
+      .select({ id: productVariants.id })
+      .from(productVariants)
+      .where(eq(productVariants.productId, productId));
+    if (variants.length === 0) continue;
+
+    let anyArchived = false;
+    for (const variant of variants) {
+      const result = await deleteProductVariant(variant.id);
+      if (!result.deleted) anyArchived = true;
+    }
+    if (anyArchived) archivedCount++;
+    else deletedCount++;
+  }
+
+  return { requestedCount: productIds.length, deletedCount, archivedCount };
+}
+
 export interface SetVariantStockResult {
   variantId: string;
   stock: number;
