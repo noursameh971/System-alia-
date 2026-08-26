@@ -170,11 +170,11 @@ export function ProductList() {
       </div>
 
       {canManage && selectedIds.size > 0 ? (
-        <div className="flex items-center justify-between rounded-xl border border-indigo-200 bg-indigo-50 px-4 py-3 dark:border-indigo-900 dark:bg-indigo-950/40">
+        <div className="flex flex-col gap-3 rounded-xl border border-indigo-200 bg-indigo-50 px-4 py-3 sm:flex-row sm:items-center sm:justify-between dark:border-indigo-900 dark:bg-indigo-950/40">
           <p className="text-sm font-medium text-indigo-900 dark:text-indigo-200">
             {selectedIds.size} {t(selectedIds.size === 1 ? "product selected" : "products selected")}
           </p>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <Button size="sm" onClick={() => setBulkCategoryOpen(true)}>
               {t("Set Category")}
             </Button>
