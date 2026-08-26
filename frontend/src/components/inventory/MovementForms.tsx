@@ -8,10 +8,11 @@ import { listRecentMovements } from "@/lib/inventory";
 import { ScanQueuePanel, type MovementKind } from "./ScanQueuePanel";
 import { RecentMovementsLog } from "./RecentMovementsLog";
 
+// "transfer" is temporarily hidden from the tab bar (not removed from
+// MovementKind/the backend) — re-add the entry below to bring it back.
 const MOVEMENT_TYPES: { key: MovementKind; label: string }[] = [
   { key: "inbound", label: "Inbound" },
   { key: "outbound", label: "Outbound" },
-  { key: "transfer", label: "Transfer" },
   { key: "return", label: "Return" },
 ];
 
