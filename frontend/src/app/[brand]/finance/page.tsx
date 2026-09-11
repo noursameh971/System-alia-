@@ -31,8 +31,17 @@ import {
   listExpenses,
   EXPENSE_CATEGORY_META,
 } from "@/lib/expenses";
+import { deleteRevenue, listRevenues, REVENUE_CATEGORY_META } from "@/lib/revenues";
 import { exportLedgerWorkbook, getCashFlowSummary, listLedgerEntities } from "@/lib/ledger";
-import { EXPENSE_CATEGORIES, type Expense, type ExpenseCategory, type LedgerEntity } from "@/lib/types";
+import {
+  EXPENSE_CATEGORIES,
+  REVENUE_CATEGORIES,
+  type Expense,
+  type ExpenseCategory,
+  type LedgerEntity,
+  type Revenue,
+  type RevenueCategory,
+} from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Spinner } from "@/components/ui/Spinner";
@@ -43,6 +52,8 @@ import { StatTile } from "@/components/dashboard/StatTile";
 import { ExpenseBreakdownChart } from "@/components/finance/ExpenseBreakdownChart";
 import { ExpenseTable } from "@/components/finance/ExpenseTable";
 import { ExpenseFormModal } from "@/components/finance/ExpenseFormModal";
+import { RevenueTable } from "@/components/finance/RevenueTable";
+import { RevenueFormModal } from "@/components/finance/RevenueFormModal";
 import { ImportExpensesModal } from "@/components/finance/ImportExpensesModal";
 import { LedgerTable } from "@/components/finance/LedgerTable";
 import { OpeningBalanceModal } from "@/components/finance/OpeningBalanceModal";
@@ -69,11 +80,20 @@ export default function FinancePage() {
   const [openingBalanceOpen, setOpeningBalanceOpen] = useState(false);
   const [payingEntity, setPayingEntity] = useState<LedgerEntity | null>(null);
 
+  const [revenueSearch, setRevenueSearch] = useState("");
+  const [revenueCategoryFilter, setRevenueCategoryFilter] = useState<RevenueCategory | "">("");
+  const [revenueFormOpen, setRevenueFormOpen] = useState(false);
+  const [editingRevenue, setEditingRevenue] = useState<Revenue | null>(null);
+  const [deleteRevenueTarget, setDeleteRevenueTarget] = useState<Revenue | null>(null);
+
   // All keyed on brand.id so switching workspace refetches rather than
   // showing another brand's data for a frame.
   const summary = useSWR(["finance-summary", brand.id], () => getFinanceSummary(brand.id));
   const ledger = useSWR(["expenses", brand.id, categoryFilter], () =>
     listExpenses({ brandId: brand.id, category: categoryFilter || null }),
+  );
+  const revenueLedger = useSWR(["revenues", brand.id, revenueCategoryFilter], () =>
+    listRevenues({ brandId: brand.id, category: revenueCategoryFilter || null }),
   );
   const cashFlow = useSWR(["cash-flow-summary", brand.id], () => getCashFlowSummary(brand.id));
   const suppliers = useSWR(["ledger-entities", brand.id], () => listLedgerEntities(brand.id));
@@ -90,14 +110,17 @@ export default function FinancePage() {
     );
   }
 
-  // Passed to every mutating action on this page (expense CRUD, opening
-  // balances, payments, and both import paths) — a payment against one
-  // supplier can move the Accounts Payable/Receivable cards, Net Cash Flow,
-  // *and* that supplier's row, so all four data sources refresh together
-  // rather than each action guessing which subset it affected.
+  // Passed to every mutating action on this page (expense CRUD, revenue CRUD,
+  // opening balances, payments, and both import paths) — a payment against
+  // one supplier can move the Accounts Payable/Receivable cards, Net Cash
+  // Flow, *and* that supplier's row, so all data sources refresh together
+  // rather than each action guessing which subset it affected. Revenue CRUD
+  // works the same way: it moves Gross Revenue, Net Profit, and Profit
+  // Margin on the summary card, not just its own table.
   function refreshAll() {
     void summary.mutate();
     void ledger.mutate();
+    void revenueLedger.mutate();
     void cashFlow.mutate();
     void suppliers.mutate();
   }
@@ -153,6 +176,19 @@ export default function FinancePage() {
     }
   }
 
+  async function handleDeleteRevenue() {
+    if (!deleteRevenueTarget) return;
+    try {
+      await deleteRevenue(deleteRevenueTarget.id);
+      toast.success(t("Revenue deleted"));
+      refreshAll();
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : t("Failed to delete the revenue entry"));
+    } finally {
+      setDeleteRevenueTarget(null);
+    }
+  }
+
   const data = summary.data;
   const cashFlowData = cashFlow.data;
 
@@ -182,6 +218,16 @@ export default function FinancePage() {
             {t("Opening Balances")}
           </Button>
           <Button
+            variant="outline"
+            onClick={() => {
+              setEditingRevenue(null);
+              setRevenueFormOpen(true);
+            }}
+          >
+            <Plus className="size-4" />
+            {t("Add Revenue")}
+          </Button>
+          <Button
             onClick={() => {
               setEditing(null);
               setFormOpen(true);
@@ -208,7 +254,7 @@ export default function FinancePage() {
             <StatTile
               label={t("Gross Revenue")}
               value={formatPrice(data.grossRevenue)}
-              sublabel={`${data.orderCount} ${t(data.orderCount === 1 ? "order" : "orders")}`}
+              sublabel={`${data.orderCount} ${t(data.orderCount === 1 ? "order" : "orders")} + ${data.revenueCount} ${t(data.revenueCount === 1 ? "revenue entry" : "revenue entries")}`}
               icon={TrendingUp}
               iconColor="emerald"
             />
@@ -234,6 +280,27 @@ export default function FinancePage() {
               iconColor="indigo"
             />
           </div>
+
+          {/* Symmetric with "Where the money goes" below: Gross Revenue is
+              equally an opaque total until it's split into what actually
+              produced it, which is also the fastest way to see that a
+              manual revenue entry actually landed. */}
+          <DashboardCard title={t("Where the revenue comes from")}>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <StatTile
+                variant="flat"
+                label={t("Order sales")}
+                value={formatPrice(data.orderRevenue)}
+                sublabel={`${data.orderCount} ${t(data.orderCount === 1 ? "order" : "orders")}`}
+              />
+              <StatTile
+                variant="flat"
+                label={t("Manual & other revenue")}
+                value={formatPrice(data.manualRevenue)}
+                sublabel={`${data.revenueCount} ${t(data.revenueCount === 1 ? "entry" : "entries")}`}
+              />
+            </div>
+          </DashboardCard>
 
           {/* The three components of Total Expenses, so the KPI above is
               auditable rather than an opaque total. */}
@@ -323,6 +390,60 @@ export default function FinancePage() {
 
       <div className="flex flex-col gap-3">
         <div className="flex flex-wrap items-center justify-between gap-3">
+          <h2 className="text-sm font-semibold text-slate-900 dark:text-slate-100">{t("Revenue")}</h2>
+
+          <div className="relative w-full sm:max-w-xs">
+            <Search className="pointer-events-none absolute start-2.5 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
+            <Input
+              value={revenueSearch}
+              onChange={(event) => setRevenueSearch(event.target.value)}
+              placeholder={t("Search revenue")}
+              className="ps-8"
+            />
+          </div>
+        </div>
+
+        <div className="flex flex-wrap gap-1.5">
+          <FilterPill active={revenueCategoryFilter === ""} onClick={() => setRevenueCategoryFilter("")}>
+            {t("All")}
+          </FilterPill>
+          {REVENUE_CATEGORIES.map((category) => (
+            <FilterPill
+              key={category}
+              active={revenueCategoryFilter === category}
+              onClick={() => setRevenueCategoryFilter(category)}
+            >
+              {t(REVENUE_CATEGORY_META[category].label)}
+            </FilterPill>
+          ))}
+        </div>
+
+        {revenueLedger.isLoading ? (
+          <div className="flex justify-center py-16">
+            <Spinner label="Loading revenue..." />
+          </div>
+        ) : revenueLedger.error ? (
+          <EmptyState
+            title={t("Couldn't load revenue")}
+            description={
+              revenueLedger.error instanceof ApiError ? revenueLedger.error.message : t("Check that the backend API is running.")
+            }
+          />
+        ) : (
+          <RevenueTable
+            revenues={revenueLedger.data ?? []}
+            search={revenueSearch}
+            onEdit={(revenue) => {
+              setEditingRevenue(revenue);
+              setRevenueFormOpen(true);
+            }}
+            onDelete={setDeleteRevenueTarget}
+          />
+        )}
+      </div>
+
+      <div className="flex flex-col gap-3">
+        <div className="flex flex-wrap items-center justify-between gap-3">
           <h2 className="text-sm font-semibold text-slate-900 dark:text-slate-100">{t("Expenses")}</h2>
 
           <div className="relative w-full sm:max-w-xs">
@@ -381,6 +502,14 @@ export default function FinancePage() {
         onSuccess={refreshAll}
       />
 
+      <RevenueFormModal
+        open={revenueFormOpen}
+        onOpenChange={setRevenueFormOpen}
+        brandId={brand.id}
+        editing={editingRevenue}
+        onSuccess={refreshAll}
+      />
+
       <ImportExpensesModal open={importOpen} onOpenChange={setImportOpen} brandId={brand.id} onSuccess={refreshAll} />
 
       <OpeningBalanceModal
@@ -403,6 +532,19 @@ export default function FinancePage() {
         }
         confirmLabel={t("Delete")}
         onConfirm={handleDelete}
+      />
+
+      <ConfirmDialog
+        open={deleteRevenueTarget !== null}
+        onOpenChange={(open) => !open && setDeleteRevenueTarget(null)}
+        title={t("Delete revenue entry")}
+        description={
+          deleteRevenueTarget
+            ? `${t("This permanently removes")} "${deleteRevenueTarget.source}" (${formatPrice(deleteRevenueTarget.amount)}).`
+            : ""
+        }
+        confirmLabel={t("Delete")}
+        onConfirm={handleDeleteRevenue}
       />
     </div>
   );

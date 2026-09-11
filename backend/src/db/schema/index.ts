@@ -10,4 +10,5 @@ export * from "./orders.js";
 export * from "./returns.js";
 export * from "./settings.js";
 export * from "./expenses.js";
+export * from "./revenues.js";
 export * from "./ledger.js";

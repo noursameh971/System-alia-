@@ -15,6 +15,7 @@ import { ordersRouter } from "./modules/orders/orders.routes.js";
 import { productsRouter } from "./modules/products/products.routes.js";
 import { reasonCodesRouter } from "./modules/reason-codes/reasonCodes.routes.js";
 import { returnsRouter } from "./modules/returns/returns.routes.js";
+import { revenuesRouter } from "./modules/revenues/revenues.routes.js";
 import { settingsRouter } from "./modules/settings/settings.routes.js";
 import { stockMovementsRouter } from "./modules/stock-movements/stockMovements.routes.js";
 import { usersRouter } from "./modules/users/users.routes.js";
@@ -100,6 +101,7 @@ export function createApp(): Express {
   app.use("/api/users", usersRouter);
   app.use("/api/settings", settingsRouter);
   app.use("/api/expenses", expensesRouter);
+  app.use("/api/revenues", revenuesRouter);
   app.use("/api/ledger", ledgerRouter);
 
   // Must be registered last — Express only routes here on thrown/forwarded errors.

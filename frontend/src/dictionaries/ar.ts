@@ -120,6 +120,40 @@ export const ar: Record<string, string> = {
   "Couldn't load expenses": "تعذّر تحميل المصروفات",
   "Failed to export expenses": "فشل تصدير المصروفات",
 
+  // Revenue
+  "Where the revenue comes from": "من أين تأتي الإيرادات",
+  "Order sales": "مبيعات الطلبات",
+  "Manual & other revenue": "إيرادات يدوية وأخرى",
+  "revenue entry": "قيد إيراد",
+  "revenue entries": "قيود إيرادات",
+  "Search revenue": "ابحث في الإيرادات",
+  "No revenue recorded yet": "لا توجد إيرادات مسجَّلة بعد",
+  "No revenue entries match": "لا توجد إيرادات مطابقة لـ",
+  "Add your first revenue entry to see Gross Revenue and Net Profit update.":
+    "أضف أول إيراد لترى تحديث إجمالي الإيرادات وصافي الربح.",
+  "Couldn't load revenue": "تعذّر تحميل الإيرادات",
+  Source: "المصدر",
+
+  // Revenue categories
+  "Product Sales": "مبيعات المنتجات",
+  Wholesale: "بيع بالجملة",
+  "Shipping Income": "إيرادات الشحن",
+  "Other Income": "إيرادات أخرى",
+
+  // Add / Edit revenue modal
+  "Add Revenue": "إضافة إيراد",
+  "Add revenue": "إضافة إيراد",
+  "Edit revenue": "تعديل الإيراد",
+  "Delete revenue entry": "حذف قيد الإيراد",
+  "Recorded against this workspace and counted in Gross Revenue and Net Profit straight away.":
+    "يُسجَّل على مساحة العمل هذه ويُحتسب في إجمالي الإيرادات وصافي الربح فورًا.",
+  "e.g. Wholesale order — Cairo Boutique": "مثال: طلب جملة — بوتيك القاهرة",
+  "Source is required": "المصدر مطلوب",
+  "Revenue added": "تمت إضافة الإيراد",
+  "Revenue updated": "تم تحديث الإيراد",
+  "Revenue deleted": "تم حذف الإيراد",
+  "Failed to delete the revenue entry": "فشل حذف قيد الإيراد",
+
   // Expense categories
   "Marketing & Ads": "التسويق والإعلانات",
   Salaries: "الرواتب",

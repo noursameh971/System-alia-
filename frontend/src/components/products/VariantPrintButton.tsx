@@ -6,6 +6,7 @@ import { Loader2, Printer } from "lucide-react";
 import { fetchVariantQrCodeObjectUrl } from "@/lib/products";
 import { ApiError } from "@/lib/apiClient";
 import { Button } from "@/components/ui/button";
+import { QrLabelPrintPortal } from "./QrLabelPrintPortal";
 import { QrStickerLabel, type StickerVariant } from "./QrStickerLabel";
 
 function nextFrame(): Promise<void> {
@@ -15,10 +16,9 @@ function nextFrame(): Promise<void> {
 /**
  * One click, straight to the browser's print dialog for this variant's
  * 50mm x 25mm sticker — no preview modal/popover in between. The sticker
- * markup is rendered into an off-screen node (display:none until
- * @media print, via `hidden print:block`) that only becomes visible — and
- * only fills the page — during printing itself, per globals.css's
- * .print-area rules, so nothing is ever shown as a popup on screen.
+ * markup is portaled to a dedicated print-only root under <body> (see
+ * QrLabelPrintPortal), which stays display:none until @media print, so
+ * nothing is ever shown as a popup on screen.
  */
 export function VariantPrintButton({ variant }: { variant: StickerVariant }) {
   const [printUrl, setPrintUrl] = useState<string | null>(null);
@@ -60,9 +60,9 @@ export function VariantPrintButton({ variant }: { variant: StickerVariant }) {
         {loading ? <Loader2 className="size-4 animate-spin" /> : <Printer className="size-4" />}
       </Button>
       {printUrl ? (
-        <div className="hidden print:block print-area qr-label-print-area">
+        <QrLabelPrintPortal>
           <QrStickerLabel variant={variant} qrUrl={printUrl} />
-        </div>
+        </QrLabelPrintPortal>
       ) : null}
     </>
   );

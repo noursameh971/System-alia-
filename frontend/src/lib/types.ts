@@ -608,7 +608,12 @@ export interface MonthlyExpensePoint {
 
 /** The Finance page's KPI cards + monthly breakdown chart. */
 export interface FinanceSummary {
+  /** orderRevenue + manualRevenue. */
   grossRevenue: number;
+  /** Revenue derived from placed orders. */
+  orderRevenue: number;
+  /** Hand-recorded revenue (see Revenue below) — income that never became an Order row. */
+  manualRevenue: number;
   cogs: number;
   shipping: number;
   operatingExpenses: number;
@@ -616,10 +621,40 @@ export interface FinanceSummary {
   netProfit: number;
   profitMargin: number;
   orderCount: number;
+  revenueCount: number;
   expenseCount: number;
   byCategory: ExpenseCategoryTotals;
   monthly: MonthlyExpensePoint[];
 }
+
+export const REVENUE_CATEGORIES = ["product_sales", "wholesale", "shipping_income", "other"] as const;
+export type RevenueCategory = (typeof REVENUE_CATEGORIES)[number];
+
+/** One row in the Finance page's hand-recorded revenue ledger — income (a wholesale invoice, an in-person/DM sale, etc.) that never became an Order row. */
+export interface Revenue {
+  id: string;
+  brandId: string;
+  source: string;
+  category: RevenueCategory;
+  amount: number;
+  currency: string;
+  /** YYYY-MM-DD — a calendar day, not an instant. */
+  revenueDate: string;
+  notes: string | null;
+  createdAt: string;
+}
+
+export interface CreateRevenueInput {
+  brandId: string;
+  source: string;
+  category: RevenueCategory;
+  amount: number;
+  revenueDate: string;
+  notes?: string;
+}
+
+/** brandId is absent by design — moving revenue between workspaces would rewrite two brands' P&L. */
+export type UpdateRevenueInput = Partial<Omit<CreateRevenueInput, "brandId">>;
 
 export interface ImportSectionResult {
   created: number;

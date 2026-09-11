@@ -1,6 +1,6 @@
 import { and, desc, eq, gte, lte, ne, sql } from "drizzle-orm";
 import { db } from "../../db/client.js";
-import { expenses, orderItems, orders, productVariants, products } from "../../db/schema/index.js";
+import { expenses, orderItems, orders, productVariants, products, revenues } from "../../db/schema/index.js";
 import { ApiError } from "../../utils/apiError.js";
 import {
   EXPENSE_CATEGORIES,
@@ -117,7 +117,12 @@ export interface MonthlyExpensePoint {
 }
 
 export interface FinanceSummary {
+  /** orderRevenue + manualRevenue. */
   grossRevenue: number;
+  /** Revenue derived from orders.order_items.subtotal. */
+  orderRevenue: number;
+  /** Hand-recorded revenue from the revenues ledger — income that never became an Order row. */
+  manualRevenue: number;
   /** Production cost of everything sold, from order_items.cost_at_sale snapshots. */
   cogs: number;
   /** Shipping fees charged on orders — a real cost of fulfilment, so it sits in expenses, not revenue. */
@@ -129,6 +134,7 @@ export interface FinanceSummary {
   netProfit: number;
   profitMargin: number;
   orderCount: number;
+  revenueCount: number;
   expenseCount: number;
   byCategory: CategoryTotals;
   monthly: MonthlyExpensePoint[];
@@ -158,7 +164,9 @@ function recentMonths(count: number): string[] {
  * derived shipping, and the hand-recorded ledger — because a fashion
  * brand's real profit isn't revenue minus fabric cost alone. The ledger
  * never records COGS or shipping itself (see the expenses table comment),
- * so nothing here double-counts.
+ * so nothing here double-counts. Gross Revenue is symmetric: order-derived
+ * revenue plus the hand-recorded revenues ledger, for income (wholesale,
+ * in-person sales) that never became an Order row.
  */
 export async function getFinanceSummary(brandId: string): Promise<FinanceSummary> {
   // Cancelled orders are excluded from both revenue and cost: they were
@@ -181,6 +189,17 @@ export async function getFinanceSummary(brandId: string): Promise<FinanceSummary
     .select({ shipping: sql<string>`coalesce(sum(${orders.shippingFee}), 0)` })
     .from(orders)
     .where(and(eq(orders.brandId, brandId), ne(orders.status, "cancelled")));
+
+  // Hand-recorded revenue — a wholesale invoice, an in-person/DM sale, etc.
+  // that never became an Order row. Added on top of order-derived revenue,
+  // never in place of it, so nothing here double-counts an actual order.
+  const [manualRevenueRow] = await db
+    .select({
+      total: sql<string>`coalesce(sum(${revenues.amount}), 0)`,
+      count: sql<number>`count(*)::int`,
+    })
+    .from(revenues)
+    .where(eq(revenues.brandId, brandId));
 
   const categoryRows = await db
     .select({
@@ -218,7 +237,9 @@ export async function getFinanceSummary(brandId: string): Promise<FinanceSummary
     };
   });
 
-  const grossRevenue = Number(revenueRow?.revenue ?? 0);
+  const orderRevenue = Number(revenueRow?.revenue ?? 0);
+  const manualRevenue = Number(manualRevenueRow?.total ?? 0);
+  const grossRevenue = orderRevenue + manualRevenue;
   const cogs = Number(revenueRow?.cogs ?? 0);
   const shipping = Number(shippingRow?.shipping ?? 0);
   const totalExpenses = cogs + shipping + operatingExpenses;
@@ -226,6 +247,8 @@ export async function getFinanceSummary(brandId: string): Promise<FinanceSummary
 
   return {
     grossRevenue,
+    orderRevenue,
+    manualRevenue,
     cogs,
     shipping,
     operatingExpenses,
@@ -233,6 +256,7 @@ export async function getFinanceSummary(brandId: string): Promise<FinanceSummary
     netProfit,
     profitMargin: grossRevenue > 0 ? (netProfit / grossRevenue) * 100 : 0,
     orderCount: revenueRow?.orderCount ?? 0,
+    revenueCount: manualRevenueRow?.count ?? 0,
     expenseCount,
     byCategory,
     monthly,

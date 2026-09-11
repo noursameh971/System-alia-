@@ -42,6 +42,17 @@ export const expensePaymentMethodEnum = pgEnum("expense_payment_method", [
   "other",
 ]);
 
+// Hand-recorded income buckets — for revenue that never became an Order row
+// (a wholesale invoice, an in-person sale, recovered shipping, etc.). A
+// fixed enum for the same reason as expense_category: free text would let
+// typos fragment a reporting bucket.
+export const revenueCategoryEnum = pgEnum("revenue_category", [
+  "product_sales",
+  "wholesale",
+  "shipping_income",
+  "other",
+]);
+
 // Suppliers & Debts Ledger — see database/migrations/0011_add_ledger.sql.
 export const ledgerEntityCategoryEnum = pgEnum("ledger_entity_category", [
   "fabric",

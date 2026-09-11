@@ -3,16 +3,19 @@
 import { useEffect, useState } from "react";
 import { fetchVariantQrCodeObjectUrl } from "@/lib/products";
 import { Spinner } from "@/components/ui/Spinner";
+import { QrLabelPrintPortal } from "./QrLabelPrintPortal";
 import { QrStickerLabel, type StickerVariant } from "./QrStickerLabel";
 
 export type PrintableVariant = StickerVariant;
 
 /**
  * Fetches one QR PNG per variant (same endpoint the quick-print button
- * uses) and lays them out as a grid of 50mm x 25mm thermal stickers for
- * review, then prints via the shared .qr-label-print-area (each sticker
- * breaks onto its own physical label page — see globals.css's `@page
- * qr-label` rule).
+ * uses) and shows a grid of 50mm x 25mm thermal stickers for on-screen
+ * review. The actual print output is a separate copy portaled to a
+ * dedicated print-only root under <body> (see QrLabelPrintPortal), so each
+ * sticker breaks cleanly onto its own physical label page instead of
+ * fighting the review modal's layout — see globals.css's
+ * `#qr-label-print-root` rules.
  */
 export function BatchLabelPrintView({ variants, onClose }: { variants: PrintableVariant[]; onClose: () => void }) {
   const [urlsBySku, setUrlsBySku] = useState<Map<string, string>>(new Map());
@@ -97,29 +100,38 @@ export function BatchLabelPrintView({ variants, onClose }: { variants: Printable
             <Spinner label="Generating labels..." />
           </div>
         ) : (
-          <div id="batch-label-print-area" className="print-area qr-label-print-area">
-            <div className="flex flex-wrap justify-center gap-3 rounded-xl bg-white p-4 print:flex-col print:items-start print:gap-0 print:rounded-none print:p-0 dark:bg-slate-900 print:dark:bg-white">
-              {variants.map((v, index) =>
-                failedSkus.has(v.sku) ? (
-                  <div
-                    key={v.sku}
-                    className="flex h-[25mm] w-[50mm] shrink-0 items-center justify-center border border-dashed border-slate-300 p-2 text-center text-[9px] text-red-600 dark:border-slate-700"
-                  >
-                    QR failed for {v.sku}
-                  </div>
-                ) : (
-                  <QrStickerLabel
-                    key={v.sku}
-                    variant={v}
-                    qrUrl={urlsBySku.get(v.sku) ?? null}
-                    breakAfter={index < variants.length - 1}
-                  />
-                ),
-              )}
-            </div>
+          <div className="flex flex-wrap justify-center gap-3 rounded-xl bg-white p-4 print:hidden dark:bg-slate-900">
+            {variants.map((v) =>
+              failedSkus.has(v.sku) ? (
+                <div
+                  key={v.sku}
+                  className="flex h-[25mm] w-[50mm] shrink-0 items-center justify-center border border-dashed border-slate-300 p-2 text-center text-[9px] text-red-600 dark:border-slate-700"
+                >
+                  QR failed for {v.sku}
+                </div>
+              ) : (
+                <QrStickerLabel key={v.sku} variant={v} qrUrl={urlsBySku.get(v.sku) ?? null} />
+              ),
+            )}
           </div>
         )}
       </div>
+
+      {!loading ? (
+        <QrLabelPrintPortal>
+          {(() => {
+            const printable = variants.filter((v) => !failedSkus.has(v.sku));
+            return printable.map((v, index) => (
+              <QrStickerLabel
+                key={v.sku}
+                variant={v}
+                qrUrl={urlsBySku.get(v.sku) ?? null}
+                breakAfter={index < printable.length - 1}
+              />
+            ));
+          })()}
+        </QrLabelPrintPortal>
+      ) : null}
     </div>
   );
 }

@@ -37,8 +37,9 @@ body {
 
 /* Print isolation: any element carrying the .print-area class is the only
    thing that prints — everything else in the dashboard chrome behind it is
-   hidden. Used by the QR sticker printing (single + batch) and the order
-   receipt view. */
+   hidden. Used by the order receipt view. (QR sticker printing — single +
+   batch — uses the separate #qr-label-print-root mechanism below instead;
+   see QrLabelPrintPortal.tsx for why.) */
 @media print {
   body * {
     visibility: hidden;
@@ -55,13 +56,31 @@ body {
   }
 }
 
-/* Named page, applied only to QR sticker print areas (via the
-   .qr-label-print-area class) so it doesn't affect the order receipt's
-   normal-paper printing, which keeps the browser's default @page size. */
+/* QR label printing (single-variant quick print + batch) portals its
+   printable markup into a dedicated #qr-label-print-root node appended
+   directly under <body> (see QrLabelPrintPortal.tsx), outside the whole
+   app shell. That sidesteps two things the .print-area visibility+fixed
+   trick above can't handle for it: (1) however much invisible-but-
+   space-occupying dashboard layout sits above it in the DOM, which forced
+   the browser to page through it as blank sheets, and (2) position:fixed's
+   per-page-repeat semantics, which clip a multi-label batch instead of
+   paginating it across the several physical 50mm x 25mm pages it needs.
+   Named page size is scoped to this root so it doesn't affect the order
+   receipt's normal-paper printing, which keeps the browser's default
+   @page size. */
+#qr-label-print-root {
+  display: none;
+}
+@media print {
+  body:has(#qr-label-print-root > *) > *:not(#qr-label-print-root) {
+    display: none !important;
+  }
+  #qr-label-print-root {
+    display: block;
+    page: qr-label;
+  }
+}
 @page qr-label {
   size: 50mm 25mm;
   margin: 0;
-}
-.qr-label-print-area {
-  page: qr-label;
 }
