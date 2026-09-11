@@ -75,6 +75,16 @@ body {
   body:has(#qr-label-print-root > *) > *:not(#qr-label-print-root) {
     display: none !important;
   }
+  /* The .print-area rule above blanket-hides body * with visibility:hidden
+     and only un-hides .print-area — a class this root's portaled content
+     doesn't carry. Without this, the root paginates correctly (it's
+     display:block, unaffected by visibility) but paints nothing: every
+     descendant inherits visibility:hidden with nothing to override it,
+     which is exactly what produced the correctly-sized but blank pages. */
+  #qr-label-print-root,
+  #qr-label-print-root * {
+    visibility: visible;
+  }
   #qr-label-print-root {
     display: block;
     page: qr-label;
