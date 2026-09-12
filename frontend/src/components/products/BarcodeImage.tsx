@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, type CSSProperties } from "react";
 import JsBarcode from "jsbarcode";
 
 /**
@@ -15,7 +15,15 @@ import JsBarcode from "jsbarcode";
  * `className` scales the whole barcode down (via `preserveAspectRatio`)
  * instead of cropping it.
  */
-export function BarcodeImage({ value, className }: { value: string; className?: string }) {
+export function BarcodeImage({
+  value,
+  className,
+  style,
+}: {
+  value: string;
+  className?: string;
+  style?: CSSProperties;
+}) {
   const svgRef = useRef<SVGSVGElement>(null);
 
   useEffect(() => {
@@ -51,6 +59,7 @@ export function BarcodeImage({ value, className }: { value: string; className?: 
       aria-label={`Barcode for ${value}`}
       preserveAspectRatio="xMidYMid meet"
       className={className}
+      style={style}
     />
   );
 }

@@ -33,20 +33,37 @@ export function BarcodeStickerLabel({
 }) {
   return (
     <div
-      style={{ width: `${LABEL_WIDTH_MM}mm`, height: `${LABEL_HEIGHT_MM}mm` }}
-      className={`barcode-sticker box-border flex shrink-0 flex-col items-center justify-center gap-0.5 overflow-hidden border border-dashed border-slate-300 p-1 print:border-none dark:border-slate-700 ${breakAfter ? "print:break-after-page" : ""}`}
+      style={{
+        width: `${LABEL_WIDTH_MM}mm`,
+        height: `${LABEL_HEIGHT_MM}mm`,
+        padding: "0.8mm",
+        gap: "0.4mm",
+      }}
+      className={`barcode-sticker box-border flex shrink-0 flex-col items-center justify-center overflow-hidden border border-dashed border-slate-300 print:border-none dark:border-slate-700 ${breakAfter ? "print:break-after-page" : ""}`}
     >
-      <BarcodeImage value={variant.sku} className="h-[9mm] w-full max-w-full shrink-0" />
-      <p className="w-full truncate text-center font-mono text-[7px] text-slate-900 print:text-black">
+      <BarcodeImage value={variant.sku} className="w-full max-w-full shrink-0" style={{ height: "8mm" }} />
+      <p
+        className="w-full truncate text-center font-mono text-slate-900 print:text-black"
+        style={{ fontSize: "2.3mm", lineHeight: 1 }}
+      >
         {variant.sku}
       </p>
-      <p className="w-full truncate text-center text-[7.5px] font-semibold text-slate-900 print:text-black">
+      <p
+        className="w-full truncate text-center font-semibold text-slate-900 print:text-black"
+        style={{ fontSize: "2.6mm", lineHeight: 1 }}
+      >
         {variant.productName}
       </p>
-      <p className="w-full truncate text-center text-[7px] text-slate-600 print:text-black">
+      <p
+        className="w-full truncate text-center text-slate-600 print:text-black"
+        style={{ fontSize: "2.3mm", lineHeight: 1 }}
+      >
         {variant.color} / {variant.size}
       </p>
-      <p className="w-full truncate text-center text-[8px] font-bold text-slate-900 print:text-black">
+      <p
+        className="w-full truncate text-center font-bold text-slate-900 print:text-black"
+        style={{ fontSize: "2.8mm", lineHeight: 1 }}
+      >
         {formatPrice(variant.price, variant.currency)}
       </p>
     </div>

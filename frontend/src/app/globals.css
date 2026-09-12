@@ -100,7 +100,28 @@ body {
     display: block;
     page: thermal-label;
   }
+  /* Belt-and-suspenders against a single sticker fragmenting across two
+     physical labels: the sticker's own fixed 40mm x 30mm box (BarcodeStickerLabel)
+     already can't hold more content than that, but a `@page` size the print
+     dialog doesn't actually honor (see below) would otherwise still split it.
+     `break-after`/`page-break-after` are intentionally NOT forced to `avoid`
+     here — batch printing needs the opposite on every sticker but the last
+     (`print:break-after-page`, applied per-element via the `breakAfter` prop)
+     to land each label on its own page. */
+  .barcode-sticker {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
 }
+/* This @page rule only takes effect if the print dialog's selected paper
+   size and scale actually match it — Chrome remembers a per-printer "Paper
+   size" preset and "Scale" independently of the page's own CSS, and either
+   one being wrong (e.g. a saved preset that isn't really 40mm x 30mm, or a
+   Scale other than Default/100%) forces the browser to fragment this label
+   across multiple sheets no matter how small the content is. If labels
+   still split across sheets after this, check the print dialog first:
+   Paper size must be a 40mm x 30mm preset and Scale must be Default/100 —
+   no CSS on this page can override either setting. */
 @page thermal-label {
   size: 40mm 30mm;
   margin: 0;
