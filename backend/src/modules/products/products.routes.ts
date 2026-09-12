@@ -11,7 +11,6 @@ import {
   exportProductsHandler,
   getProducts,
   getVariantBySkuHandler,
-  getVariantQrCode,
   importProductsHandler,
   quickCreateProductHandler,
   setVariantStockHandler,
@@ -158,6 +157,3 @@ productsRouter.post(
 
 // Resolves a scanned/typed SKU to a variant — used by the stock movement forms.
 productsRouter.get("/variants/by-sku/:sku", requireAuth, asyncHandler(getVariantBySkuHandler));
-
-// Either role can pull up a variant's QR sticker (e.g. to reprint a damaged label).
-productsRouter.get("/variants/:sku/qr-code", requireAuth, asyncHandler(getVariantQrCode));

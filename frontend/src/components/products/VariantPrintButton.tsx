@@ -1,13 +1,10 @@
 "use client";
 
 import { useState } from "react";
-import { toast } from "sonner";
-import { Loader2, Printer } from "lucide-react";
-import { fetchVariantQrCodeObjectUrl } from "@/lib/products";
-import { ApiError } from "@/lib/apiClient";
+import { Printer } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { QrLabelPrintPortal } from "./QrLabelPrintPortal";
-import { QrStickerLabel, type StickerVariant } from "./QrStickerLabel";
+import { LabelPrintPortal } from "./LabelPrintPortal";
+import { BarcodeStickerLabel, type StickerVariant } from "./BarcodeStickerLabel";
 
 function nextFrame(): Promise<void> {
   return new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
@@ -15,37 +12,27 @@ function nextFrame(): Promise<void> {
 
 /**
  * One click, straight to the browser's print dialog for this variant's
- * 50mm x 25mm sticker — no preview modal/popover in between. The sticker
+ * thermal sticker — no preview modal/popover in between. The sticker
  * markup is portaled to a dedicated print-only root under <body> (see
- * QrLabelPrintPortal), which stays display:none until @media print, so
+ * LabelPrintPortal), which stays display:none until @media print, so
  * nothing is ever shown as a popup on screen.
  */
 export function VariantPrintButton({ variant }: { variant: StickerVariant }) {
-  const [printUrl, setPrintUrl] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
+  const [printing, setPrinting] = useState(false);
 
   async function handleClick() {
-    setLoading(true);
-    try {
-      const url = await fetchVariantQrCodeObjectUrl(variant.sku);
-      setPrintUrl(url);
-      // Let the now-visible-in-print-media sticker actually paint before
-      // invoking print — calling print() immediately after a state update
-      // can otherwise capture a stale (pre-image) layout.
-      await nextFrame();
-      window.print();
+    setPrinting(true);
+    // Let the now-visible-in-print-media sticker (barcode SVG included)
+    // actually paint before invoking print — calling print() immediately
+    // after a state update can otherwise capture a stale (pre-render) layout.
+    await nextFrame();
+    window.print();
 
-      const cleanup = () => {
-        URL.revokeObjectURL(url);
-        setPrintUrl(null);
-        window.removeEventListener("afterprint", cleanup);
-      };
-      window.addEventListener("afterprint", cleanup);
-    } catch (err) {
-      toast.error(err instanceof ApiError ? err.message : "Failed to generate QR code");
-    } finally {
-      setLoading(false);
-    }
+    const cleanup = () => {
+      setPrinting(false);
+      window.removeEventListener("afterprint", cleanup);
+    };
+    window.addEventListener("afterprint", cleanup);
   }
 
   return (
@@ -54,15 +41,14 @@ export function VariantPrintButton({ variant }: { variant: StickerVariant }) {
         variant="ghost"
         size="icon"
         onClick={() => void handleClick()}
-        disabled={loading}
-        aria-label={`Print QR label for ${variant.sku}`}
+        aria-label={`Print barcode label for ${variant.sku}`}
       >
-        {loading ? <Loader2 className="size-4 animate-spin" /> : <Printer className="size-4" />}
+        <Printer className="size-4" />
       </Button>
-      {printUrl ? (
-        <QrLabelPrintPortal>
-          <QrStickerLabel variant={variant} qrUrl={printUrl} />
-        </QrLabelPrintPortal>
+      {printing ? (
+        <LabelPrintPortal>
+          <BarcodeStickerLabel variant={variant} />
+        </LabelPrintPortal>
       ) : null}
     </>
   );

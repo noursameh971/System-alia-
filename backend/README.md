@@ -136,7 +136,6 @@ CI on every push to `main` and every pull request — see
 | GET    | `/api/products`                               | any authenticated    | list products (optional `?brandId=`), variants/attributes/price inlined |
 | POST   | `/api/products`                               | admin                | create a product + all its variants in one DB transaction |
 | GET    | `/api/products/variants/by-sku/:sku`          | any authenticated    | resolve a scanned/typed SKU to a variant (backs the movement forms' scan input) |
-| GET    | `/api/products/variants/:sku/qr-code`         | any authenticated    | printable PNG QR sticker for a variant |
 | GET    | `/api/warehouses`                             | any authenticated    | list warehouses |
 | POST   | `/api/warehouses`                             | admin                | create a warehouse |
 | GET    | `/api/warehouses/:warehouseId/zones`          | any authenticated    | list zones in a warehouse |

@@ -1,63 +1,20 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { fetchVariantQrCodeObjectUrl } from "@/lib/products";
-import { Spinner } from "@/components/ui/Spinner";
-import { QrLabelPrintPortal } from "./QrLabelPrintPortal";
-import { QrStickerLabel, type StickerVariant } from "./QrStickerLabel";
+import { useEffect } from "react";
+import { LABEL_HEIGHT_MM, LABEL_WIDTH_MM } from "@/lib/labelDimensions";
+import { LabelPrintPortal } from "./LabelPrintPortal";
+import { BarcodeStickerLabel, type StickerVariant } from "./BarcodeStickerLabel";
 
 export type PrintableVariant = StickerVariant;
 
 /**
- * Fetches one QR PNG per variant (same endpoint the quick-print button
- * uses) and shows a grid of 50mm x 25mm thermal stickers for on-screen
- * review. The actual print output is a separate copy portaled to a
- * dedicated print-only root under <body> (see QrLabelPrintPortal), so each
- * sticker breaks cleanly onto its own physical label page instead of
- * fighting the review modal's layout — see globals.css's
- * `#qr-label-print-root` rules.
+ * Shows a grid of thermal stickers for on-screen review. The actual print
+ * output is a separate copy portaled to a dedicated print-only root under
+ * <body> (see LabelPrintPortal), so each sticker breaks cleanly onto its
+ * own physical label page instead of fighting the review modal's layout —
+ * see globals.css's `#label-print-root` rules.
  */
 export function BatchLabelPrintView({ variants, onClose }: { variants: PrintableVariant[]; onClose: () => void }) {
-  const [urlsBySku, setUrlsBySku] = useState<Map<string, string>>(new Map());
-  const [failedSkus, setFailedSkus] = useState<Set<string>>(new Set());
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    let cancelled = false;
-    const createdUrls: string[] = [];
-
-    async function loadAll() {
-      const entries = await Promise.all(
-        variants.map(async (v) => {
-          try {
-            const url = await fetchVariantQrCodeObjectUrl(v.sku);
-            createdUrls.push(url);
-            return [v.sku, url] as const;
-          } catch {
-            return [v.sku, null] as const;
-          }
-        }),
-      );
-      if (cancelled) {
-        createdUrls.forEach((u) => URL.revokeObjectURL(u));
-        return;
-      }
-      setUrlsBySku(new Map(entries.filter(([, url]) => url !== null) as [string, string][]));
-      setFailedSkus(new Set(entries.filter(([, url]) => url === null).map(([sku]) => sku)));
-      setLoading(false);
-    }
-
-    void loadAll();
-
-    return () => {
-      cancelled = true;
-      createdUrls.forEach((u) => URL.revokeObjectURL(u));
-    };
-    // variants is a snapshot taken when the print view opens — re-running
-    // this on every parent re-render would refetch and thrash object URLs.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
       if (e.key === "Escape") onClose();
@@ -73,7 +30,8 @@ export function BatchLabelPrintView({ variants, onClose }: { variants: Printable
           <div>
             <h2 className="text-sm font-semibold text-slate-900 dark:text-slate-100">Print Labels</h2>
             <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
-              {variants.length} label{variants.length === 1 ? "" : "s"} &middot; 50mm &times; 25mm thermal stock
+              {variants.length} label{variants.length === 1 ? "" : "s"} &middot; {LABEL_WIDTH_MM}mm &times;{" "}
+              {LABEL_HEIGHT_MM}mm thermal stock
             </p>
           </div>
           <div className="flex items-center gap-2">
@@ -87,51 +45,25 @@ export function BatchLabelPrintView({ variants, onClose }: { variants: Printable
             <button
               type="button"
               onClick={() => window.print()}
-              disabled={loading}
-              className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-500 disabled:opacity-50"
+              className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-500"
             >
               Print
             </button>
           </div>
         </div>
 
-        {loading ? (
-          <div className="flex justify-center py-16 print:hidden">
-            <Spinner label="Generating labels..." />
-          </div>
-        ) : (
-          <div className="flex flex-wrap justify-center gap-3 rounded-xl bg-white p-4 print:hidden dark:bg-slate-900">
-            {variants.map((v) =>
-              failedSkus.has(v.sku) ? (
-                <div
-                  key={v.sku}
-                  className="flex h-[25mm] w-[50mm] shrink-0 items-center justify-center border border-dashed border-slate-300 p-2 text-center text-[9px] text-red-600 dark:border-slate-700"
-                >
-                  QR failed for {v.sku}
-                </div>
-              ) : (
-                <QrStickerLabel key={v.sku} variant={v} qrUrl={urlsBySku.get(v.sku) ?? null} />
-              ),
-            )}
-          </div>
-        )}
+        <div className="flex flex-wrap justify-center gap-3 rounded-xl bg-white p-4 print:hidden dark:bg-slate-900">
+          {variants.map((v) => (
+            <BarcodeStickerLabel key={v.sku} variant={v} />
+          ))}
+        </div>
       </div>
 
-      {!loading ? (
-        <QrLabelPrintPortal>
-          {(() => {
-            const printable = variants.filter((v) => !failedSkus.has(v.sku));
-            return printable.map((v, index) => (
-              <QrStickerLabel
-                key={v.sku}
-                variant={v}
-                qrUrl={urlsBySku.get(v.sku) ?? null}
-                breakAfter={index < printable.length - 1}
-              />
-            ));
-          })()}
-        </QrLabelPrintPortal>
-      ) : null}
+      <LabelPrintPortal>
+        {variants.map((v, index) => (
+          <BarcodeStickerLabel key={v.sku} variant={v} breakAfter={index < variants.length - 1} />
+        ))}
+      </LabelPrintPortal>
     </div>
   );
 }

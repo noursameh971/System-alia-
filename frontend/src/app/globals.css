@@ -37,9 +37,9 @@ body {
 
 /* Print isolation: any element carrying the .print-area class is the only
    thing that prints — everything else in the dashboard chrome behind it is
-   hidden. Used by the order receipt view. (QR sticker printing — single +
-   batch — uses the separate #qr-label-print-root mechanism below instead;
-   see QrLabelPrintPortal.tsx for why.) */
+   hidden. Used by the order receipt view. (Barcode label printing — single +
+   batch — uses the separate #label-print-root mechanism below instead;
+   see LabelPrintPortal.tsx for why.) */
 @media print {
   body * {
     visibility: hidden;
@@ -56,23 +56,34 @@ body {
   }
 }
 
-/* QR label printing (single-variant quick print + batch) portals its
-   printable markup into a dedicated #qr-label-print-root node appended
-   directly under <body> (see QrLabelPrintPortal.tsx), outside the whole
+/* Barcode label printing (single-variant quick print + batch) portals its
+   printable markup into a dedicated #label-print-root node appended
+   directly under <body> (see LabelPrintPortal.tsx), outside the whole
    app shell. That sidesteps two things the .print-area visibility+fixed
    trick above can't handle for it: (1) however much invisible-but-
    space-occupying dashboard layout sits above it in the DOM, which forced
    the browser to page through it as blank sheets, and (2) position:fixed's
    per-page-repeat semantics, which clip a multi-label batch instead of
-   paginating it across the several physical 50mm x 25mm pages it needs.
+   paginating it across the several physical label pages it needs.
    Named page size is scoped to this root so it doesn't affect the order
    receipt's normal-paper printing, which keeps the browser's default
-   @page size. */
-#qr-label-print-root {
+   @page size.
+
+   Size/orientation must exactly match the physical roll — this is a
+   portrait 40mm x 30mm direct-thermal label (see labelDimensions.ts, the
+   frontend's single source of truth for these two numbers; @page "size"
+   can't resolve a CSS custom property in any shipping browser, so it has
+   to be a literal here). A landscape size on a portrait-fed roll is what
+   previously made the printer rotate the whole label sideways and bleed
+   text across the label boundary onto the next sticker. Zero margin plus
+   `box-sizing: border-box` on the sticker itself (BarcodeStickerLabel) is
+   what keeps the barcode/text from ever being asked to fit in more than
+   this exact 40mm x 30mm box. */
+#label-print-root {
   display: none;
 }
 @media print {
-  body:has(#qr-label-print-root > *) > *:not(#qr-label-print-root) {
+  body:has(#label-print-root > *) > *:not(#label-print-root) {
     display: none !important;
   }
   /* The .print-area rule above blanket-hides body * with visibility:hidden
@@ -81,16 +92,16 @@ body {
      display:block, unaffected by visibility) but paints nothing: every
      descendant inherits visibility:hidden with nothing to override it,
      which is exactly what produced the correctly-sized but blank pages. */
-  #qr-label-print-root,
-  #qr-label-print-root * {
+  #label-print-root,
+  #label-print-root * {
     visibility: visible;
   }
-  #qr-label-print-root {
+  #label-print-root {
     display: block;
-    page: qr-label;
+    page: thermal-label;
   }
 }
-@page qr-label {
-  size: 50mm 25mm;
+@page thermal-label {
+  size: 40mm 30mm;
   margin: 0;
 }
