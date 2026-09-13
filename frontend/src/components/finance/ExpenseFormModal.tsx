@@ -4,6 +4,7 @@ import { useState, type FormEvent } from "react";
 import { toast } from "sonner";
 import { useLocale } from "@/context/LocaleContext";
 import { createExpense, updateExpense, EXPENSE_CATEGORY_META, EXPENSE_PAYMENT_LABEL } from "@/lib/expenses";
+import { formatPrice } from "@/lib/formatPrice";
 import { ApiError } from "@/lib/apiClient";
 import {
   EXPENSE_CATEGORIES,
@@ -11,6 +12,7 @@ import {
   type Expense,
   type ExpenseCategory,
   type ExpensePaymentMethod,
+  type LedgerEntity,
 } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -39,6 +41,8 @@ interface FormState {
   paymentMethod: ExpensePaymentMethod;
   receiptUrl: string;
   notes: string;
+  /** "" = not paying down a supplier; otherwise a ledger entity id. */
+  ledgerEntityId: string;
 }
 
 function blankForm(): FormState {
@@ -50,6 +54,7 @@ function blankForm(): FormState {
     paymentMethod: "cash",
     receiptUrl: "",
     notes: "",
+    ledgerEntityId: "",
   };
 }
 
@@ -62,6 +67,7 @@ function formFor(expense: Expense): FormState {
     paymentMethod: expense.paymentMethod,
     receiptUrl: expense.receiptUrl ?? "",
     notes: expense.notes ?? "",
+    ledgerEntityId: expense.ledgerEntityId ?? "",
   };
 }
 
@@ -71,6 +77,7 @@ export function ExpenseFormModal({
   onOpenChange,
   brandId,
   editing,
+  payableSuppliers,
   onSuccess,
 }: {
   open: boolean;
@@ -78,6 +85,8 @@ export function ExpenseFormModal({
   brandId: string;
   /** null = create mode. */
   editing: Expense | null;
+  /** Suppliers this expense can be linked to as a payment — only balanceType "payable" entities make sense here (see assertLinkableLedgerEntity on the backend). */
+  payableSuppliers: LedgerEntity[];
   onSuccess: () => void;
 }) {
   const { t } = useLocale();
@@ -99,6 +108,8 @@ export function ExpenseFormModal({
     setForm((prev) => ({ ...prev, [key]: value }));
     setErrors((prev) => ({ ...prev, [key]: undefined }));
   }
+
+  const selectedSupplier = payableSuppliers.find((supplier) => supplier.id === form.ledgerEntityId) ?? null;
 
   function validate(): boolean {
     const next: Partial<Record<keyof FormState, string>> = {};
@@ -126,6 +137,9 @@ export function ExpenseFormModal({
         expenseDate: form.expenseDate,
         receiptUrl: form.receiptUrl.trim(),
         notes: form.notes.trim(),
+        // "" -> null uniformly: on create this just means "no link"; on
+        // edit it explicitly unlinks a supplier that was previously set.
+        ledgerEntityId: form.ledgerEntityId || null,
       };
 
       if (editing) {
@@ -235,6 +249,37 @@ export function ExpenseFormModal({
               </Select>
             </div>
           </div>
+
+          {payableSuppliers.length > 0 ? (
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="expense-supplier">
+                {t("Pay down a supplier's balance")} <span className="font-normal text-slate-400">({t("optional")})</span>
+              </Label>
+              <Select
+                id="expense-supplier"
+                value={form.ledgerEntityId}
+                onChange={(e) => setField("ledgerEntityId", e.target.value)}
+                disabled={submitting}
+              >
+                <option value="">{t("None — a regular expense")}</option>
+                {payableSuppliers.map((supplier) => (
+                  <option key={supplier.id} value={supplier.id}>
+                    {supplier.name}
+                  </option>
+                ))}
+              </Select>
+              {selectedSupplier ? (
+                <p className="text-xs text-slate-500 dark:text-slate-400">
+                  {t("This amount will also be recorded as a payment to")} {selectedSupplier.name} —{" "}
+                  {t("Remaining Balance")}: <span className="font-medium tabular-nums">{formatPrice(selectedSupplier.remainingBalance)}</span>
+                </p>
+              ) : (
+                <p className="text-xs text-slate-500 dark:text-slate-400">
+                  {t("Pick a supplier if this expense is actually a payment toward what you owe them — it'll reduce their Remaining Balance too.")}
+                </p>
+              )}
+            </div>
+          ) : null}
 
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="expense-receipt">

@@ -1,6 +1,6 @@
 import { and, desc, eq, gte, lte, ne, sql } from "drizzle-orm";
 import { db } from "../../db/client.js";
-import { expenses, orderItems, orders, productVariants, products, revenues } from "../../db/schema/index.js";
+import { expenses, ledgerEntities, ledgerTransactions, orderItems, orders, productVariants, products, revenues } from "../../db/schema/index.js";
 import { ApiError } from "../../utils/apiError.js";
 import {
   EXPENSE_CATEGORIES,
@@ -22,10 +22,14 @@ export interface ExpenseRecord {
   expenseDate: string;
   receiptUrl: string | null;
   notes: string | null;
+  /** Set when this expense also pays down a specific supplier's payable balance — see createExpense/updateExpense. */
+  ledgerEntityId: string | null;
+  /** Display name of the linked supplier, joined in for the Expenses table's "Paid to" column — null when not linked. */
+  ledgerEntityName: string | null;
   createdAt: string;
 }
 
-function toRecord(row: typeof expenses.$inferSelect): ExpenseRecord {
+function toRecord(row: typeof expenses.$inferSelect, ledgerEntityName: string | null = null): ExpenseRecord {
   return {
     id: row.id,
     brandId: row.brandId,
@@ -37,6 +41,8 @@ function toRecord(row: typeof expenses.$inferSelect): ExpenseRecord {
     expenseDate: row.expenseDate,
     receiptUrl: row.receiptUrl,
     notes: row.notes,
+    ledgerEntityId: row.ledgerEntityId,
+    ledgerEntityName,
     createdAt: row.createdAt.toISOString(),
   };
 }
@@ -48,56 +54,176 @@ export async function listExpenses(query: ListExpensesQuery): Promise<ExpenseRec
   if (query.to) filters.push(lte(expenses.expenseDate, query.to));
 
   const rows = await db
-    .select()
+    .select({ expense: expenses, ledgerEntityName: ledgerEntities.name })
     .from(expenses)
+    .leftJoin(ledgerEntities, eq(ledgerEntities.id, expenses.ledgerEntityId))
     .where(and(...filters))
     .orderBy(desc(expenses.expenseDate), desc(expenses.createdAt));
 
-  return rows.map(toRecord);
+  return rows.map((row) => toRecord(row.expense, row.ledgerEntityName));
 }
 
+/** Validates a supplier is eligible to be linked to an expense payment: same brand, and payable (you can't "pay down" a receivable — see ledger_balance_type). */
+async function assertLinkableLedgerEntity(
+  tx: Parameters<Parameters<typeof db.transaction>[0]>[0],
+  ledgerEntityId: string,
+  brandId: string,
+): Promise<typeof ledgerEntities.$inferSelect> {
+  const [entity] = await tx.select().from(ledgerEntities).where(eq(ledgerEntities.id, ledgerEntityId)).limit(1);
+  if (!entity) throw ApiError.badRequest("Selected supplier does not exist");
+  if (entity.brandId !== brandId) throw ApiError.badRequest("Selected supplier belongs to a different brand");
+  if (entity.balanceType !== "payable") {
+    throw ApiError.badRequest("Only payable suppliers can be linked to an expense payment");
+  }
+  return entity;
+}
+
+/**
+ * Creates the expense and, when a supplier is linked, a matching
+ * ledger_transactions "payment" row in the same DB transaction — the
+ * expense only exists linked if the payment was actually recorded against
+ * the supplier's balance, and vice versa.
+ */
 export async function createExpense(input: CreateExpenseInput, actorUserId: string): Promise<ExpenseRecord> {
-  const [created] = await db
-    .insert(expenses)
-    .values({
-      brandId: input.brandId,
-      title: input.title,
-      category: input.category,
-      amount: input.amount.toFixed(2),
-      paymentMethod: input.paymentMethod,
-      expenseDate: input.expenseDate,
-      receiptUrl: input.receiptUrl?.trim() || null,
-      notes: input.notes?.trim() || null,
-      createdBy: actorUserId,
-    })
-    .returning();
+  return db.transaction(async (tx) => {
+    let ledgerTransactionId: string | null = null;
+    let ledgerEntityName: string | null = null;
 
-  return toRecord(created!);
+    if (input.ledgerEntityId) {
+      const entity = await assertLinkableLedgerEntity(tx, input.ledgerEntityId, input.brandId);
+      ledgerEntityName = entity.name;
+
+      const [txRow] = await tx
+        .insert(ledgerTransactions)
+        .values({
+          entityId: entity.id,
+          brandId: entity.brandId,
+          kind: "payment",
+          amount: input.amount.toFixed(2),
+          transactionDate: input.expenseDate,
+          notes: `Expense: ${input.title}`,
+          createdBy: actorUserId,
+        })
+        .returning({ id: ledgerTransactions.id });
+      ledgerTransactionId = txRow!.id;
+    }
+
+    const [created] = await tx
+      .insert(expenses)
+      .values({
+        brandId: input.brandId,
+        title: input.title,
+        category: input.category,
+        amount: input.amount.toFixed(2),
+        paymentMethod: input.paymentMethod,
+        expenseDate: input.expenseDate,
+        receiptUrl: input.receiptUrl?.trim() || null,
+        notes: input.notes?.trim() || null,
+        ledgerEntityId: input.ledgerEntityId ?? null,
+        ledgerTransactionId,
+        createdBy: actorUserId,
+      })
+      .returning();
+
+    return toRecord(created!, ledgerEntityName);
+  });
 }
 
+/**
+ * Updates the expense and keeps its linked ledger payment (if any) in sync:
+ * - `ledgerEntityId` omitted → linkage untouched, but if a link already
+ *   exists and amount/date/title changed, the linked payment is updated to
+ *   match (so the two never silently drift apart).
+ * - `ledgerEntityId: null` → explicitly unlinks, deleting the payment row.
+ * - `ledgerEntityId: "<uuid>"` → links (or re-links to a different
+ *   supplier), deleting any old payment row and creating a fresh one.
+ */
 export async function updateExpense(id: string, input: UpdateExpenseInput): Promise<ExpenseRecord> {
-  const [updated] = await db
-    .update(expenses)
-    .set({
-      ...(input.title !== undefined ? { title: input.title } : {}),
-      ...(input.category !== undefined ? { category: input.category } : {}),
-      ...(input.amount !== undefined ? { amount: input.amount.toFixed(2) } : {}),
-      ...(input.paymentMethod !== undefined ? { paymentMethod: input.paymentMethod } : {}),
-      ...(input.expenseDate !== undefined ? { expenseDate: input.expenseDate } : {}),
-      ...(input.receiptUrl !== undefined ? { receiptUrl: input.receiptUrl.trim() || null } : {}),
-      ...(input.notes !== undefined ? { notes: input.notes.trim() || null } : {}),
-      updatedAt: sql`now()`,
-    })
-    .where(eq(expenses.id, id))
-    .returning();
+  return db.transaction(async (tx) => {
+    const [existing] = await tx.select().from(expenses).where(eq(expenses.id, id)).limit(1);
+    if (!existing) throw ApiError.notFound("Expense not found");
 
-  if (!updated) throw ApiError.notFound("Expense not found");
-  return toRecord(updated);
+    const finalTitle = input.title ?? existing.title;
+    const finalAmount = input.amount ?? Number(existing.amount);
+    const finalExpenseDate = input.expenseDate ?? existing.expenseDate;
+    const desiredLedgerEntityId = input.ledgerEntityId === undefined ? existing.ledgerEntityId : input.ledgerEntityId;
+
+    let ledgerTransactionId: string | null = existing.ledgerTransactionId;
+    let ledgerEntityName: string | null = null;
+
+    if (desiredLedgerEntityId === null) {
+      if (existing.ledgerTransactionId) {
+        await tx.delete(ledgerTransactions).where(eq(ledgerTransactions.id, existing.ledgerTransactionId));
+      }
+      ledgerTransactionId = null;
+    } else {
+      const entity = await assertLinkableLedgerEntity(tx, desiredLedgerEntityId, existing.brandId);
+      ledgerEntityName = entity.name;
+
+      const isSameLink = existing.ledgerEntityId === desiredLedgerEntityId && existing.ledgerTransactionId !== null;
+
+      if (isSameLink) {
+        await tx
+          .update(ledgerTransactions)
+          .set({
+            amount: finalAmount.toFixed(2),
+            transactionDate: finalExpenseDate,
+            notes: `Expense: ${finalTitle}`,
+          })
+          .where(eq(ledgerTransactions.id, existing.ledgerTransactionId!));
+      } else {
+        if (existing.ledgerTransactionId) {
+          await tx.delete(ledgerTransactions).where(eq(ledgerTransactions.id, existing.ledgerTransactionId));
+        }
+        const [txRow] = await tx
+          .insert(ledgerTransactions)
+          .values({
+            entityId: entity.id,
+            brandId: entity.brandId,
+            kind: "payment",
+            amount: finalAmount.toFixed(2),
+            transactionDate: finalExpenseDate,
+            notes: `Expense: ${finalTitle}`,
+            createdBy: existing.createdBy,
+          })
+          .returning({ id: ledgerTransactions.id });
+        ledgerTransactionId = txRow!.id;
+      }
+    }
+
+    const [updated] = await tx
+      .update(expenses)
+      .set({
+        ...(input.title !== undefined ? { title: input.title } : {}),
+        ...(input.category !== undefined ? { category: input.category } : {}),
+        ...(input.amount !== undefined ? { amount: input.amount.toFixed(2) } : {}),
+        ...(input.paymentMethod !== undefined ? { paymentMethod: input.paymentMethod } : {}),
+        ...(input.expenseDate !== undefined ? { expenseDate: input.expenseDate } : {}),
+        ...(input.receiptUrl !== undefined ? { receiptUrl: input.receiptUrl.trim() || null } : {}),
+        ...(input.notes !== undefined ? { notes: input.notes.trim() || null } : {}),
+        ledgerEntityId: desiredLedgerEntityId,
+        ledgerTransactionId,
+        updatedAt: sql`now()`,
+      })
+      .where(eq(expenses.id, id))
+      .returning();
+
+    if (!updated) throw ApiError.notFound("Expense not found");
+    return toRecord(updated, ledgerEntityName);
+  });
 }
 
+/** Deleting an expense also deletes the ledger payment it created, if any — otherwise the supplier's Remaining Balance would stay reduced by a payment whose expense record no longer exists. */
 export async function deleteExpense(id: string): Promise<void> {
-  const [deleted] = await db.delete(expenses).where(eq(expenses.id, id)).returning({ id: expenses.id });
-  if (!deleted) throw ApiError.notFound("Expense not found");
+  return db.transaction(async (tx) => {
+    const [existing] = await tx.select().from(expenses).where(eq(expenses.id, id)).limit(1);
+    if (!existing) throw ApiError.notFound("Expense not found");
+
+    if (existing.ledgerTransactionId) {
+      await tx.delete(ledgerTransactions).where(eq(ledgerTransactions.id, existing.ledgerTransactionId));
+    }
+    await tx.delete(expenses).where(eq(expenses.id, id));
+  });
 }
 
 /** Used by requireBrandAccess-style checks on :id routes, where the brand isn't in the URL. */

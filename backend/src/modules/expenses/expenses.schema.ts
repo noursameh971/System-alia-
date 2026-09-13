@@ -29,11 +29,27 @@ export const createExpenseSchema = z.object({
   expenseDate: dateOnly,
   receiptUrl: z.string().trim().max(2000).optional().or(z.literal("")),
   notes: z.string().trim().max(2000).optional().or(z.literal("")),
+  /**
+   * Optional link to a payable ledger entity — when set, this expense's
+   * amount is also recorded as a ledger payment against that supplier,
+   * reducing their Remaining Balance. See expenses.service.ts. Accepts
+   * `null` (treated the same as omitted — "no link") as well as `undefined`
+   * so the frontend can send one uniform shape on both create and update.
+   */
+  ledgerEntityId: z.string().uuid().nullable().optional(),
 });
 
 export type CreateExpenseInput = z.infer<typeof createExpenseSchema>;
 
-/** brandId is intentionally absent: moving an expense between workspaces would silently rewrite two brands' P&L, so it isn't an edit — delete and re-create instead. */
+/**
+ * brandId is intentionally absent: moving an expense between workspaces
+ * would silently rewrite two brands' P&L, so it isn't an edit — delete and
+ * re-create instead.
+ *
+ * ledgerEntityId's meaning shifts slightly on update vs create: omitting
+ * the field leaves an existing link untouched, `null` explicitly unlinks a
+ * supplier that was previously linked, and a uuid links/re-links.
+ */
 export const updateExpenseSchema = createExpenseSchema
   .omit({ brandId: true })
   .partial()

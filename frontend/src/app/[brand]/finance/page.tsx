@@ -97,6 +97,10 @@ export default function FinancePage() {
   );
   const cashFlow = useSWR(["cash-flow-summary", brand.id], () => getCashFlowSummary(brand.id));
   const suppliers = useSWR(["ledger-entities", brand.id], () => listLedgerEntities(brand.id));
+  // Only payable entities make sense as an expense's "pay down this balance"
+  // target — you can't reduce a receivable (money owed to us) by recording
+  // an operating expense. See assertLinkableLedgerEntity on the backend.
+  const payableSuppliers = (suppliers.data ?? []).filter((entity) => entity.balanceType === "payable");
 
   useEffect(() => {
     if (!isSessionLoading && !canAccessFinance) router.replace(workspaceHomePath(brand.code));
@@ -499,6 +503,7 @@ export default function FinancePage() {
         onOpenChange={setFormOpen}
         brandId={brand.id}
         editing={editing}
+        payableSuppliers={payableSuppliers}
         onSuccess={refreshAll}
       />
 

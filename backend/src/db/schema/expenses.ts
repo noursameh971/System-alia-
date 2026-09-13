@@ -2,6 +2,7 @@ import { char, date, index, numeric, pgTable, text, timestamp, uuid, varchar } f
 import { sql } from "drizzle-orm";
 import { brands } from "./brands.js";
 import { users } from "./users.js";
+import { ledgerEntities, ledgerTransactions } from "./ledger.js";
 import { expenseCategoryEnum, expensePaymentMethodEnum } from "./enums.js";
 
 /**
@@ -26,11 +27,22 @@ export const expenses = pgTable(
     expenseDate: date("expense_date").notNull(),
     receiptUrl: text("receipt_url"),
     notes: text("notes"),
+    /**
+     * Optional: this expense also represents a payment toward a supplier's
+     * payable balance. ledgerTransactionId is the ledger_transactions row
+     * (kind: "payment") this expense created — kept in sync on edit/delete
+     * rather than left to drift, see expenses.service.ts.
+     */
+    ledgerEntityId: uuid("ledger_entity_id").references(() => ledgerEntities.id, { onDelete: "set null" }),
+    ledgerTransactionId: uuid("ledger_transaction_id").references(() => ledgerTransactions.id, { onDelete: "set null" }),
     createdBy: uuid("created_by")
       .notNull()
       .references(() => users.id, { onDelete: "restrict" }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
-  (table) => [index("ix_expenses_brand_date").on(table.brandId, table.expenseDate)],
+  (table) => [
+    index("ix_expenses_brand_date").on(table.brandId, table.expenseDate),
+    index("ix_expenses_ledger_entity").on(table.ledgerEntityId),
+  ],
 );

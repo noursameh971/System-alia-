@@ -580,6 +580,10 @@ export interface Expense {
   expenseDate: string;
   receiptUrl: string | null;
   notes: string | null;
+  /** Set when this expense also pays down a specific supplier's payable balance in the Suppliers & Debts Ledger. */
+  ledgerEntityId: string | null;
+  /** The linked supplier's name, joined in server-side — null when not linked. */
+  ledgerEntityName: string | null;
   createdAt: string;
 }
 
@@ -592,9 +596,16 @@ export interface CreateExpenseInput {
   expenseDate: string;
   receiptUrl?: string;
   notes?: string;
+  /** Links this expense to a payable supplier — its amount is also recorded as a ledger payment reducing their Remaining Balance. */
+  ledgerEntityId?: string | null;
 }
 
-/** brandId is absent by design — moving an expense between workspaces would rewrite two brands' P&L. */
+/**
+ * brandId is absent by design — moving an expense between workspaces would
+ * rewrite two brands' P&L. ledgerEntityId carries its three-way meaning
+ * through Partial unchanged: omitted = leave the existing link untouched,
+ * null = unlink, a uuid = link/re-link.
+ */
 export type UpdateExpenseInput = Partial<Omit<CreateExpenseInput, "brandId">>;
 
 export type ExpenseCategoryTotals = Record<ExpenseCategory, number>;

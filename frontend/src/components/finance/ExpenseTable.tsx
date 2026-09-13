@@ -86,6 +86,11 @@ export function ExpenseTable({
                 </TableCell>
                 <TableCell className="py-3">
                   <p className="font-medium text-slate-900 dark:text-slate-100">{expense.title}</p>
+                  {expense.ledgerEntityName ? (
+                    <p className="mt-0.5 text-xs text-indigo-600 dark:text-indigo-400">
+                      {t("Paid to")} {expense.ledgerEntityName}
+                    </p>
+                  ) : null}
                   {expense.notes ? (
                     <p className="mt-0.5 max-w-xs truncate text-xs text-slate-400 dark:text-slate-500">{expense.notes}</p>
                   ) : null}

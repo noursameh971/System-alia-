@@ -189,6 +189,12 @@ export const ar: Record<string, string> = {
   "Pick a date": "اختر تاريخًا",
   "Expense added": "تمت إضافة المصروف",
   "Expense updated": "تم تحديث المصروف",
+  "Pay down a supplier's balance": "تسديد جزء من رصيد مورد",
+  "None — a regular expense": "بدون — مصروف عادي",
+  "This amount will also be recorded as a payment to": "سيُسجَّل هذا المبلغ أيضًا كدفعة إلى",
+  "Pick a supplier if this expense is actually a payment toward what you owe them — it'll reduce their Remaining Balance too.":
+    "اختر موردًا إذا كان هذا المصروف في الحقيقة دفعة مما تدين له به — سيُخصم أيضًا من رصيده المتبقي.",
+  "Paid to": "مدفوع إلى",
   "Expense deleted": "تم حذف المصروف",
   "Failed to delete the expense": "فشل حذف المصروف",
   "This permanently removes": "سيؤدي هذا إلى الحذف النهائي لـ",
