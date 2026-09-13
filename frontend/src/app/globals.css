@@ -65,20 +65,18 @@ body {
    the browser to page through it as blank sheets, and (2) position:fixed's
    per-page-repeat semantics, which clip a multi-label batch instead of
    paginating it across the several physical label pages it needs.
-   Named page size is scoped to this root so it doesn't affect the order
-   receipt's normal-paper printing, which keeps the browser's default
-   @page size.
 
-   Size/orientation must exactly match the physical roll — this is a
-   portrait 40mm x 30mm direct-thermal label (see labelDimensions.ts, the
-   frontend's single source of truth for these two numbers; @page "size"
-   can't resolve a CSS custom property in any shipping browser, so it has
-   to be a literal here). A landscape size on a portrait-fed roll is what
-   previously made the printer rotate the whole label sideways and bleed
-   text across the label boundary onto the next sticker. Zero margin plus
-   `box-sizing: border-box` on the sticker itself (BarcodeStickerLabel) is
-   what keeps the barcode/text from ever being asked to fit in more than
-   this exact 40mm x 30mm box. */
+   The page's own size/orientation (landscape 40mm x 30mm, matching the
+   physical thermal roll) is deliberately NOT declared here as a named
+   `@page` rule — Chromium's print pipeline has a long, still-partial
+   history of not reliably honoring named pages, which is a very plausible
+   reason this used to need the browser's Paper size/Orientation picked by
+   hand on every print despite a `@page` rule already existing. It's set
+   instead via a temporary, unnamed `@page` style tag injected only while a
+   label print is actually happening — see labelPrintStyle.ts — which has
+   universal browser support and can't leak into the order receipt's own,
+   unrelated print action the way a permanent rule here would need careful
+   scoping to avoid. */
 #label-print-root {
   display: none;
 }
@@ -98,31 +96,18 @@ body {
   }
   #label-print-root {
     display: block;
-    page: thermal-label;
   }
   /* Belt-and-suspenders against a single sticker fragmenting across two
      physical labels: the sticker's own fixed 40mm x 30mm box (BarcodeStickerLabel)
      already can't hold more content than that, but a `@page` size the print
-     dialog doesn't actually honor (see below) would otherwise still split it.
-     `break-after`/`page-break-after` are intentionally NOT forced to `avoid`
-     here — batch printing needs the opposite on every sticker but the last
-     (`print:break-after-page`, applied per-element via the `breakAfter` prop)
-     to land each label on its own page. */
+     dialog doesn't actually honor (see the print dialog note in
+     labelPrintStyle.ts) would otherwise still split it. `break-after`/
+     `page-break-after` are intentionally NOT forced to `avoid` here — batch
+     printing needs the opposite on every sticker but the last
+     (`print:break-after-page`, applied per-element via the `breakAfter`
+     prop) to land each label on its own page. */
   .barcode-sticker {
     break-inside: avoid;
     page-break-inside: avoid;
   }
-}
-/* This @page rule only takes effect if the print dialog's selected paper
-   size and scale actually match it — Chrome remembers a per-printer "Paper
-   size" preset and "Scale" independently of the page's own CSS, and either
-   one being wrong (e.g. a saved preset that isn't really 40mm x 30mm, or a
-   Scale other than Default/100%) forces the browser to fragment this label
-   across multiple sheets no matter how small the content is. If labels
-   still split across sheets after this, check the print dialog first:
-   Paper size must be a 40mm x 30mm preset and Scale must be Default/100 —
-   no CSS on this page can override either setting. */
-@page thermal-label {
-  size: 40mm 30mm;
-  margin: 0;
 }

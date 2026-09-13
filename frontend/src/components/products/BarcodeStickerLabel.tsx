@@ -1,4 +1,3 @@
-import { formatPrice } from "@/lib/formatPrice";
 import { LABEL_HEIGHT_MM, LABEL_WIDTH_MM } from "@/lib/labelDimensions";
 import { BarcodeImage } from "./BarcodeImage";
 
@@ -7,8 +6,6 @@ export interface StickerVariant {
   productName: string;
   color: string;
   size: string;
-  price: number | null;
-  currency: string | null;
 }
 
 /**
@@ -16,9 +13,9 @@ export interface StickerVariant {
  * (VariantPrintButton) and the "Print all labels" batch grid
  * (BatchLabelPrintView), so both produce identically formatted labels.
  *
- * Portrait layout (barcode on top, details stacked below) to match how this
- * label stock actually feeds through the printer — a landscape layout on a
- * portrait-fed roll printed sideways and bled across the label boundary.
+ * Deliberately no price on the sticker — these are inventory/SKU-lookup
+ * labels, not price tags.
+ *
  * LABEL_WIDTH_MM/LABEL_HEIGHT_MM (labelDimensions.ts) is the single source
  * of truth for the physical size; it must stay in sync with the @page rule
  * in globals.css (see the comment there for why that can't just import it).
@@ -59,12 +56,6 @@ export function BarcodeStickerLabel({
         style={{ fontSize: "2.3mm", lineHeight: 1 }}
       >
         {variant.color} / {variant.size}
-      </p>
-      <p
-        className="w-full truncate text-center font-bold text-slate-900 print:text-black"
-        style={{ fontSize: "2.8mm", lineHeight: 1 }}
-      >
-        {formatPrice(variant.price, variant.currency)}
       </p>
     </div>
   );

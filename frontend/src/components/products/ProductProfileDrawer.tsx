@@ -374,8 +374,6 @@ export function ProductProfileDrawer({ product, onOpenChange, canManage, onMutat
       productName: product.name,
       color: attributeValue(v.attributes, "color"),
       size: attributeValue(v.attributes, "size"),
-      price: v.price,
-      currency: v.currency,
     }));
     onOpenChange(false);
     setPrintTarget(variants);
@@ -498,8 +496,6 @@ export function ProductProfileDrawer({ product, onOpenChange, canManage, onMutat
                                     productName: product.name,
                                     color: color === "—" ? "" : color,
                                     size: size === "—" ? "" : size,
-                                    price: variant.price,
-                                    currency: variant.currency,
                                   }}
                                 />
                                 {canManage ? (

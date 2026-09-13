@@ -2,6 +2,7 @@
 
 import { useEffect } from "react";
 import { LABEL_HEIGHT_MM, LABEL_WIDTH_MM } from "@/lib/labelDimensions";
+import { clearLabelPrintPageStyle, setLabelPrintPageStyle } from "@/lib/labelPrintStyle";
 import { LabelPrintPortal } from "./LabelPrintPortal";
 import { BarcodeStickerLabel, type StickerVariant } from "./BarcodeStickerLabel";
 
@@ -22,6 +23,15 @@ export function BatchLabelPrintView({ variants, onClose }: { variants: Printable
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [onClose]);
+
+  // Active for the whole review-modal lifetime rather than wrapped tightly
+  // around each window.print() call — this modal can be printed zero, one,
+  // or several times before closing, and the cleanup only needs to happen
+  // once, whenever that is (see labelPrintStyle.ts for why this exists).
+  useEffect(() => {
+    setLabelPrintPageStyle();
+    return () => clearLabelPrintPageStyle();
+  }, []);
 
   return (
     <div className="fixed inset-0 z-30 overflow-y-auto bg-slate-900/50 print:bg-white">

@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { Printer } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { clearLabelPrintPageStyle, setLabelPrintPageStyle } from "@/lib/labelPrintStyle";
 import { LabelPrintPortal } from "./LabelPrintPortal";
 import { BarcodeStickerLabel, type StickerVariant } from "./BarcodeStickerLabel";
 
@@ -26,9 +27,11 @@ export function VariantPrintButton({ variant }: { variant: StickerVariant }) {
     // actually paint before invoking print — calling print() immediately
     // after a state update can otherwise capture a stale (pre-render) layout.
     await nextFrame();
+    setLabelPrintPageStyle();
     window.print();
 
     const cleanup = () => {
+      clearLabelPrintPageStyle();
       setPrinting(false);
       window.removeEventListener("afterprint", cleanup);
     };
