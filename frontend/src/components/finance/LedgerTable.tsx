@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { CircleDollarSign } from "lucide-react";
+import { CircleDollarSign, ChevronRight } from "lucide-react";
 import { useLocale } from "@/context/LocaleContext";
 import { formatPrice } from "@/lib/formatPrice";
 import type { LedgerEntity } from "@/lib/types";
@@ -60,11 +60,21 @@ export function LedgerTable({
           {entities.map((entity) => (
             <TableRow key={entity.id}>
               <TableCell className="py-3">
+                {/*
+                  Always-visible indigo color + icon, not just a hover
+                  underline — a black-on-black link with only a hover
+                  affordance is too easy to mistake for plain text at a
+                  glance (this is exactly the ambiguity that made a stale
+                  cached page and a freshly-deployed one look identical in
+                  screenshots during troubleshooting), so the link state is
+                  unmistakable even in a static screenshot.
+                */}
                 <Link
                   href={`/${brandCode.toLowerCase()}/finance/suppliers/${entity.id}`}
-                  className="font-medium text-slate-900 hover:underline dark:text-slate-100"
+                  className="group inline-flex items-center gap-1 font-medium text-indigo-600 hover:underline dark:text-indigo-400"
                 >
                   {entity.name}
+                  <ChevronRight className="size-3.5 shrink-0 text-indigo-400 transition-transform group-hover:translate-x-0.5 rtl:rotate-180 dark:text-indigo-500" />
                 </Link>
                 <div className="mt-1">
                   <LedgerBalanceTypeBadge balanceType={entity.balanceType} />
