@@ -47,3 +47,44 @@ export const recordPaymentSchema = z.object({
 });
 
 export type RecordPaymentInput = z.infer<typeof recordPaymentSchema>;
+
+/** "Add New Bill / Invoice" on the Supplier Detail page — same shape as recordPaymentSchema plus an optional due date, mirroring the opening-balance flow's charge fields. */
+export const createChargeSchema = z.object({
+  amount: z.number().positive("Amount must be greater than 0").max(99_999_999),
+  transactionDate: dateOnly.optional(),
+  dueDate: dateOnly.optional(),
+  notes: z.string().trim().max(2000).optional().or(z.literal("")),
+});
+
+export type CreateChargeInput = z.infer<typeof createChargeSchema>;
+
+/**
+ * "Edit Supplier Info" on the Supplier Detail page. balanceType is
+ * deliberately not editable here — see getOrCreateEntity's comment on why
+ * flipping payable/receivable after the fact would retroactively change
+ * what every past transaction meant.
+ */
+export const updateLedgerEntitySchema = z.object({
+  name: z.string().trim().min(1, "Entity/Supplier name is required").max(200).optional(),
+  category: z.enum(LEDGER_ENTITY_CATEGORIES).optional(),
+  phone: z.string().trim().max(50).optional().or(z.literal("")),
+  notes: z.string().trim().max(2000).optional().or(z.literal("")),
+});
+
+export type UpdateLedgerEntityInput = z.infer<typeof updateLedgerEntitySchema>;
+
+/**
+ * Editing (or adjusting) one existing ledger_transactions row from the
+ * Supplier Detail page's history table. kind is deliberately not editable —
+ * a charge silently becoming a payment (or vice versa) would corrupt what
+ * Total Billed/Amount Paid mean without anything about the row visibly
+ * changing.
+ */
+export const updateLedgerTransactionSchema = z.object({
+  amount: z.number().positive("Amount must be greater than 0").max(99_999_999).optional(),
+  transactionDate: dateOnly.optional(),
+  dueDate: dateOnly.nullable().optional(),
+  notes: z.string().trim().max(2000).optional().or(z.literal("")),
+});
+
+export type UpdateLedgerTransactionInput = z.infer<typeof updateLedgerTransactionSchema>;

@@ -6,7 +6,7 @@
  */
 import xlsx from "xlsx";
 import { ApiError } from "../../utils/apiError.js";
-import { createOpeningBalance, listLedgerEntities } from "./ledger.service.js";
+import { createOpeningBalance, getLedgerEntityWithTransactions, listLedgerEntities } from "./ledger.service.js";
 import { LEDGER_BALANCE_TYPES, LEDGER_ENTITY_CATEGORIES, type LedgerBalanceType, type LedgerEntityCategory } from "./ledger.schema.js";
 
 const EXPORT_HEADERS = [
@@ -71,6 +71,49 @@ export async function exportLedgerWorkbook(brandId: string): Promise<Buffer> {
 
   const book = xlsx.utils.book_new();
   xlsx.utils.book_append_sheet(book, sheet, "Ledger");
+  return xlsx.write(book, { type: "buffer", bookType: "xlsx" }) as Buffer;
+}
+
+const TRANSACTION_KIND_LABELS = {
+  opening_balance: "Opening Balance",
+  charge: "Charge",
+  payment: "Payment",
+} as const;
+
+/**
+ * "Export Statement" on the Supplier Detail page — one entity's full
+ * history, not the whole ledger. A small summary block up top (mirrors the
+ * KPI cards on the detail page) followed by the transaction table, built
+ * with aoa_to_sheet since it's two different shapes stacked in one sheet
+ * rather than a single flat row-per-record table like exportLedgerWorkbook.
+ */
+export async function exportLedgerEntityStatement(entityId: string): Promise<Buffer> {
+  const entity = await getLedgerEntityWithTransactions(entityId);
+
+  const rows: (string | number)[][] = [
+    ["Supplier", entity.name],
+    ["Category", CATEGORY_LABELS[entity.category]],
+    ["Type", BALANCE_TYPE_LABELS[entity.balanceType]],
+    ["Phone", entity.phone ?? ""],
+    ["Total Billed", entity.totalBilled],
+    ["Amount Paid", entity.amountPaid],
+    ["Remaining Balance", entity.remainingBalance],
+    [],
+    ["Date", "Type", "Amount", "Due Date", "Notes"],
+    ...entity.transactions.map((tx) => [
+      tx.transactionDate,
+      TRANSACTION_KIND_LABELS[tx.kind],
+      tx.amount,
+      tx.dueDate ?? "",
+      tx.notes ?? "",
+    ]),
+  ];
+
+  const sheet = xlsx.utils.aoa_to_sheet(rows);
+  sheet["!cols"] = [{ wch: 14 }, { wch: 16 }, { wch: 14 }, { wch: 14 }, { wch: 34 }];
+
+  const book = xlsx.utils.book_new();
+  xlsx.utils.book_append_sheet(book, sheet, "Statement");
   return xlsx.write(book, { type: "buffer", bookType: "xlsx" }) as Buffer;
 }
 

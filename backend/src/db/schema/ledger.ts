@@ -22,6 +22,7 @@ export const ledgerEntities = pgTable(
     name: varchar("name", { length: 200 }).notNull(),
     category: ledgerEntityCategoryEnum("category").notNull().default("other"),
     balanceType: ledgerBalanceTypeEnum("balance_type").notNull(),
+    phone: varchar("phone", { length: 50 }),
     notes: text("notes"),
     createdBy: uuid("created_by")
       .notNull()

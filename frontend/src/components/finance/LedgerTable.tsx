@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { CircleDollarSign } from "lucide-react";
 import { useLocale } from "@/context/LocaleContext";
 import { formatPrice } from "@/lib/formatPrice";
@@ -15,7 +16,7 @@ import { LedgerBalanceTypeBadge, LedgerCategoryBadge } from "./LedgerBadges";
  * us), slate once it's settled or overpaid — a negative remaining balance
  * is a credit, not a debt, so it doesn't get the "danger" treatment either.
  */
-function remainingBalanceClass(entity: LedgerEntity): string {
+export function remainingBalanceClass(entity: LedgerEntity): string {
   if (entity.remainingBalance <= 0) return "text-slate-400 dark:text-slate-500";
   return entity.balanceType === "payable"
     ? "text-red-600 dark:text-red-400"
@@ -24,9 +25,11 @@ function remainingBalanceClass(entity: LedgerEntity): string {
 
 export function LedgerTable({
   entities,
+  brandCode,
   onRecordPayment,
 }: {
   entities: LedgerEntity[];
+  brandCode: string;
   onRecordPayment: (entity: LedgerEntity) => void;
 }) {
   const { t } = useLocale();
@@ -57,7 +60,12 @@ export function LedgerTable({
           {entities.map((entity) => (
             <TableRow key={entity.id}>
               <TableCell className="py-3">
-                <p className="font-medium text-slate-900 dark:text-slate-100">{entity.name}</p>
+                <Link
+                  href={`/${brandCode.toLowerCase()}/finance/suppliers/${entity.id}`}
+                  className="font-medium text-slate-900 hover:underline dark:text-slate-100"
+                >
+                  {entity.name}
+                </Link>
                 <div className="mt-1">
                   <LedgerBalanceTypeBadge balanceType={entity.balanceType} />
                 </div>

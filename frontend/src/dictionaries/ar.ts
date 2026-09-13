@@ -235,6 +235,32 @@ export const ar: Record<string, string> = {
   "Record Payment": "تسديد دفعة",
   "Payment recorded": "تم تسجيل الدفعة",
 
+  // Supplier Detail page
+  "Loading supplier...": "جارٍ تحميل بيانات المورد...",
+  "Couldn't load this supplier": "تعذّر تحميل بيانات هذا المورد",
+  "Add New Bill / Invoice": "إضافة فاتورة/مستحق جديد",
+  "Bill added": "تمت إضافة الفاتورة",
+  "Edit Supplier Info": "تعديل بيانات المورد",
+  "Supplier updated": "تم تحديث بيانات المورد",
+  "Category, contact, and notes — the payable/receivable direction can't be changed here.":
+    "التصنيف وبيانات التواصل والملاحظات — لا يمكن تغيير نوع المديونية (علينا/لينا) من هنا.",
+  "Export Statement": "تصدير كشف الحساب",
+  "Failed to export the statement": "فشل تصدير كشف الحساب",
+  "Transaction History": "سجل المعاملات",
+  "No transactions yet": "لا توجد معاملات بعد",
+  'Use "Record Payment" or "Add New Bill / Invoice" above to get started.':
+    'استخدم "تسديد دفعة" أو "إضافة فاتورة/مستحق جديد" أعلاه للبدء.',
+  "Edit entry": "تعديل القيد",
+  "Entry updated": "تم تحديث القيد",
+  "Delete entry": "حذف القيد",
+  "Entry deleted": "تم حذف القيد",
+  "Failed to delete the entry": "فشل حذف القيد",
+  "e.g. Fabric order #1234": "مثال: طلبية أقمشة رقم 1234",
+
+  // Ledger transaction kinds (Payment reuses the existing "Payment" key below)
+  "Opening Balance": "رصيد افتتاحي",
+  Charge: "فاتورة/مستحق",
+
   // Opening Balances modal
   "Opening Balances": "الرصيد الافتتاحي",
   "Opening balance recorded": "تم تسجيل الرصيد الافتتاحي",

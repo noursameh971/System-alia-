@@ -683,6 +683,7 @@ export interface LedgerEntity {
   name: string;
   category: LedgerEntityCategory;
   balanceType: LedgerBalanceType;
+  phone: string | null;
   notes: string | null;
   totalBilled: number;
   amountPaid: number;
@@ -704,6 +705,49 @@ export interface CreateOpeningBalanceInput {
 export interface RecordPaymentInput {
   amount: number;
   transactionDate?: string;
+  notes?: string;
+}
+
+export const LEDGER_TRANSACTION_KINDS = ["opening_balance", "charge", "payment"] as const;
+export type LedgerTransactionKind = (typeof LEDGER_TRANSACTION_KINDS)[number];
+
+/** One row in a supplier's transaction history — an opening balance, a bill/charge, or a payment. */
+export interface LedgerTransaction {
+  id: string;
+  entityId: string;
+  kind: LedgerTransactionKind;
+  amount: number;
+  transactionDate: string;
+  dueDate: string | null;
+  notes: string | null;
+  createdAt: string;
+}
+
+/** The Supplier Detail page's main data source. */
+export interface LedgerEntityDetail extends LedgerEntity {
+  transactions: LedgerTransaction[];
+}
+
+export interface CreateChargeInput {
+  amount: number;
+  transactionDate?: string;
+  dueDate?: string;
+  notes?: string;
+}
+
+/** "Edit Supplier Info" — balanceType isn't editable, see the backend schema's comment on why. */
+export interface UpdateLedgerEntityInput {
+  name?: string;
+  category?: LedgerEntityCategory;
+  phone?: string;
+  notes?: string;
+}
+
+/** Editing/adjusting one existing transaction — kind isn't editable, see the backend schema's comment. */
+export interface UpdateLedgerTransactionInput {
+  amount?: number;
+  transactionDate?: string;
+  dueDate?: string | null;
   notes?: string;
 }
 

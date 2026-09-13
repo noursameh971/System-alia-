@@ -384,7 +384,7 @@ export default function FinancePage() {
             description={suppliers.error instanceof ApiError ? suppliers.error.message : t("Check that the backend API is running.")}
           />
         ) : (
-          <LedgerTable entities={suppliers.data ?? []} onRecordPayment={setPayingEntity} />
+          <LedgerTable entities={suppliers.data ?? []} brandCode={brand.code} onRecordPayment={setPayingEntity} />
         )}
       </DashboardCard>
 

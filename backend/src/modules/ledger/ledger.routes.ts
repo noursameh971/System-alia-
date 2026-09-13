@@ -4,12 +4,24 @@ import { validateBody } from "../../middleware/validate.js";
 import { asyncHandler } from "../../utils/asyncHandler.js";
 import {
   cashFlowSummaryHandler,
+  createChargeHandler,
   createOpeningBalanceHandler,
+  deleteLedgerTransactionHandler,
+  exportLedgerEntityHandler,
   exportLedgerHandler,
+  getLedgerEntityHandler,
   listLedgerEntitiesHandler,
   recordPaymentHandler,
+  updateLedgerEntityHandler,
+  updateLedgerTransactionHandler,
 } from "./ledger.controller.js";
-import { createOpeningBalanceSchema, recordPaymentSchema } from "./ledger.schema.js";
+import {
+  createChargeSchema,
+  createOpeningBalanceSchema,
+  recordPaymentSchema,
+  updateLedgerEntitySchema,
+  updateLedgerTransactionSchema,
+} from "./ledger.schema.js";
 
 export const ledgerRouter = Router();
 
@@ -64,3 +76,37 @@ ledgerRouter.post(
   validateBody(recordPaymentSchema),
   asyncHandler(recordPaymentHandler),
 );
+
+// The Supplier Detail page's data source, plus its own edit/charge/export
+// actions. Doesn't collide with the literal "/entities" list route above —
+// Express matches "/entities" and "/entities/:id" as different path shapes.
+ledgerRouter.get("/entities/:id", requireAuth, requireRole("admin", "finance"), asyncHandler(getLedgerEntityHandler));
+
+ledgerRouter.patch(
+  "/entities/:id",
+  requireAuth,
+  requireRole("admin", "finance"),
+  validateBody(updateLedgerEntitySchema),
+  asyncHandler(updateLedgerEntityHandler),
+);
+
+ledgerRouter.post(
+  "/entities/:id/charges",
+  requireAuth,
+  requireRole("admin", "finance"),
+  validateBody(createChargeSchema),
+  asyncHandler(createChargeHandler),
+);
+
+ledgerRouter.get("/entities/:id/export", requireAuth, requireRole("admin", "finance"), asyncHandler(exportLedgerEntityHandler));
+
+// Carries no brandId — the handler resolves the transaction's own brand and enforces access there. See assertBrandAccessForTransaction.
+ledgerRouter.patch(
+  "/transactions/:id",
+  requireAuth,
+  requireRole("admin", "finance"),
+  validateBody(updateLedgerTransactionSchema),
+  asyncHandler(updateLedgerTransactionHandler),
+);
+
+ledgerRouter.delete("/transactions/:id", requireAuth, requireRole("admin", "finance"), asyncHandler(deleteLedgerTransactionHandler));
