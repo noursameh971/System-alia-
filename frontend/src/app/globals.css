@@ -66,7 +66,7 @@ body {
    per-page-repeat semantics, which clip a multi-label batch instead of
    paginating it across the several physical label pages it needs.
 
-   The page's own size/orientation (landscape 40mm x 30mm, matching the
+   The page's own size/orientation (landscape 4in x 2in, matching the
    physical thermal roll) is deliberately NOT declared here as a named
    `@page` rule — Chromium's print pipeline has a long, still-partial
    history of not reliably honoring named pages, which is a very plausible
@@ -98,7 +98,7 @@ body {
     display: block;
   }
   /* Belt-and-suspenders against a single sticker fragmenting across two
-     physical labels: the sticker's own fixed 40mm x 30mm box (BarcodeStickerLabel)
+     physical labels: the sticker's own fixed 4in x 2in box (BarcodeStickerLabel)
      already can't hold more content than that, but a `@page` size the print
      dialog doesn't actually honor (see the print dialog note in
      labelPrintStyle.ts) would otherwise still split it. `break-after`/

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
-import { LABEL_HEIGHT_MM, LABEL_WIDTH_MM } from "@/lib/labelDimensions";
+import { LABEL_HEIGHT_IN, LABEL_WIDTH_IN } from "@/lib/labelDimensions";
 import { clearLabelPrintPageStyle, setLabelPrintPageStyle } from "@/lib/labelPrintStyle";
 import { LabelPrintPortal } from "./LabelPrintPortal";
 import { BarcodeStickerLabel, type StickerVariant } from "./BarcodeStickerLabel";
@@ -40,8 +40,8 @@ export function BatchLabelPrintView({ variants, onClose }: { variants: Printable
           <div>
             <h2 className="text-sm font-semibold text-slate-900 dark:text-slate-100">Print Labels</h2>
             <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
-              {variants.length} label{variants.length === 1 ? "" : "s"} &middot; {LABEL_WIDTH_MM}mm &times;{" "}
-              {LABEL_HEIGHT_MM}mm thermal stock
+              {variants.length} label{variants.length === 1 ? "" : "s"} &middot; {LABEL_WIDTH_IN}in &times;{" "}
+              {LABEL_HEIGHT_IN}in thermal stock
             </p>
           </div>
           <div className="flex items-center gap-2">

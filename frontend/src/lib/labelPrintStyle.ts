@@ -1,4 +1,4 @@
-import { LABEL_HEIGHT_MM, LABEL_WIDTH_MM } from "./labelDimensions";
+import { LABEL_HEIGHT_IN, LABEL_WIDTH_IN } from "./labelDimensions";
 
 const LABEL_PAGE_STYLE_ID = "label-print-page-size";
 
@@ -22,7 +22,7 @@ const LABEL_PAGE_STYLE_ID = "label-print-page-size";
  * set-on-mount/clear-on-unmount for its whole review-modal lifetime) —
  * the receipt's own, unrelated print action never touches this.
  *
- * Reading LABEL_WIDTH_MM/LABEL_HEIGHT_MM directly (rather than a hand-kept-
+ * Reading LABEL_WIDTH_IN/LABEL_HEIGHT_IN directly (rather than a hand-kept-
  * in-sync literal, which is what a static CSS `@page` rule was stuck with —
  * `size` can't resolve a CSS custom property in any shipping browser) means
  * labelDimensions.ts is genuinely the only place these two numbers live now.
@@ -31,7 +31,7 @@ export function setLabelPrintPageStyle(): void {
   if (document.getElementById(LABEL_PAGE_STYLE_ID)) return;
   const style = document.createElement("style");
   style.id = LABEL_PAGE_STYLE_ID;
-  style.textContent = `@page { size: ${LABEL_WIDTH_MM}mm ${LABEL_HEIGHT_MM}mm landscape; margin: 0; }`;
+  style.textContent = `@page { size: ${LABEL_WIDTH_IN}in ${LABEL_HEIGHT_IN}in landscape; margin: 0; }`;
   document.head.appendChild(style);
 }
 

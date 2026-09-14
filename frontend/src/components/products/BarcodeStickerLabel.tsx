@@ -1,4 +1,4 @@
-import { LABEL_HEIGHT_MM, LABEL_WIDTH_MM } from "@/lib/labelDimensions";
+import { LABEL_HEIGHT_IN, LABEL_WIDTH_IN } from "@/lib/labelDimensions";
 import { BarcodeImage } from "./BarcodeImage";
 
 export interface StickerVariant {
@@ -16,9 +16,11 @@ export interface StickerVariant {
  * Deliberately no price on the sticker — these are inventory/SKU-lookup
  * labels, not price tags.
  *
- * LABEL_WIDTH_MM/LABEL_HEIGHT_MM (labelDimensions.ts) is the single source
- * of truth for the physical size; it must stay in sync with the @page rule
- * in globals.css (see the comment there for why that can't just import it).
+ * All sizing here is in the same `in` unit as LABEL_WIDTH_IN/LABEL_HEIGHT_IN
+ * (labelDimensions.ts, the single source of truth for the physical size) so
+ * nothing needs unit conversion, and box-sizing: border-box + zero implicit
+ * margin is what keeps padding from ever pushing the box past that exact
+ * 4in x 2in footprint onto a second physical label.
  */
 export function BarcodeStickerLabel({
   variant,
@@ -31,29 +33,29 @@ export function BarcodeStickerLabel({
   return (
     <div
       style={{
-        width: `${LABEL_WIDTH_MM}mm`,
-        height: `${LABEL_HEIGHT_MM}mm`,
-        padding: "0.8mm",
-        gap: "0.4mm",
+        width: `${LABEL_WIDTH_IN}in`,
+        height: `${LABEL_HEIGHT_IN}in`,
+        padding: "0.15in",
+        gap: "0.08in",
       }}
       className={`barcode-sticker box-border flex shrink-0 flex-col items-center justify-center overflow-hidden border border-dashed border-slate-300 print:border-none dark:border-slate-700 ${breakAfter ? "print:break-after-page" : ""}`}
     >
-      <BarcodeImage value={variant.sku} className="w-full max-w-full shrink-0" style={{ height: "8mm" }} />
+      <BarcodeImage value={variant.sku} className="w-full max-w-full shrink-0" style={{ height: "0.7in" }} />
       <p
         className="w-full truncate text-center font-mono text-slate-900 print:text-black"
-        style={{ fontSize: "2.3mm", lineHeight: 1 }}
+        style={{ fontSize: "0.16in", lineHeight: 1 }}
       >
         {variant.sku}
       </p>
       <p
         className="w-full truncate text-center font-semibold text-slate-900 print:text-black"
-        style={{ fontSize: "2.6mm", lineHeight: 1 }}
+        style={{ fontSize: "0.2in", lineHeight: 1 }}
       >
         {variant.productName}
       </p>
       <p
         className="w-full truncate text-center text-slate-600 print:text-black"
-        style={{ fontSize: "2.3mm", lineHeight: 1 }}
+        style={{ fontSize: "0.16in", lineHeight: 1 }}
       >
         {variant.color} / {variant.size}
       </p>
