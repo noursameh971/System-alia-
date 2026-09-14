@@ -379,6 +379,29 @@ export function ProductProfileDrawer({ product, onOpenChange, canManage, onMutat
     setPrintTarget(variants);
   }
 
+  /**
+   * TEMPORARY diagnostic — not a permanent feature, safe to delete once
+   * physical-scanner testing is done. Prints two reference labels through
+   * the exact same pipeline as a real SKU (BatchLabelPrintView →
+   * BarcodeStickerLabel → BarcodeImage → jsbarcode), varying only string
+   * length: an 8-digit numeric code (dense Code Set C encoding, ~80
+   * modules) and a 29-char alphanumeric one sized like a real SKU (~350
+   * modules). If the short one scans but the long one doesn't, the SKU's
+   * length is too dense to print cleanly at the printer's DPI — a physical
+   * print-resolution limit, not a bug in this app's barcode rendering
+   * (already verified correct in software: see BarcodeImage.tsx). If
+   * neither scans, the problem is upstream of the data — the printer/
+   * scanner themselves, not the SKU format.
+   */
+  function openTestPrint() {
+    const variants: PrintableVariant[] = [
+      { sku: "12345678", productName: "TEST — short numeric (8 digits)", color: "Diagnostic", size: "Scan test" },
+      { sku: "TEST-LONGCODE-00000-ABC-LARGE", productName: "TEST — long alphanumeric (29 chars, ~real SKU length)", color: "Diagnostic", size: "Scan test" },
+    ];
+    onOpenChange(false);
+    setPrintTarget(variants);
+  }
+
   return (
     <>
       <Sheet open={open} onOpenChange={(next) => !next && onOpenChange(false)}>
@@ -562,10 +585,15 @@ export function ProductProfileDrawer({ product, onOpenChange, canManage, onMutat
                 </div>
               </SheetBody>
 
-              <div className="border-t border-slate-200 px-6 py-4 dark:border-slate-800">
+              <div className="flex flex-col gap-2 border-t border-slate-200 px-6 py-4 dark:border-slate-800">
                 <Button className="w-full" variant="outline" onClick={openPrintAll}>
                   <Printer className="size-4" />
                   Print all QR labels ({product.variants.length})
+                </Button>
+                {/* Temporary diagnostic for physical-scanner troubleshooting — see openTestPrint. Remove once resolved. */}
+                <Button className="w-full" variant="ghost" size="sm" onClick={openTestPrint}>
+                  <Printer className="size-3.5" />
+                  Print test labels (scanner diagnostic)
                 </Button>
               </div>
             </>
