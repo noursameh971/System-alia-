@@ -18,6 +18,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
+import { ReceiptUploadField } from "./ReceiptUploadField";
 import {
   Dialog,
   DialogContent,
@@ -281,20 +282,12 @@ export function ExpenseFormModal({
             </div>
           ) : null}
 
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="expense-receipt">
-              {t("Receipt URL")} <span className="font-normal text-slate-400">({t("optional")})</span>
-            </Label>
-            {/* dir="ltr" so a pasted URL doesn't render with its scheme flipped to the far side of the field in Arabic. */}
-            <Input
-              id="expense-receipt"
-              dir="ltr"
-              value={form.receiptUrl}
-              onChange={(e) => setField("receiptUrl", e.target.value)}
-              placeholder="https://..."
-              disabled={submitting}
-            />
-          </div>
+          <ReceiptUploadField
+            value={form.receiptUrl}
+            onChange={(url) => setField("receiptUrl", url)}
+            disabled={submitting}
+            label={t("Receipt")}
+          />
 
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="expense-notes">

@@ -11,6 +11,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
 import { SegmentedControl } from "@/components/ui/SegmentedControl";
+import { ReceiptUploadField } from "./ReceiptUploadField";
 import {
   Dialog,
   DialogContent,
@@ -27,10 +28,11 @@ interface FormState {
   amount: string;
   dueDate: string;
   notes: string;
+  receiptUrl: string;
 }
 
 function blankForm(): FormState {
-  return { entityName: "", category: "fabric", balanceType: "payable", amount: "", dueDate: "", notes: "" };
+  return { entityName: "", category: "fabric", balanceType: "payable", amount: "", dueDate: "", notes: "", receiptUrl: "" };
 }
 
 /**
@@ -89,6 +91,7 @@ export function OpeningBalanceModal({
         amount: Number(form.amount),
         dueDate: form.dueDate || undefined,
         notes: form.notes.trim() || undefined,
+        receiptUrl: form.receiptUrl || undefined,
       });
       toast.success(t("Opening balance recorded"));
       onSuccess();
@@ -195,6 +198,8 @@ export function OpeningBalanceModal({
               disabled={submitting}
             />
           </div>
+
+          <ReceiptUploadField value={form.receiptUrl} onChange={(url) => setField("receiptUrl", url)} disabled={submitting} />
 
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="opening-notes">

@@ -5,6 +5,7 @@ import { MoreVertical } from "lucide-react";
 import { useLocale } from "@/context/LocaleContext";
 import { EXPENSE_PAYMENT_LABEL } from "@/lib/expenses";
 import { formatPrice } from "@/lib/formatPrice";
+import { resolveImageUrl } from "@/lib/images";
 import type { Expense } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/EmptyState";
@@ -114,7 +115,7 @@ export function ExpenseTable({
                     <DropdownMenuContent align="end">
                       <DropdownMenuItem onSelect={() => onEdit(expense)}>{t("Edit")}</DropdownMenuItem>
                       {expense.receiptUrl ? (
-                        <DropdownMenuItem onSelect={() => window.open(expense.receiptUrl!, "_blank", "noopener")}>
+                        <DropdownMenuItem onSelect={() => window.open(resolveImageUrl(expense.receiptUrl)!, "_blank", "noopener")}>
                           {t("View receipt")}
                         </DropdownMenuItem>
                       ) : null}

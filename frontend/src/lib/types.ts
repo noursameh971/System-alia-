@@ -711,6 +711,7 @@ export interface CreateOpeningBalanceInput {
   amount: number;
   dueDate?: string;
   notes?: string;
+  receiptUrl?: string;
 }
 
 export interface RecordPaymentInput {
@@ -731,6 +732,7 @@ export interface LedgerTransaction {
   transactionDate: string;
   dueDate: string | null;
   notes: string | null;
+  receiptUrl: string | null;
   createdAt: string;
 }
 

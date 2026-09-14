@@ -32,7 +32,13 @@ export function VariantScanInput({
 }) {
   const { t } = useLocale();
   const [sku, setSku] = useState("");
-  const [loading, setLoading] = useState(false);
+  // Count of in-flight lookups, not a boolean — a scanner fires Enter every
+  // few hundred ms, far faster than a round-trip, so multiple scans are
+  // routinely in flight at once. Never disable the input on this: a
+  // disabled <input> drops every keystroke the scanner sends while a prior
+  // lookup is pending, which silently eats consecutive scans instead of
+  // queueing/bumping them.
+  const [pendingCount, setPendingCount] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -40,7 +46,7 @@ export function VariantScanInput({
     const trimmed = rawValue.trim();
     if (!trimmed) return;
 
-    setLoading(true);
+    setPendingCount((n) => n + 1);
     setError(null);
     try {
       const found = await getVariantBySku(trimmed);
@@ -49,11 +55,10 @@ export function VariantScanInput({
         return;
       }
       onResolved(found);
-      setSku("");
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Failed to look up that SKU");
     } finally {
-      setLoading(false);
+      setPendingCount((n) => n - 1);
     }
   }
 
@@ -118,21 +123,30 @@ export function VariantScanInput({
               if (e.key === "Enter") {
                 e.preventDefault();
                 e.stopPropagation();
-                void resolve(sku);
+                // Clear synchronously, before the lookup even starts — the
+                // scanner is already moving on to the next label and the
+                // field must be empty and focused for it, not still holding
+                // this scan's text until a network round-trip finishes.
+                const value = sku;
+                setSku("");
+                void resolve(value);
               }
             }}
             placeholder="e.g. ALH-HIJ-00001-BLK-CHF-M"
-            disabled={loading}
-            className="w-full rounded-lg border border-slate-300 py-2.5 ps-10 pe-3 font-mono text-sm text-slate-900 shadow-sm disabled:opacity-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
+            className="w-full rounded-lg border border-slate-300 py-2.5 ps-10 pe-3 font-mono text-sm text-slate-900 shadow-sm dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
           />
         </div>
         <button
           type="button"
-          onClick={() => void resolve(sku)}
-          disabled={loading || !sku.trim()}
+          onClick={() => {
+            const value = sku;
+            setSku("");
+            void resolve(value);
+          }}
+          disabled={!sku.trim()}
           className="rounded-lg bg-indigo-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-indigo-500 disabled:opacity-50"
         >
-          {loading ? "..." : t("Find")}
+          {pendingCount > 0 ? "..." : t("Find")}
         </button>
       </div>
       {error ? <p className="mt-2 text-sm text-red-600 dark:text-red-400">{error}</p> : null}
