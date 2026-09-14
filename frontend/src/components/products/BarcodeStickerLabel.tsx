@@ -3,6 +3,14 @@ import { BarcodeImage } from "./BarcodeImage";
 
 export interface StickerVariant {
   sku: string;
+  /**
+   * The barcode's actual encoded payload — deliberately NOT the same as
+   * `sku` for real variants (see backend/src/modules/qrcode/qrcode.util.ts):
+   * a full SKU is too long to print as reliably scannable bars on a small
+   * thermal label. `sku` still prints as human-readable text below the
+   * barcode; this is only what the scanner reads.
+   */
+  qrCodeValue: string;
   productName: string;
   color: string;
   size: string;
@@ -40,7 +48,7 @@ export function BarcodeStickerLabel({
       }}
       className={`barcode-sticker box-border flex shrink-0 flex-col items-center justify-center overflow-hidden border border-dashed border-slate-300 print:border-none dark:border-slate-700 ${breakAfter ? "print:break-after-page" : ""}`}
     >
-      <BarcodeImage value={variant.sku} className="w-full max-w-full shrink-0" style={{ height: "0.7in" }} />
+      <BarcodeImage value={variant.qrCodeValue} className="w-full max-w-full shrink-0" style={{ height: "0.7in" }} />
       <p
         className="w-full truncate text-center font-mono text-slate-900 print:text-black"
         style={{ fontSize: "0.16in", lineHeight: 1 }}

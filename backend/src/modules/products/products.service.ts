@@ -1,4 +1,4 @@
-import { and, eq, inArray, isNull, notExists, sql } from "drizzle-orm";
+import { and, eq, inArray, isNull, notExists, or, sql } from "drizzle-orm";
 import type { PgTransaction } from "drizzle-orm/pg-core";
 import { db } from "../../db/client.js";
 import { decrementInventory, incrementInventory } from "../../db/inventoryOperations.js";
@@ -141,7 +141,7 @@ export async function createProductWithVariants(
         .values({
           productId: product.id,
           sku,
-          qrCodeValue: buildQrPayload(sku),
+          qrCodeValue: await buildQrPayload(tx),
         })
         .returning();
       if (!variant) throw new Error("Variant insert returned no row");
@@ -357,10 +357,17 @@ export interface VariantLookupResult {
 }
 
 /**
- * Resolves a variant by its SKU (== the QR code payload) — backs the
- * frontend's "scan or type the QR/SKU" input on the stock movement forms,
- * so staff get the product name/attributes back to confirm before picking a
- * bin and quantity, instead of acting on a bare SKU string.
+ * Resolves a variant by its SKU *or* its (usually shorter) barcode payload
+ * — backs the frontend's "scan or type the QR/SKU" input on the stock
+ * movement forms, so staff get the product name/attributes back to confirm
+ * before picking a bin and quantity, instead of acting on a bare string.
+ *
+ * These used to always be the same value (qrCodeValue defaulted to sku),
+ * but a real SKU is too long to print as a reliably scannable barcode (see
+ * qrcode.util.ts's buildQrPayload) — new variants get a distinct, short
+ * qrCodeValue instead. Matching on either keeps this endpoint working for
+ * both a scan (short code) and someone typing the full SKU by hand, and
+ * keeps already-printed old-scheme labels (payload == sku) scanning too.
  */
 export async function getVariantBySku(sku: string): Promise<VariantLookupResult | null> {
   const [row] = await db
@@ -382,7 +389,7 @@ export async function getVariantBySku(sku: string): Promise<VariantLookupResult 
     .innerJoin(products, eq(products.id, productVariants.productId))
     .innerJoin(brands, eq(brands.id, products.brandId))
     .innerJoin(categories, eq(categories.id, products.categoryId))
-    .where(eq(productVariants.sku, sku))
+    .where(or(eq(productVariants.sku, sku), eq(productVariants.qrCodeValue, sku)))
     .limit(1);
 
   if (!row) return null;
@@ -624,7 +631,7 @@ export async function createQuickProduct(
 
       const [variant] = await tx
         .insert(productVariants)
-        .values({ productId, sku, qrCodeValue: buildQrPayload(sku), status: "active" })
+        .values({ productId, sku, qrCodeValue: await buildQrPayload(tx), status: "active" })
         .returning({ id: productVariants.id });
       if (!variant) throw new Error("Variant insert returned no row"); // unreachable
 

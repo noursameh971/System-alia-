@@ -254,7 +254,7 @@ async function resolveOrCreateVariantTx(
 
   const [variant] = await tx
     .insert(productVariants)
-    .values({ productId, sku, qrCodeValue: buildQrPayload(sku), status: "active" })
+    .values({ productId, sku, qrCodeValue: await buildQrPayload(tx), status: "active" })
     .returning({ id: productVariants.id });
   if (!variant) throw new Error("Variant insert returned no row"); // unreachable
 

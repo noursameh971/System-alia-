@@ -371,6 +371,7 @@ export function ProductProfileDrawer({ product, onOpenChange, canManage, onMutat
     // QR modal), so the drawer closes first and `product` goes to null.
     const variants: PrintableVariant[] = product.variants.map((v) => ({
       sku: v.sku,
+      qrCodeValue: v.qrCodeValue,
       productName: product.name,
       color: attributeValue(v.attributes, "color"),
       size: attributeValue(v.attributes, "size"),
@@ -382,21 +383,31 @@ export function ProductProfileDrawer({ product, onOpenChange, canManage, onMutat
   /**
    * TEMPORARY diagnostic — not a permanent feature, safe to delete once
    * physical-scanner testing is done. Prints two reference labels through
-   * the exact same pipeline as a real SKU (BatchLabelPrintView →
-   * BarcodeStickerLabel → BarcodeImage → jsbarcode), varying only string
-   * length: an 8-digit numeric code (dense Code Set C encoding, ~80
-   * modules) and a 29-char alphanumeric one sized like a real SKU (~350
-   * modules). If the short one scans but the long one doesn't, the SKU's
-   * length is too dense to print cleanly at the printer's DPI — a physical
-   * print-resolution limit, not a bug in this app's barcode rendering
-   * (already verified correct in software: see BarcodeImage.tsx). If
-   * neither scans, the problem is upstream of the data — the printer/
-   * scanner themselves, not the SKU format.
+   * the exact same pipeline as a real variant (BatchLabelPrintView →
+   * BarcodeStickerLabel → BarcodeImage → jsbarcode), varying only encoded
+   * string length: an 8-digit numeric code (dense Code Set C encoding, ~80
+   * modules) and a 29-char alphanumeric one sized like an old-scheme SKU
+   * payload (~350 modules) — real variants now encode a short qrCodeValue
+   * instead (see BarcodeStickerLabel.tsx), but this comparison is still the
+   * fastest way to confirm short-vs-long print density on the actual
+   * printer/scanner in hand.
    */
   function openTestPrint() {
     const variants: PrintableVariant[] = [
-      { sku: "12345678", productName: "TEST — short numeric (8 digits)", color: "Diagnostic", size: "Scan test" },
-      { sku: "TEST-LONGCODE-00000-ABC-LARGE", productName: "TEST — long alphanumeric (29 chars, ~real SKU length)", color: "Diagnostic", size: "Scan test" },
+      {
+        sku: "12345678",
+        qrCodeValue: "12345678",
+        productName: "TEST — short numeric (8 digits)",
+        color: "Diagnostic",
+        size: "Scan test",
+      },
+      {
+        sku: "TEST-LONGCODE-00000-ABC-LARGE",
+        qrCodeValue: "TEST-LONGCODE-00000-ABC-LARGE",
+        productName: "TEST — long alphanumeric (29 chars, ~old SKU-payload length)",
+        color: "Diagnostic",
+        size: "Scan test",
+      },
     ];
     onOpenChange(false);
     setPrintTarget(variants);
@@ -516,6 +527,7 @@ export function ProductProfileDrawer({ product, onOpenChange, canManage, onMutat
                                 <VariantPrintButton
                                   variant={{
                                     sku: variant.sku,
+                                    qrCodeValue: variant.qrCodeValue,
                                     productName: product.name,
                                     color: color === "—" ? "" : color,
                                     size: size === "—" ? "" : size,
