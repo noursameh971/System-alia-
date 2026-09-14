@@ -18,6 +18,7 @@ import { returnsRouter } from "./modules/returns/returns.routes.js";
 import { revenuesRouter } from "./modules/revenues/revenues.routes.js";
 import { settingsRouter } from "./modules/settings/settings.routes.js";
 import { stockMovementsRouter } from "./modules/stock-movements/stockMovements.routes.js";
+import { uploadsRouter } from "./modules/uploads/uploads.routes.js";
 import { usersRouter } from "./modules/users/users.routes.js";
 import { warehouseRouter } from "./modules/warehouse/warehouse.routes.js";
 
@@ -103,6 +104,7 @@ export function createApp(): Express {
   app.use("/api/expenses", expensesRouter);
   app.use("/api/revenues", revenuesRouter);
   app.use("/api/ledger", ledgerRouter);
+  app.use("/api/uploads", uploadsRouter);
 
   // Must be registered last — Express only routes here on thrown/forwarded errors.
   app.use(errorHandler);

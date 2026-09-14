@@ -40,6 +40,7 @@ export interface LedgerTransactionRecord {
   transactionDate: string;
   dueDate: string | null;
   notes: string | null;
+  receiptUrl: string | null;
   createdAt: string;
 }
 
@@ -52,6 +53,7 @@ function toTransactionRecord(row: typeof ledgerTransactions.$inferSelect): Ledge
     transactionDate: row.transactionDate,
     dueDate: row.dueDate,
     notes: row.notes,
+    receiptUrl: row.receiptUrl,
     createdAt: row.createdAt.toISOString(),
   };
 }
@@ -172,6 +174,7 @@ export async function createOpeningBalance(
     transactionDate: sql`current_date`,
     dueDate: input.dueDate ?? null,
     notes: input.notes?.trim() || null,
+    receiptUrl: input.receiptUrl?.trim() || null,
     createdBy: actorUserId,
   });
 

@@ -54,6 +54,7 @@ export const ledgerTransactions = pgTable(
     transactionDate: date("transaction_date").notNull(),
     dueDate: date("due_date"),
     notes: text("notes"),
+    receiptUrl: text("receipt_url"),
     createdBy: uuid("created_by")
       .notNull()
       .references(() => users.id, { onDelete: "restrict" }),

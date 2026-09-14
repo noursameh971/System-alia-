@@ -35,6 +35,8 @@ export const createOpeningBalanceSchema = z.object({
   amount: z.number().positive("Amount must be greater than 0").max(99_999_999),
   dueDate: dateOnly.optional(),
   notes: z.string().trim().max(2000).optional().or(z.literal("")),
+  /** URL of a file already uploaded via POST /api/uploads/receipts — this schema never receives raw file bytes. */
+  receiptUrl: z.string().trim().max(2000).optional().or(z.literal("")),
 });
 
 export type CreateOpeningBalanceInput = z.infer<typeof createOpeningBalanceSchema>;
