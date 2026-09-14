@@ -48,7 +48,11 @@ export function BarcodeStickerLabel({
       }}
       className={`barcode-sticker box-border flex shrink-0 flex-col items-center justify-center overflow-hidden border border-dashed border-slate-300 print:border-none dark:border-slate-700 ${breakAfter ? "print:break-after-page" : ""}`}
     >
-      <BarcodeImage value={variant.qrCodeValue} className="w-full max-w-full shrink-0" style={{ height: "0.7in" }} />
+      {/* No w-full/stretch here — BarcodeImage renders itself at a fixed
+          physical size now (see its own doc comment for why stretching via
+          CSS was a real risk on thermal paper), so it's just centered by
+          this flex container like any other child. */}
+      <BarcodeImage value={variant.qrCodeValue} className="max-w-full shrink-0" />
       <p
         className="w-full truncate text-center font-mono text-slate-900 print:text-black"
         style={{ fontSize: "0.16in", lineHeight: 1 }}

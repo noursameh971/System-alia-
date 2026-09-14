@@ -1,30 +1,52 @@
 "use client";
 
-import { useEffect, useRef, type CSSProperties } from "react";
+import { useEffect, useRef } from "react";
 import JsBarcode from "jsbarcode";
+
+// jsbarcode's width/height options are CSS reference pixels (96 per inch)
+// once this SVG stops being CSS-rescaled — see the effect below for why
+// that matters. Chosen generously thick for thermal printing: 2.5px =
+// 0.026in/module ≈ 5.3 dots at 203 DPI, 7.8 at 300 DPI, well clear of the
+// ~2 dots/module floor where a real print head's heat bleed starts merging
+// adjacent bars (the same physics that broke the original SKU-length
+// payload — see qrcode.util.ts — except this time the fix is bar width,
+// not data length, since the payload is already short).
+const MODULE_WIDTH_PX = 2.5;
+// AIM/GS1's Code128 spec: minimum quiet zone is 10x the module width.
+// Deriving this from MODULE_WIDTH_PX (not a fixed literal) keeps the two in
+// spec with each other if the module width above is ever retuned.
+const QUIET_ZONE_PX = MODULE_WIDTH_PX * 10;
+// Taller bars tolerate an imperfect scan angle better than short ones.
+const BAR_HEIGHT_PX = 60;
 
 /**
  * Renders `value` as a Code 128 barcode straight into an inline <svg> via
  * jsbarcode — no server round-trip, so the label can render (and reprint)
  * offline and instantly.
  *
- * jsbarcode sizes the <svg> it draws into with fixed pixel `width`/`height`
- * attributes. Those win over CSS on their own, so a caller sizing this via
- * an in-based className would get the barcode clipped instead of scaled. We
- * swap them for a `viewBox` right after drawing so the sticker's own box
- * (BarcodeStickerLabel) scales the whole barcode down (via
- * `preserveAspectRatio`) instead of cropping it — see the parseFloat note
- * below for a real bug this used to hide.
+ * Renders at a fixed, explicit *physical* size (module width chosen above)
+ * rather than letting CSS stretch/shrink the SVG to fit whatever box a
+ * caller gives it. That's a deliberate change from sizing this via
+ * `className`/`style` + `preserveAspectRatio`: a CSS rescale applies an
+ * arbitrary, box-size-and-data-length-dependent scale factor to the whole
+ * vector, which can land bar edges at fractional, non-dot-aligned
+ * positions. A screen has enough resolution and anti-aliasing headroom
+ * that this is invisible — the barcode still looks (and decodes) fine on
+ * screen and in a PDF. A thermal print head doesn't: it has no
+ * anti-aliasing, only a fixed grid of dots either burned or not, so the
+ * rasterizer has to snap every edge to that grid — and an arbitrary scale
+ * factor means bars of genuinely different module counts (Code128 mixes
+ * 1x-4x-wide bars) can snap to the *same* rounded dot width, which is
+ * exactly the width *ratio* a Code128 decoder reads the data from.
+ * Rendering 1:1 at a size chosen up front removes that whole failure mode:
+ * the vector geometry already *is* the intended physical size, so there's
+ * no second, uncontrolled scale step left to introduce rounding error.
+ *
+ * This is why a barcode can scan perfectly at full size on a monitor, and
+ * still fail the instant it's printed at sticker size — the exact symptom
+ * this was written to fix.
  */
-export function BarcodeImage({
-  value,
-  className,
-  style,
-}: {
-  value: string;
-  className?: string;
-  style?: CSSProperties;
-}) {
+export function BarcodeImage({ value, className }: { value: string; className?: string }) {
   const svgRef = useRef<SVGSVGElement>(null);
 
   useEffect(() => {
@@ -35,36 +57,25 @@ export function BarcodeImage({
       JsBarcode(svg, value, {
         format: "CODE128",
         displayValue: false,
-        // Quiet zone: the blank space on either side of the bars a
-        // scanner needs to detect where the barcode starts/stops — not
-        // decoration, a hard requirement. AIM/GS1's Code128 spec sets the
-        // minimum at 10x the narrow-bar (module) width; at width:2 that's
-        // 20. margin:0 previously zeroed this out entirely (a leftover
-        // space-saving choice from the old, much smaller label format),
-        // which is a complete scan failure, not a misread — there's
-        // nothing for the scanner to lock onto. Top/bottom stay 0: only
-        // the horizontal quiet zone matters for a 1D barcode, and this
-        // label's height is tightly budgeted (see BarcodeStickerLabel).
         margin: 0,
-        marginLeft: 20,
-        marginRight: 20,
-        height: 100,
-        width: 2,
+        marginLeft: QUIET_ZONE_PX,
+        marginRight: QUIET_ZONE_PX,
+        height: BAR_HEIGHT_PX,
+        width: MODULE_WIDTH_PX,
       });
-      // jsbarcode sets these WITH a "px" suffix (e.g. "858px"), but the
-      // viewBox attribute requires four bare, unitless numbers per the SVG
-      // spec — `viewBox="0 0 858px 100px"` is invalid syntax. parseFloat
-      // strips the suffix; passing the raw string through here previously
-      // produced an invalid viewBox, which made Chrome fall back to
-      // treating the drawing commands' 858x100 coordinate space as raw
-      // CSS pixels instead of scaling it to fit the sticker's box —
-      // clipping off however much of the barcode (often the right half)
-      // fell outside the box's actual rendered width. That's a real
-      // barcode, printed with real missing bars: not a scanner problem.
-      const width = parseFloat(svg.getAttribute("width") ?? "");
-      const height = parseFloat(svg.getAttribute("height") ?? "");
-      if (width && height) {
-        svg.setAttribute("viewBox", `0 0 ${width} ${height}`);
+
+      // jsbarcode sets these WITH a "px" suffix (e.g. "220px"); parseFloat
+      // strips it to the bare number viewBox requires (see below).
+      const widthPx = parseFloat(svg.getAttribute("width") ?? "");
+      const heightPx = parseFloat(svg.getAttribute("height") ?? "");
+      if (widthPx && heightPx) {
+        svg.setAttribute("viewBox", `0 0 ${widthPx} ${heightPx}`);
+        // The 1:1 physical size itself — see the component doc comment.
+        // 96 CSS reference px per inch is the standard conversion; this is
+        // what makes MODULE_WIDTH_PX/BAR_HEIGHT_PX above true physical
+        // sizes rather than arbitrary drawing units.
+        svg.style.width = `${widthPx / 96}in`;
+        svg.style.height = `${heightPx / 96}in`;
         svg.removeAttribute("width");
         svg.removeAttribute("height");
       }
@@ -82,7 +93,6 @@ export function BarcodeImage({
       aria-label={`Barcode for ${value}`}
       preserveAspectRatio="xMidYMid meet"
       className={className}
-      style={style}
     />
   );
 }
