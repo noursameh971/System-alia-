@@ -12,6 +12,7 @@ import {
   products,
   stockMovements,
   variantAttributeValues,
+  variantCosts,
   variantPrices,
 } from "../../db/schema/index.js";
 import { ApiError } from "../../utils/apiError.js";
@@ -98,21 +99,24 @@ export async function getDashboardSummary(): Promise<DashboardSummary> {
     .where(ne(orders.status, "cancelled"))
     .groupBy(orders.brandId);
 
-  // On-hand unit count + inventory value (qty * current active price) per
-  // brand. LEFT JOIN variant_prices because a variant with no active price
+  // On-hand unit count + inventory value (qty * current active cost) per
+  // brand — cost, not price: this is "money invested in stock" (an asset/
+  // COGS value), matching getBrandDashboardSummary's inventoryValue below
+  // so the two dashboards never disagree about what the same-named metric
+  // means. LEFT JOIN variant_costs because a variant with no active cost
   // should still count its units, just contribute 0 to value.
   const inventoryRows = await db
     .select({
       brandId: products.brandId,
       unitCount: sql<number>`coalesce(sum(${inventory.quantity}), 0)::int`,
-      inventoryValue: sql<string>`coalesce(sum(${inventory.quantity} * coalesce(${variantPrices.price}, 0)), 0)`,
+      inventoryValue: sql<string>`coalesce(sum(${inventory.quantity} * coalesce(${variantCosts.cost}, 0)), 0)`,
     })
     .from(inventory)
     .innerJoin(productVariants, eq(productVariants.id, inventory.variantId))
     .innerJoin(products, eq(products.id, productVariants.productId))
     .leftJoin(
-      variantPrices,
-      and(eq(variantPrices.variantId, productVariants.id), isNull(variantPrices.effectiveTo)),
+      variantCosts,
+      and(eq(variantCosts.variantId, productVariants.id), isNull(variantCosts.effectiveTo)),
     )
     .groupBy(products.brandId);
 
@@ -249,8 +253,9 @@ export interface DashboardTrendPoint {
   revenue: number;
   orderCount: number;
   inventoryUnits: number;
+  /** qty * cost — money invested in stock. */
   inventoryValue: number;
-  /** Currently identical to inventoryValue — see BrandDashboardSummary's doc comment on potentialRetailValue. */
+  /** qty * selling price — what the same stock would bring in if sold at retail. */
   potentialRetailValue: number;
   /** That day's production cost (COGS) + shipping fees. */
   expenses: number;
@@ -262,17 +267,15 @@ export interface BrandDashboardSummary {
   brand: { id: string; name: string; code: string };
   revenue: number;
   orderCount: number;
-  /** qty * current selling price. */
-  inventoryValue: number;
   /**
-   * qty * current selling price — the total value of on-hand stock if sold
-   * at retail. Deliberately the same formula (and today, the same number)
-   * as inventoryValue rather than a true cost-basis figure: production
-   * cost is only set on a handful of variants right now, so qty * cost
-   * would read as misleadingly near-zero for most of the catalog. Kept as
-   * its own field so the frontend already has a distinct data source to
-   * switch to once cost data is populated widely enough to be meaningful.
+   * qty * production cost — money invested in stock (a cost/asset basis),
+   * not what it would sell for. Reads low (or 0) for a variant with no
+   * production cost recorded yet — cost tracking is opt-in (see
+   * ProductVariant.cost), unlike selling price, which every priced variant
+   * has.
    */
+  inventoryValue: number;
+  /** qty * current selling price — the total value of on-hand stock if sold at retail. */
   potentialRetailValue: number;
   inventoryUnitCount: number;
   totalExpenses: number;
@@ -324,8 +327,10 @@ interface DailyOrdersRow {
 interface DailyMovementsRow {
   day: string;
   net_units: number;
-  /** Net change in inventoryValue/potentialRetailValue (qty * price — see BrandDashboardSummary's doc comment on inventoryValue) for the day. */
+  /** Net change in inventoryValue (qty * cost) for the day. */
   net_value: string;
+  /** Net change in potentialRetailValue (qty * selling price) for the day. */
+  net_retail_value: string;
   [key: string]: unknown;
 }
 
@@ -366,18 +371,22 @@ async function getDailyActivity(brandId: string): Promise<{ orders: DailyOrdersR
   const movementsResult = await db.execute<DailyMovementsRow>(sql`
     select gs.day::date as day,
            coalesce(agg.net_units, 0)::int as net_units,
-           coalesce(agg.net_value, 0) as net_value
+           coalesce(agg.net_value, 0) as net_value,
+           coalesce(agg.net_retail_value, 0) as net_retail_value
     from generate_series((current_date - ${daySpan} * interval '1 day')::date, current_date::date, interval '1 day') as gs(day)
     left join (
       select sm.created_at::date as day,
              sum((case when sm.to_bin_id is not null then sm.quantity else 0 end) -
                  (case when sm.from_bin_id is not null then sm.quantity else 0 end)) as net_units,
              sum(((case when sm.to_bin_id is not null then sm.quantity else 0 end) -
-                  (case when sm.from_bin_id is not null then sm.quantity else 0 end)) * coalesce(vp.price, 0)) as net_value
+                  (case when sm.from_bin_id is not null then sm.quantity else 0 end)) * coalesce(vc.cost, 0)) as net_value,
+             sum(((case when sm.to_bin_id is not null then sm.quantity else 0 end) -
+                  (case when sm.from_bin_id is not null then sm.quantity else 0 end)) * coalesce(vp.price, 0)) as net_retail_value
       from stock_movements sm
       join product_variants pv on pv.id = sm.variant_id
       join products p on p.id = pv.product_id
       left join variant_prices vp on vp.variant_id = pv.id and vp.effective_to is null
+      left join variant_costs vc on vc.variant_id = pv.id and vc.effective_to is null
       where p.brand_id = ${brandId} and sm.created_at >= current_date - ${daySpan} * interval '1 day'
       group by sm.created_at::date
     ) agg on agg.day = gs.day
@@ -419,22 +428,24 @@ export async function getBrandDashboardSummary(brandId: string): Promise<BrandDa
     .from(orders)
     .where(and(eq(orders.brandId, brandId), ne(orders.status, "cancelled")));
 
-  // inventoryValue and potentialRetailValue are the same qty * price
-  // aggregate today — see BrandDashboardSummary's doc comment on
-  // inventoryValue for why this isn't split into a true cost-basis figure
-  // yet (production cost is set on only a handful of variants right now,
-  // which would make a cost-based inventoryValue read as misleadingly near
-  // zero). Kept as two fields rather than one so the frontend cards already
-  // have distinct data sources to point at once cost data is populated.
+  // inventoryValue is cost-basis (qty * production cost — money invested in
+  // stock); potentialRetailValue is qty * selling price (what the same
+  // stock would bring in sold at retail). Genuinely different figures, so
+  // both prices are joined and aggregated separately. Note: production
+  // cost is only set on a handful of variants in the catalog today, so
+  // inventoryValue reads low/near-zero until cost data is populated more
+  // broadly — that's the cost data being incomplete, not a computation bug.
   const [inventoryRow] = await db
     .select({
       unitCount: sql<number>`coalesce(sum(${inventory.quantity}), 0)::int`,
-      inventoryValue: sql<string>`coalesce(sum(${inventory.quantity} * coalesce(${variantPrices.price}, 0)), 0)`,
+      inventoryValue: sql<string>`coalesce(sum(${inventory.quantity} * coalesce(${variantCosts.cost}, 0)), 0)`,
+      potentialRetailValue: sql<string>`coalesce(sum(${inventory.quantity} * coalesce(${variantPrices.price}, 0)), 0)`,
     })
     .from(inventory)
     .innerJoin(productVariants, eq(productVariants.id, inventory.variantId))
     .innerJoin(products, eq(products.id, productVariants.productId))
     .leftJoin(variantPrices, and(eq(variantPrices.variantId, productVariants.id), isNull(variantPrices.effectiveTo)))
+    .leftJoin(variantCosts, and(eq(variantCosts.variantId, productVariants.id), isNull(variantCosts.effectiveTo)))
     .where(eq(products.brandId, brandId));
 
   const topSellingRows = await db
@@ -494,16 +505,18 @@ export async function getBrandDashboardSummary(brandId: string): Promise<BrandDa
     .select({
       categoryId: categories.id,
       categoryName: categories.name,
-      inventoryValue: sql<string>`coalesce(sum(${inventory.quantity} * coalesce(${variantPrices.price}, 0)), 0)`,
+      // Cost-based, matching inventoryValue above — a category slice here is
+      // "money invested in that category's stock," not what it'd sell for.
+      inventoryValue: sql<string>`coalesce(sum(${inventory.quantity} * coalesce(${variantCosts.cost}, 0)), 0)`,
     })
     .from(inventory)
     .innerJoin(productVariants, eq(productVariants.id, inventory.variantId))
     .innerJoin(products, eq(products.id, productVariants.productId))
     .innerJoin(categories, eq(categories.id, products.categoryId))
-    .leftJoin(variantPrices, and(eq(variantPrices.variantId, productVariants.id), isNull(variantPrices.effectiveTo)))
+    .leftJoin(variantCosts, and(eq(variantCosts.variantId, productVariants.id), isNull(variantCosts.effectiveTo)))
     .where(eq(products.brandId, brandId))
     .groupBy(categories.id, categories.name)
-    .orderBy(desc(sql`sum(${inventory.quantity} * coalesce(${variantPrices.price}, 0))`));
+    .orderBy(desc(sql`sum(${inventory.quantity} * coalesce(${variantCosts.cost}, 0))`));
 
   const attributeMap = await attributesForVariants([
     ...topSellingRows.map((r) => r.variantId),
@@ -547,6 +560,7 @@ export async function getBrandDashboardSummary(brandId: string): Promise<BrandDa
 
   const currentInventoryUnitCount = inventoryRow?.unitCount ?? 0;
   const currentInventoryValue = inventoryRow ? Number(inventoryRow.inventoryValue) : 0;
+  const currentPotentialRetailValue = inventoryRow ? Number(inventoryRow.potentialRetailValue) : 0;
 
   const { orders: dailyOrders, movements: dailyMovements } = await getDailyActivity(brandId);
 
@@ -556,28 +570,29 @@ export async function getBrandDashboardSummary(brandId: string): Promise<BrandDa
   // treat as exact deltas.
   let runningUnits = currentInventoryUnitCount;
   let runningValue = currentInventoryValue;
+  let runningRetailValue = currentPotentialRetailValue;
   const unitLevels: number[] = new Array(dailyMovements.length);
   const valueLevels: number[] = new Array(dailyMovements.length);
+  const retailValueLevels: number[] = new Array(dailyMovements.length);
   for (let i = dailyMovements.length - 1; i >= 0; i--) {
     unitLevels[i] = runningUnits;
     valueLevels[i] = runningValue;
+    retailValueLevels[i] = runningRetailValue;
     runningUnits -= dailyMovements[i]!.net_units;
     runningValue -= Number(dailyMovements[i]!.net_value);
+    runningRetailValue -= Number(dailyMovements[i]!.net_retail_value);
   }
 
   const trend: DashboardTrendPoint[] = dailyOrders.map((row, i) => {
     const dayRevenue = Number(row.revenue);
     const dayExpenses = Number(row.cogs) + Number(row.shipping_fee);
-    // inventoryValue and potentialRetailValue share the same underlying
-    // qty * price levels today — see BrandDashboardSummary's doc comment.
-    const dayValue = valueLevels[i] ?? currentInventoryValue;
     return {
       day: row.day,
       revenue: dayRevenue,
       orderCount: row.order_count,
       inventoryUnits: unitLevels[i] ?? currentInventoryUnitCount,
-      inventoryValue: dayValue,
-      potentialRetailValue: dayValue,
+      inventoryValue: valueLevels[i] ?? currentInventoryValue,
+      potentialRetailValue: retailValueLevels[i] ?? currentPotentialRetailValue,
       expenses: dayExpenses,
       netProfit: dayRevenue - dayExpenses,
     };
@@ -610,7 +625,7 @@ export async function getBrandDashboardSummary(brandId: string): Promise<BrandDa
     revenue,
     orderCount: revenueRow?.orderCount ?? 0,
     inventoryValue: currentInventoryValue,
-    potentialRetailValue: currentInventoryValue,
+    potentialRetailValue: currentPotentialRetailValue,
     inventoryUnitCount: currentInventoryUnitCount,
     totalExpenses,
     netProfit,

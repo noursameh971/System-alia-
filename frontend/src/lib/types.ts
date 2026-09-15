@@ -464,8 +464,9 @@ export interface DashboardTrendPoint {
   revenue: number;
   orderCount: number;
   inventoryUnits: number;
+  /** qty * cost — money invested in stock. */
   inventoryValue: number;
-  /** Currently identical to inventoryValue — see BrandDashboardSummary's doc comment on potentialRetailValue. */
+  /** qty * selling price — what the same stock would bring in if sold at retail. */
   potentialRetailValue: number;
   /** That day's production cost (COGS) + shipping fees. */
   expenses: number;
@@ -477,14 +478,14 @@ export interface BrandDashboardSummary {
   brand: Brand;
   revenue: number;
   orderCount: number;
-  /** qty * current selling price. */
-  inventoryValue: number;
   /**
-   * qty * current selling price — the total value of on-hand stock if sold
-   * at retail. Deliberately the same formula (and today, the same number)
-   * as inventoryValue rather than a true cost-basis figure: production
-   * cost is only set on a handful of variants right now.
+   * qty * production cost — money invested in stock (a cost/asset basis),
+   * not what it would sell for. Reads low (or 0) for a variant with no
+   * production cost recorded yet — cost tracking is opt-in, unlike selling
+   * price.
    */
+  inventoryValue: number;
+  /** qty * current selling price — the total value of on-hand stock if sold at retail. */
   potentialRetailValue: number;
   inventoryUnitCount: number;
   totalExpenses: number;
