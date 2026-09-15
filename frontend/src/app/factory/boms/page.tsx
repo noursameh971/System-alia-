@@ -9,10 +9,12 @@ import {
   createBom,
   createFinishedGood,
   getBom,
+  getFinishedGood,
   listBoms,
   listFinishedGoods,
   listMaterials,
   listStageTemplates,
+  shipFinishedGood,
   updateBomStatus,
 } from "@/lib/factory";
 import { listBrands } from "@/lib/brands";
@@ -44,6 +46,7 @@ export default function BomsPage() {
   const [addingFinishedGood, setAddingFinishedGood] = useState(false);
   const [creatingBom, setCreatingBom] = useState(false);
   const [viewingBomId, setViewingBomId] = useState<string | null>(null);
+  const [viewingFinishedGoodId, setViewingFinishedGoodId] = useState<string | null>(null);
 
   async function handleStatusChange(bomId: string, status: "active" | "archived") {
     try {
@@ -70,7 +73,12 @@ export default function BomsPage() {
             <p className="text-sm text-slate-500 dark:text-slate-400">{t("No finished goods yet.")}</p>
           ) : (
             finishedGoods!.map((fg) => (
-              <div key={fg.id} className="rounded-lg border border-slate-200 bg-slate-50 px-3.5 py-2.5 dark:border-slate-800 dark:bg-slate-900">
+              <button
+                key={fg.id}
+                type="button"
+                onClick={() => setViewingFinishedGoodId(fg.id)}
+                className="rounded-lg border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-start transition hover:border-slate-300 hover:bg-slate-100 dark:border-slate-800 dark:bg-slate-900 dark:hover:bg-slate-800"
+              >
                 <div className="flex items-center gap-1.5">
                   <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">{fg.name}</p>
                   {fg.brandName ? (
@@ -82,7 +90,7 @@ export default function BomsPage() {
                 <p className="font-mono text-xs text-slate-400">
                   {fg.sku} · {t(fg.unit)}
                 </p>
-              </div>
+              </button>
             ))
           )}
         </div>
@@ -169,6 +177,9 @@ export default function BomsPage() {
         />
       ) : null}
       {viewingBomId ? <ViewBomModal bomId={viewingBomId} onOpenChange={(open) => !open && setViewingBomId(null)} /> : null}
+      {viewingFinishedGoodId ? (
+        <FinishedGoodDetailModal finishedGoodId={viewingFinishedGoodId} onOpenChange={(open) => !open && setViewingFinishedGoodId(null)} />
+      ) : null}
     </>
   );
 }
@@ -483,6 +494,189 @@ function ViewBomModal({ bomId, onOpenChange }: { bomId: string; onOpenChange: (o
             ) : null}
           </div>
         )}
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function FinishedGoodDetailModal({ finishedGoodId, onOpenChange }: { finishedGoodId: string; onOpenChange: (open: boolean) => void }) {
+  const { t } = useLocale();
+  const { data: fg, isLoading, mutate } = useSWR(["factory-finished-good", finishedGoodId], () => getFinishedGood(finishedGoodId));
+  const [shipping, setShipping] = useState(false);
+
+  return (
+    <Dialog open onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-lg">
+        <DialogHeader>
+          <DialogTitle>{fg ? fg.name : t("Loading...")}</DialogTitle>
+          {fg ? (
+            <DialogDescription>
+              {fg.sku} · {t(fg.unit)}
+              {fg.brandName ? ` · ${fg.brandName}` : ""}
+            </DialogDescription>
+          ) : null}
+        </DialogHeader>
+        {isLoading || !fg ? (
+          <div className="flex justify-center py-8">
+            <Spinner label="Loading..." />
+          </div>
+        ) : (
+          <div className="flex flex-col gap-4">
+            <div className="flex items-center justify-between">
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">{t("Stock by location")}</p>
+              <Button type="button" variant="outline" size="sm" onClick={() => setShipping(true)} disabled={fg.stockByLocation.length === 0}>
+                {t("Ship to Brand")}
+              </Button>
+            </div>
+            {fg.stockByLocation.length === 0 ? (
+              <p className="text-sm text-slate-400">{t("No stock yet.")}</p>
+            ) : (
+              <ul className="flex flex-col gap-1 text-sm">
+                {fg.stockByLocation.map((s) => (
+                  <li key={s.locationId} className="flex justify-between">
+                    <span>{t(s.locationName)}</span>
+                    <span className="tabular-nums text-slate-500">
+                      {s.quantity} {t(fg.unit)}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            )}
+
+            <div>
+              <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-slate-500">{t("Recent movements")}</p>
+              {fg.recentMovements.length === 0 ? (
+                <p className="text-sm text-slate-400">{t("No movements yet.")}</p>
+              ) : (
+                <ul className="flex flex-col gap-1.5 text-sm">
+                  {fg.recentMovements.map((m) => (
+                    <li key={m.id} className="flex items-center justify-between rounded-lg bg-slate-50 px-3 py-2 dark:bg-slate-900">
+                      <span>{t(m.movementType)}</span>
+                      <span className="tabular-nums text-slate-500">
+                        {m.quantity} {t(fg.unit)}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          </div>
+        )}
+      </DialogContent>
+      {shipping ? (
+        <ShipToBrandModal
+          finishedGoodId={finishedGoodId}
+          stockByLocation={fg?.stockByLocation ?? []}
+          unit={fg?.unit ?? "piece"}
+          open={shipping}
+          onOpenChange={setShipping}
+          onSuccess={() => void mutate()}
+        />
+      ) : null}
+    </Dialog>
+  );
+}
+
+function ShipToBrandModal({
+  finishedGoodId,
+  stockByLocation,
+  unit,
+  open,
+  onOpenChange,
+  onSuccess,
+}: {
+  finishedGoodId: string;
+  stockByLocation: { locationId: string; locationName: string; quantity: number }[];
+  unit: string;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  onSuccess: () => void;
+}) {
+  const { t } = useLocale();
+  const { data: brands } = useSWR("brands", listBrands);
+  const [brandId, setBrandId] = useState("");
+  const [fromLocationId, setFromLocationId] = useState(stockByLocation[0]?.locationId ?? "");
+  const [quantity, setQuantity] = useState("");
+  const [notes, setNotes] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+
+  const selectedLocationStock = stockByLocation.find((s) => s.locationId === fromLocationId)?.quantity ?? 0;
+
+  async function handleSubmit(event: FormEvent) {
+    event.preventDefault();
+    const qty = Number(quantity);
+    if (!brandId || !fromLocationId || !qty || qty <= 0) return;
+
+    setSubmitting(true);
+    try {
+      await shipFinishedGood(finishedGoodId, { brandId, fromLocationId, quantity: qty, notes: notes.trim() || undefined });
+      toast.success(t("Shipped to brand"));
+      onSuccess();
+      onOpenChange(false);
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : t("Something went wrong — please try again"));
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={(next) => !submitting && onOpenChange(next)}>
+      <DialogContent className="max-w-md">
+        <form onSubmit={handleSubmit} className="flex flex-col gap-5">
+          <DialogHeader>
+            <DialogTitle>{t("Ship to Brand")}</DialogTitle>
+            <DialogDescription>{t("Records finished-goods stock leaving the factory for a brand — a reference only, it never touches that brand's own data.")}</DialogDescription>
+          </DialogHeader>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="ship-brand">{t("Brand")}</Label>
+            <Select id="ship-brand" value={brandId} onChange={(e) => setBrandId(e.target.value)} disabled={submitting}>
+              <option value="">{t("Select a brand")}</option>
+              {(brands ?? []).map((b) => (
+                <option key={b.id} value={b.id}>
+                  {b.name}
+                </option>
+              ))}
+            </Select>
+          </div>
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="ship-location">{t("From location")}</Label>
+              <Select id="ship-location" value={fromLocationId} onChange={(e) => setFromLocationId(e.target.value)} disabled={submitting}>
+                {stockByLocation.map((s) => (
+                  <option key={s.locationId} value={s.locationId}>
+                    {t(s.locationName)} ({s.quantity} {t(unit)})
+                  </option>
+                ))}
+              </Select>
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="ship-quantity">{t("Quantity")}</Label>
+              <Input
+                id="ship-quantity"
+                type="number"
+                min="0.001"
+                max={selectedLocationStock}
+                step="0.001"
+                value={quantity}
+                onChange={(e) => setQuantity(e.target.value)}
+                disabled={submitting}
+              />
+            </div>
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="ship-notes">{t("Notes")}</Label>
+            <Input id="ship-notes" value={notes} onChange={(e) => setNotes(e.target.value)} placeholder={t("Optional")} disabled={submitting} />
+          </div>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={submitting}>
+              {t("Cancel")}
+            </Button>
+            <Button type="submit" disabled={submitting || !brandId || !fromLocationId || !quantity.trim()}>
+              {submitting ? t("Shipping...") : t("Ship to Brand")}
+            </Button>
+          </DialogFooter>
+        </form>
       </DialogContent>
     </Dialog>
   );

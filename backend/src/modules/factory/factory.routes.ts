@@ -13,6 +13,9 @@ import {
 } from "./boms.controller.js";
 import { createBomSchema, createFinishedGoodSchema, updateBomStatusSchema } from "./boms.schema.js";
 import { getFactoryDashboard } from "./dashboard.controller.js";
+import { getFinishedGoodDetailHandler, shipFinishedGoodHandler } from "./finishedGoods.controller.js";
+import { shipFinishedGoodSchema } from "./finishedGoods.schema.js";
+import { getCostingReportHandler, getMrpReportHandler, getScrapReportHandler } from "./reports.controller.js";
 import {
   createLocationHandler,
   createMaterialCategoryHandler,
@@ -56,6 +59,8 @@ import {
   recordLaborHandler,
   recordOutputHandler,
   recordQualityCheckHandler,
+  updateWorkOrderHandler,
+  updateWorkOrderStageHandler,
   updateWorkOrderStatusHandler,
 } from "./workOrders.controller.js";
 import {
@@ -64,6 +69,8 @@ import {
   recordLaborSchema,
   recordOutputSchema,
   recordQualityCheckSchema,
+  updateWorkOrderSchema,
+  updateWorkOrderStageSchema,
   updateWorkOrderStatusSchema,
 } from "./workOrders.schema.js";
 
@@ -104,6 +111,8 @@ factoryRouter.post("/stage-templates", validateBody(createStageTemplateSchema), 
 // --- finished goods + BOM -------------------------------------------------
 factoryRouter.get("/finished-goods", asyncHandler(getFinishedGoods));
 factoryRouter.post("/finished-goods", validateBody(createFinishedGoodSchema), asyncHandler(createFinishedGoodHandler));
+factoryRouter.get("/finished-goods/:finishedGoodId", asyncHandler(getFinishedGoodDetailHandler));
+factoryRouter.post("/finished-goods/:finishedGoodId/ship", validateBody(shipFinishedGoodSchema), asyncHandler(shipFinishedGoodHandler));
 
 factoryRouter.get("/boms", asyncHandler(getBoms));
 factoryRouter.post("/boms", validateBody(createBomSchema), asyncHandler(createBomHandler));
@@ -115,7 +124,13 @@ factoryRouter.get("/boms/:bomId/material-requirements", asyncHandler(getMaterial
 factoryRouter.get("/work-orders", asyncHandler(getWorkOrders));
 factoryRouter.post("/work-orders", validateBody(createWorkOrderSchema), asyncHandler(createWorkOrderHandler));
 factoryRouter.get("/work-orders/:workOrderId", asyncHandler(getWorkOrderDetailHandler));
+factoryRouter.patch("/work-orders/:workOrderId", validateBody(updateWorkOrderSchema), asyncHandler(updateWorkOrderHandler));
 factoryRouter.patch("/work-orders/:workOrderId/status", validateBody(updateWorkOrderStatusSchema), asyncHandler(updateWorkOrderStatusHandler));
+factoryRouter.patch(
+  "/work-orders/:workOrderId/stages/:stageId",
+  validateBody(updateWorkOrderStageSchema),
+  asyncHandler(updateWorkOrderStageHandler),
+);
 factoryRouter.post(
   "/work-orders/:workOrderId/materials/issue",
   validateBody(issueBomMaterialsSchema),
@@ -128,3 +143,8 @@ factoryRouter.post(
   validateBody(recordQualityCheckSchema),
   asyncHandler(recordQualityCheckHandler),
 );
+
+// --- reports (aggregate MRP, scrap/waste, costing) -------------------------
+factoryRouter.get("/reports/mrp", asyncHandler(getMrpReportHandler));
+factoryRouter.get("/reports/scrap", asyncHandler(getScrapReportHandler));
+factoryRouter.get("/reports/costing", asyncHandler(getCostingReportHandler));

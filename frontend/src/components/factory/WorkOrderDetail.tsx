@@ -10,12 +10,16 @@ import {
   getWorkOrder,
   issueBomMaterials,
   listFactoryLocations,
+  listMachines,
+  listProductionLines,
   recordLabor,
   recordOutput,
   recordQualityCheck,
+  updateWorkOrder,
+  updateWorkOrderStage,
   updateWorkOrderStatus,
 } from "@/lib/factory";
-import type { WorkOrderStatus } from "@/lib/factoryTypes";
+import type { WorkOrderDetail as WorkOrderDetailType, WorkOrderPriority, WorkOrderStageStatus, WorkOrderStatus } from "@/lib/factoryTypes";
 import { useLocale } from "@/context/LocaleContext";
 import { Spinner } from "@/components/ui/Spinner";
 import { EmptyState } from "@/components/ui/EmptyState";
@@ -43,11 +47,11 @@ const STATUS_VARIANT: Record<string, "neutral" | "success" | "warning" | "info" 
   cancelled: "danger",
 };
 
-const NEXT_STATUS_ACTIONS: Record<WorkOrderStatus, { status: WorkOrderStatus; label: string }[]> = {
+const NEXT_STATUS_ACTIONS: Record<WorkOrderStatus, { status: WorkOrderStatus; label: string; needsReason?: boolean }[]> = {
   draft: [{ status: "scheduled", label: "Schedule" }],
   scheduled: [{ status: "in_progress", label: "Start" }],
   in_progress: [
-    { status: "paused", label: "Pause" },
+    { status: "paused", label: "Pause", needsReason: true },
     { status: "completed", label: "Complete" },
   ],
   paused: [{ status: "in_progress", label: "Resume" }],
@@ -62,10 +66,12 @@ export function WorkOrderDetail({ workOrderId }: { workOrderId: string }) {
   const [loggingLabor, setLoggingLabor] = useState(false);
   const [recordingOutput, setRecordingOutput] = useState(false);
   const [recordingQc, setRecordingQc] = useState(false);
+  const [editingOrder, setEditingOrder] = useState(false);
+  const [reasonAction, setReasonAction] = useState<WorkOrderStatus | null>(null);
 
-  async function handleStatusChange(status: WorkOrderStatus) {
+  async function handleStatusChange(status: WorkOrderStatus, reason?: string) {
     try {
-      await updateWorkOrderStatus(workOrderId, status);
+      await updateWorkOrderStatus(workOrderId, status, reason);
       toast.success(t("Status updated"));
       void mutate();
     } catch (err) {
@@ -112,13 +118,24 @@ export function WorkOrderDetail({ workOrderId }: { workOrderId: string }) {
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
+            {(wo.status === "draft" || wo.status === "scheduled") ? (
+              <Button type="button" variant="outline" size="sm" onClick={() => setEditingOrder(true)}>
+                {t("Edit")}
+              </Button>
+            ) : null}
             {NEXT_STATUS_ACTIONS[wo.status].map((action) => (
-              <Button key={action.status} type="button" variant="outline" size="sm" onClick={() => void handleStatusChange(action.status)}>
+              <Button
+                key={action.status}
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => (action.needsReason ? setReasonAction(action.status) : void handleStatusChange(action.status))}
+              >
                 {t(action.label)}
               </Button>
             ))}
             {wo.status !== "completed" && wo.status !== "cancelled" ? (
-              <Button type="button" variant="ghost" size="sm" onClick={() => void handleStatusChange("cancelled")}>
+              <Button type="button" variant="ghost" size="sm" onClick={() => setReasonAction("cancelled")}>
                 {t("Cancel")}
               </Button>
             ) : null}
@@ -143,15 +160,43 @@ export function WorkOrderDetail({ workOrderId }: { workOrderId: string }) {
         {wo.stages.length > 0 ? (
           <div className="mt-6">
             <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">{t("Routing")}</p>
-            <ol className="flex flex-wrap gap-2">
+            <div className="flex flex-col gap-2">
               {wo.stages.map((s, i) => (
-                <li key={s.id} className="rounded-full border border-slate-200 px-3 py-1 text-xs font-medium text-slate-600 dark:border-slate-700 dark:text-slate-300">
-                  {i + 1}. {t(s.stageName)}
-                </li>
+                <StageRow key={s.id} workOrderId={workOrderId} stage={s} index={i} onSuccess={() => void mutate()} />
               ))}
-            </ol>
+            </div>
           </div>
         ) : null}
+      </section>
+
+      <section className="rounded-xl border border-slate-200/80 bg-white/90 p-7 shadow-sm">
+        <h3 className="text-base font-semibold tracking-tight text-slate-900">{t("Factory Costing")}</h3>
+        <div className="mt-4 flex flex-wrap gap-3">
+          <div className="min-w-[140px] rounded-lg bg-slate-50 px-3.5 py-2.5 dark:bg-slate-900">
+            <p className="text-xs font-medium uppercase tracking-wide text-slate-500">{t("Material cost")}</p>
+            <p className="mt-1 text-lg font-semibold tabular-nums text-slate-900 dark:text-slate-100">
+              {wo.costing.materialCost.toFixed(2)} {t("EGP")}
+            </p>
+          </div>
+          <div className="min-w-[140px] rounded-lg bg-slate-50 px-3.5 py-2.5 dark:bg-slate-900">
+            <p className="text-xs font-medium uppercase tracking-wide text-slate-500">{t("Labor cost")}</p>
+            <p className="mt-1 text-lg font-semibold tabular-nums text-slate-900 dark:text-slate-100">
+              {wo.costing.laborCost.toFixed(2)} {t("EGP")}
+            </p>
+          </div>
+          <div className="min-w-[140px] rounded-lg bg-slate-50 px-3.5 py-2.5 dark:bg-slate-900">
+            <p className="text-xs font-medium uppercase tracking-wide text-slate-500">{t("Total cost")}</p>
+            <p className="mt-1 text-lg font-semibold tabular-nums text-indigo-600 dark:text-indigo-400">
+              {wo.costing.totalCost.toFixed(2)} {t("EGP")}
+            </p>
+          </div>
+          <div className="min-w-[140px] rounded-lg bg-slate-50 px-3.5 py-2.5 dark:bg-slate-900">
+            <p className="text-xs font-medium uppercase tracking-wide text-slate-500">{t("Unit cost")}</p>
+            <p className="mt-1 text-lg font-semibold tabular-nums text-slate-900 dark:text-slate-100">
+              {wo.costing.unitCost != null ? `${wo.costing.unitCost.toFixed(2)} ${t("EGP")}` : "—"}
+            </p>
+          </div>
+        </div>
       </section>
 
       <section className="rounded-xl border border-slate-200/80 bg-white/90 p-7 shadow-sm">
@@ -294,7 +339,261 @@ export function WorkOrderDetail({ workOrderId }: { workOrderId: string }) {
       {recordingQc ? (
         <RecordQualityCheckModal open={recordingQc} onOpenChange={setRecordingQc} workOrderId={workOrderId} onSuccess={() => void mutate()} />
       ) : null}
+      {editingOrder ? (
+        <EditWorkOrderModal open={editingOrder} onOpenChange={setEditingOrder} workOrderId={workOrderId} workOrder={wo} onSuccess={() => void mutate()} />
+      ) : null}
+      {reasonAction ? (
+        <StatusReasonModal
+          status={reasonAction}
+          onOpenChange={(open) => !open && setReasonAction(null)}
+          onConfirm={(reason) => {
+            void handleStatusChange(reasonAction, reason);
+            setReasonAction(null);
+          }}
+        />
+      ) : null}
     </>
+  );
+}
+
+const STAGE_STATUS_VARIANT: Record<WorkOrderStageStatus, "neutral" | "success" | "warning" | "danger"> = {
+  pending: "neutral",
+  in_progress: "warning",
+  completed: "success",
+  skipped: "danger",
+};
+
+const STAGE_NEXT_ACTIONS: Record<WorkOrderStageStatus, { status: "in_progress" | "completed" | "skipped"; label: string }[]> = {
+  pending: [
+    { status: "in_progress", label: "Start" },
+    { status: "skipped", label: "Skip" },
+  ],
+  in_progress: [
+    { status: "completed", label: "Complete" },
+    { status: "skipped", label: "Skip" },
+  ],
+  completed: [],
+  skipped: [],
+};
+
+function StageRow({
+  workOrderId,
+  stage,
+  index,
+  onSuccess,
+}: {
+  workOrderId: string;
+  stage: WorkOrderDetailType["stages"][number];
+  index: number;
+  onSuccess: () => void;
+}) {
+  const { t } = useLocale();
+  const { data: machines } = useSWR("factory-machines", listMachines);
+  const [busy, setBusy] = useState(false);
+
+  async function handleStageStatus(status: "in_progress" | "completed" | "skipped") {
+    setBusy(true);
+    try {
+      await updateWorkOrderStage(workOrderId, stage.id, { status });
+      toast.success(t("Stage updated"));
+      onSuccess();
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : t("Something went wrong — please try again"));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleMachineChange(machineId: string) {
+    setBusy(true);
+    try {
+      await updateWorkOrderStage(workOrderId, stage.id, { machineId: machineId || null });
+      onSuccess();
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : t("Something went wrong — please try again"));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="flex flex-wrap items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 dark:border-slate-800">
+      <span className="w-5 shrink-0 text-xs text-slate-400">{index + 1}.</span>
+      <span className="min-w-[100px] text-sm font-medium text-slate-800 dark:text-slate-200">{t(stage.stageName)}</span>
+      <Badge variant={STAGE_STATUS_VARIANT[stage.status]} size="sm">
+        {t(stage.status)}
+      </Badge>
+      <Select
+        wrapperClassName="min-w-0 w-44"
+        value={stage.machineId ?? ""}
+        onChange={(e) => void handleMachineChange(e.target.value)}
+        disabled={busy || stage.status === "completed" || stage.status === "skipped"}
+      >
+        <option value="">{t("No machine")}</option>
+        {(machines ?? []).map((m) => (
+          <option key={m.id} value={m.id}>
+            {m.name}
+          </option>
+        ))}
+      </Select>
+      <div className="ms-auto flex items-center gap-1.5">
+        {STAGE_NEXT_ACTIONS[stage.status].map((action) => (
+          <Button key={action.status} type="button" variant="outline" size="sm" disabled={busy} onClick={() => void handleStageStatus(action.status)}>
+            {t(action.label)}
+          </Button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function StatusReasonModal({
+  status,
+  onOpenChange,
+  onConfirm,
+}: {
+  status: WorkOrderStatus;
+  onOpenChange: (open: boolean) => void;
+  onConfirm: (reason?: string) => void;
+}) {
+  const { t } = useLocale();
+  const [reason, setReason] = useState("");
+
+  return (
+    <Dialog open onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle>{status === "cancelled" ? t("Cancel Work Order") : t("Pause Work Order")}</DialogTitle>
+          <DialogDescription>{t("Optionally record why — kept on the order for later reference.")}</DialogDescription>
+        </DialogHeader>
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="status-reason">{t("Reason")}</Label>
+          <Input id="status-reason" value={reason} onChange={(e) => setReason(e.target.value)} placeholder={t("Optional")} />
+        </div>
+        <DialogFooter>
+          <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
+            {t("Back")}
+          </Button>
+          <Button
+            type="button"
+            className={status === "cancelled" ? "bg-red-600 text-white hover:bg-red-500 dark:bg-red-600 dark:text-white dark:hover:bg-red-500" : undefined}
+            onClick={() => onConfirm(reason.trim() || undefined)}
+          >
+            {status === "cancelled" ? t("Cancel Work Order") : t("Pause Work Order")}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function EditWorkOrderModal({
+  open,
+  onOpenChange,
+  workOrderId,
+  workOrder,
+  onSuccess,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  workOrderId: string;
+  workOrder: WorkOrderDetailType;
+  onSuccess: () => void;
+}) {
+  const { t } = useLocale();
+  const { data: lines } = useSWR("factory-production-lines", listProductionLines);
+  const [quantityOrdered, setQuantityOrdered] = useState(String(workOrder.quantityOrdered));
+  const [priority, setPriority] = useState<WorkOrderPriority>(workOrder.priority);
+  const [lineId, setLineId] = useState(workOrder.lineId ?? "");
+  const [plannedStartDate, setPlannedStartDate] = useState(workOrder.plannedStartDate ?? "");
+  const [plannedEndDate, setPlannedEndDate] = useState(workOrder.plannedEndDate ?? "");
+  const [notes, setNotes] = useState(workOrder.notes ?? "");
+  const [submitting, setSubmitting] = useState(false);
+
+  async function handleSubmit(event: FormEvent) {
+    event.preventDefault();
+    const quantity = Number(quantityOrdered);
+    if (!quantity || quantity <= 0) return;
+
+    setSubmitting(true);
+    try {
+      await updateWorkOrder(workOrderId, {
+        quantityOrdered: quantity,
+        priority,
+        lineId: lineId || null,
+        plannedStartDate: plannedStartDate || null,
+        plannedEndDate: plannedEndDate || null,
+        notes: notes.trim() || null,
+      });
+      toast.success(t("Work order updated"));
+      onSuccess();
+      onOpenChange(false);
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : t("Something went wrong — please try again"));
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={(next) => !submitting && onOpenChange(next)}>
+      <DialogContent className="max-w-md">
+        <form onSubmit={handleSubmit} className="flex flex-col gap-5">
+          <DialogHeader>
+            <DialogTitle>{t("Edit Work Order")}</DialogTitle>
+            <DialogDescription>{t("Only editable before production starts.")}</DialogDescription>
+          </DialogHeader>
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="edit-wo-qty">{t("Quantity")}</Label>
+              <Input id="edit-wo-qty" type="number" min="0.001" step="0.001" value={quantityOrdered} onChange={(e) => setQuantityOrdered(e.target.value)} disabled={submitting} />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="edit-wo-priority">{t("Priority")}</Label>
+              <Select id="edit-wo-priority" value={priority} onChange={(e) => setPriority(e.target.value as WorkOrderPriority)} disabled={submitting}>
+                <option value="low">{t("low")}</option>
+                <option value="normal">{t("normal")}</option>
+                <option value="high">{t("high")}</option>
+                <option value="urgent">{t("urgent")}</option>
+              </Select>
+            </div>
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="edit-wo-line">{t("Production line")}</Label>
+            <Select id="edit-wo-line" value={lineId} onChange={(e) => setLineId(e.target.value)} disabled={submitting}>
+              <option value="">{t("No line assigned")}</option>
+              {(lines ?? []).map((l) => (
+                <option key={l.id} value={l.id}>
+                  {l.name}
+                </option>
+              ))}
+            </Select>
+          </div>
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="edit-wo-start">{t("Planned start")}</Label>
+              <Input id="edit-wo-start" type="date" value={plannedStartDate} onChange={(e) => setPlannedStartDate(e.target.value)} disabled={submitting} />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="edit-wo-end">{t("Planned end")}</Label>
+              <Input id="edit-wo-end" type="date" value={plannedEndDate} onChange={(e) => setPlannedEndDate(e.target.value)} disabled={submitting} />
+            </div>
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="edit-wo-notes">{t("Notes")}</Label>
+            <Input id="edit-wo-notes" value={notes} onChange={(e) => setNotes(e.target.value)} placeholder={t("Optional")} disabled={submitting} />
+          </div>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={submitting}>
+              {t("Cancel")}
+            </Button>
+            <Button type="submit" disabled={submitting || !quantityOrdered.trim()}>
+              {submitting ? t("Saving...") : t("Save Changes")}
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
   );
 }
 

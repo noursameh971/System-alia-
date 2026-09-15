@@ -8,6 +8,8 @@ import {
   recordLabor,
   recordOutput,
   recordQualityCheck,
+  updateWorkOrder,
+  updateWorkOrderStage,
   updateWorkOrderStatus,
 } from "./workOrders.service.js";
 import type {
@@ -16,6 +18,8 @@ import type {
   RecordLaborInput,
   RecordOutputInput,
   RecordQualityCheckInput,
+  UpdateWorkOrderInput,
+  UpdateWorkOrderStageInput,
 } from "./workOrders.schema.js";
 
 export async function getWorkOrders(req: Request, res: Response): Promise<void> {
@@ -34,8 +38,19 @@ export async function createWorkOrderHandler(req: Request, res: Response): Promi
 
 export async function updateWorkOrderStatusHandler(req: Request, res: Response): Promise<void> {
   const workOrderId = String(req.params.workOrderId ?? "");
-  const { status } = req.body as { status: string };
-  sendSuccess(res, 200, await updateWorkOrderStatus(workOrderId, status, req.user!.id));
+  const { status, reason } = req.body as { status: string; reason?: string };
+  sendSuccess(res, 200, await updateWorkOrderStatus(workOrderId, status, req.user!.id, reason));
+}
+
+export async function updateWorkOrderHandler(req: Request, res: Response): Promise<void> {
+  const workOrderId = String(req.params.workOrderId ?? "");
+  sendSuccess(res, 200, await updateWorkOrder(workOrderId, req.body as UpdateWorkOrderInput));
+}
+
+export async function updateWorkOrderStageHandler(req: Request, res: Response): Promise<void> {
+  const workOrderId = String(req.params.workOrderId ?? "");
+  const stageId = String(req.params.stageId ?? "");
+  sendSuccess(res, 200, await updateWorkOrderStage(workOrderId, stageId, req.body as UpdateWorkOrderStageInput));
 }
 
 export async function issueBomMaterialsHandler(req: Request, res: Response): Promise<void> {

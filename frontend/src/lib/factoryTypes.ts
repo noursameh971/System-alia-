@@ -159,6 +159,14 @@ export interface MaterialRequirement {
 
 export type WorkOrderStatus = "draft" | "scheduled" | "in_progress" | "paused" | "completed" | "cancelled";
 export type WorkOrderPriority = "low" | "normal" | "high" | "urgent";
+export type WorkOrderStageStatus = "pending" | "in_progress" | "completed" | "skipped";
+
+export interface WorkOrderCost {
+  materialCost: number;
+  laborCost: number;
+  totalCost: number;
+  unitCost: number | null;
+}
 
 export interface WorkOrderListItem {
   id: string;
@@ -171,6 +179,7 @@ export interface WorkOrderListItem {
   quantityScrapped: number;
   status: WorkOrderStatus;
   priority: WorkOrderPriority;
+  lineId: string | null;
   lineName: string | null;
   plannedStartDate: string | null;
   plannedEndDate: string | null;
@@ -187,7 +196,7 @@ export interface WorkOrderDetail extends WorkOrderListItem {
     stageTemplateId: string;
     stageName: string;
     sequenceOrder: number;
-    status: string;
+    status: WorkOrderStageStatus;
     lineId: string | null;
     machineId: string | null;
   }[];
@@ -195,6 +204,7 @@ export interface WorkOrderDetail extends WorkOrderListItem {
   laborLogs: { id: string; workerName: string; hoursWorked: number; quantityProduced: number; logDate: string; createdAt: string }[];
   outputLogs: { id: string; quantityGood: number; quantityScrap: number; scrapReason: string | null; recordedAt: string }[];
   qualityChecks: { id: string; checkedQuantity: number; passedQuantity: number; failedQuantity: number; result: string; checkedAt: string }[];
+  costing: WorkOrderCost;
 }
 
 export interface CreateWorkOrderInput {
@@ -206,6 +216,21 @@ export interface CreateWorkOrderInput {
   plannedStartDate?: string;
   plannedEndDate?: string;
   notes?: string;
+}
+
+export interface UpdateWorkOrderInput {
+  quantityOrdered?: number;
+  priority?: WorkOrderPriority;
+  lineId?: string | null;
+  plannedStartDate?: string | null;
+  plannedEndDate?: string | null;
+  notes?: string | null;
+}
+
+export interface UpdateWorkOrderStageInput {
+  status?: "in_progress" | "completed" | "skipped";
+  machineId?: string | null;
+  lineId?: string | null;
 }
 
 export interface RecordOutputInput {
@@ -234,6 +259,59 @@ export interface RecordQualityCheckInput {
   failedQuantity: number;
   result: "pass" | "fail" | "rework";
   inspectorNotes?: string;
+}
+
+export interface FinishedGoodDetail extends FinishedGood {
+  stockByLocation: { locationId: string; locationName: string; quantity: number }[];
+  recentMovements: {
+    id: string;
+    movementType: string;
+    quantity: number;
+    fromLocationName: string | null;
+    toLocationName: string | null;
+    notes: string | null;
+    createdAt: string;
+  }[];
+}
+
+export interface ShipFinishedGoodInput {
+  brandId: string;
+  fromLocationId: string;
+  quantity: number;
+  notes?: string;
+}
+
+export interface MrpReportRow {
+  materialId: string;
+  materialName: string;
+  sku: string;
+  unit: string;
+  totalRequired: number;
+  availableQuantity: number;
+  shortfall: number;
+  reorderLevel: number;
+  openWorkOrderCount: number;
+}
+
+export interface ScrapReport {
+  totalGood: number;
+  totalScrap: number;
+  scrapRatePct: number;
+  byReason: { reason: string; quantity: number }[];
+  byProduct: { finishedGoodId: string; finishedGoodName: string; quantityGood: number; quantityScrap: number; scrapRatePct: number }[];
+  materialWaste: { materialId: string; materialName: string; unit: string; quantity: number; estimatedCost: number }[];
+}
+
+export interface CostingReportRow {
+  workOrderId: string;
+  orderNumber: string;
+  finishedGoodName: string;
+  status: WorkOrderStatus;
+  quantityCompleted: number;
+  materialCost: number;
+  laborCost: number;
+  totalCost: number;
+  unitCost: number | null;
 }
 
 export interface FactoryDashboardSummary {

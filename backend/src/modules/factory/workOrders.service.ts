@@ -8,7 +8,9 @@ import {
   finishedGoodsMovements,
   finishedGoodsStock,
   laborLogs,
+  machines,
   materialCosts,
+  materialStockMovements,
   productionOutputLogs,
   productionLines,
   productionStageTemplates,
@@ -26,6 +28,8 @@ import type {
   RecordLaborInput,
   RecordOutputInput,
   RecordQualityCheckInput,
+  UpdateWorkOrderInput,
+  UpdateWorkOrderStageInput,
 } from "./workOrders.schema.js";
 
 export interface WorkOrderListItem {
@@ -39,6 +43,7 @@ export interface WorkOrderListItem {
   quantityScrapped: number;
   status: string;
   priority: string;
+  lineId: string | null;
   lineName: string | null;
   plannedStartDate: string | null;
   plannedEndDate: string | null;
@@ -58,6 +63,7 @@ export async function listWorkOrders(status?: string): Promise<WorkOrderListItem
       quantityScrapped: workOrders.quantityScrapped,
       status: workOrders.status,
       priority: workOrders.priority,
+      lineId: workOrders.lineId,
       lineName: productionLines.name,
       plannedStartDate: workOrders.plannedStartDate,
       plannedEndDate: workOrders.plannedEndDate,
@@ -96,6 +102,44 @@ export interface WorkOrderDetail extends WorkOrderListItem {
   laborLogs: { id: string; workerName: string; hoursWorked: number; quantityProduced: number; logDate: string; createdAt: Date }[];
   outputLogs: { id: string; quantityGood: number; quantityScrap: number; scrapReason: string | null; recordedAt: Date }[];
   qualityChecks: { id: string; checkedQuantity: number; passedQuantity: number; failedQuantity: number; result: string; checkedAt: Date }[];
+  costing: WorkOrderCost;
+}
+
+export interface WorkOrderCost {
+  materialCost: number;
+  laborCost: number;
+  totalCost: number;
+  unitCost: number | null;
+}
+
+/** Rolled up from the same two ledgers everything else in this file already writes to — material_stock_movements' unit_cost_snapshot (frozen at issue time) and labor_logs' hourly_rate — never a separately maintained total. */
+export async function getWorkOrderCost(workOrderId: string): Promise<WorkOrderCost> {
+  const [wo] = await db.select({ quantityCompleted: workOrders.quantityCompleted }).from(workOrders).where(eq(workOrders.id, workOrderId)).limit(1);
+  if (!wo) throw ApiError.notFound(`Work order ${workOrderId} does not exist`);
+
+  const [[materialRow], [laborRow]] = await Promise.all([
+    db
+      .select({ cost: sql<string>`coalesce(sum(${materialStockMovements.quantity} * coalesce(${materialStockMovements.unitCostSnapshot}, 0)), 0)` })
+      .from(materialStockMovements)
+      .where(
+        and(
+          eq(materialStockMovements.referenceType, "work_order"),
+          eq(materialStockMovements.referenceId, workOrderId),
+          eq(materialStockMovements.movementType, "issue"),
+        ),
+      ),
+    db
+      .select({ cost: sql<string>`coalesce(sum(${laborLogs.hoursWorked} * coalesce(${laborLogs.hourlyRate}, 0)), 0)` })
+      .from(laborLogs)
+      .where(eq(laborLogs.workOrderId, workOrderId)),
+  ]);
+
+  const materialCost = Number(materialRow?.cost ?? 0);
+  const laborCost = Number(laborRow?.cost ?? 0);
+  const totalCost = materialCost + laborCost;
+  const quantityCompleted = Number(wo.quantityCompleted);
+
+  return { materialCost, laborCost, totalCost, unitCost: quantityCompleted > 0 ? totalCost / quantityCompleted : null };
 }
 
 export async function getWorkOrderDetail(workOrderId: string): Promise<WorkOrderDetail> {
@@ -123,7 +167,7 @@ export async function getWorkOrderDetail(workOrderId: string): Promise<WorkOrder
     .where(eq(workOrderStages.workOrderId, workOrderId))
     .orderBy(workOrderStages.sequenceOrder);
 
-  const [materialRequirements, laborRows, outputRows, qcRows] = await Promise.all([
+  const [materialRequirements, laborRows, outputRows, qcRows, costing] = await Promise.all([
     computeMaterialRequirements(row!.bomId, header.quantityOrdered),
     db
       .select({
@@ -160,6 +204,7 @@ export async function getWorkOrderDetail(workOrderId: string): Promise<WorkOrder
       .from(qualityChecks)
       .where(eq(qualityChecks.workOrderId, workOrderId))
       .orderBy(desc(qualityChecks.checkedAt)),
+    getWorkOrderCost(workOrderId),
   ]);
 
   return {
@@ -178,6 +223,7 @@ export async function getWorkOrderDetail(workOrderId: string): Promise<WorkOrder
       passedQuantity: Number(q.passedQuantity),
       failedQuantity: Number(q.failedQuantity),
     })),
+    costing,
   };
 }
 
@@ -236,7 +282,7 @@ const VALID_TRANSITIONS: Record<string, string[]> = {
   cancelled: [],
 };
 
-export async function updateWorkOrderStatus(workOrderId: string, status: string, _actorUserId: string) {
+export async function updateWorkOrderStatus(workOrderId: string, status: string, _actorUserId: string, reason?: string) {
   return db.transaction(async (tx) => {
     const [current] = await tx.select({ status: workOrders.status }).from(workOrders).where(eq(workOrders.id, workOrderId)).limit(1);
     if (!current) throw ApiError.notFound(`Work order ${workOrderId} does not exist`);
@@ -245,15 +291,82 @@ export async function updateWorkOrderStatus(workOrderId: string, status: string,
       throw ApiError.badRequest(`Can't move a work order from "${current.status}" to "${status}"`);
     }
 
+    // Appended (not overwritten) onto the free-text notes field — an
+    // auditable trail of why an order was paused/cancelled, without a
+    // dedicated column for what's occasional, human-readable context.
+    const noteAddition = reason ? `[${status}] ${reason}` : null;
+
     const [updated] = await tx
       .update(workOrders)
       .set({
         status: status as (typeof workOrders.status.enumValues)[number],
         ...(status === "in_progress" ? { actualStartAt: sql`coalesce(actual_start_at, now())` } : {}),
         ...(status === "completed" ? { actualEndAt: sql`now()` } : {}),
+        ...(noteAddition ? { notes: sql`trim(both e'\n' from coalesce(${workOrders.notes}, '') || e'\n' || ${noteAddition})` } : {}),
         updatedAt: sql`now()`,
       })
       .where(eq(workOrders.id, workOrderId))
+      .returning();
+    return updated!;
+  });
+}
+
+/** Only while the order hasn't started production — once it's in_progress/paused/completed/cancelled, quantity/schedule edits could silently invalidate materials already issued or output already recorded against the original plan. */
+export async function updateWorkOrder(workOrderId: string, input: UpdateWorkOrderInput) {
+  const [current] = await db.select({ status: workOrders.status }).from(workOrders).where(eq(workOrders.id, workOrderId)).limit(1);
+  if (!current) throw ApiError.notFound(`Work order ${workOrderId} does not exist`);
+  if (current.status !== "draft" && current.status !== "scheduled") {
+    throw ApiError.badRequest(`Can't edit a work order once it's "${current.status}" — cancel and recreate it instead`);
+  }
+
+  const [updated] = await db
+    .update(workOrders)
+    .set({
+      ...(input.quantityOrdered !== undefined ? { quantityOrdered: input.quantityOrdered.toFixed(3) } : {}),
+      ...(input.priority !== undefined ? { priority: input.priority } : {}),
+      ...(input.lineId !== undefined ? { lineId: input.lineId } : {}),
+      ...(input.plannedStartDate !== undefined ? { plannedStartDate: input.plannedStartDate } : {}),
+      ...(input.plannedEndDate !== undefined ? { plannedEndDate: input.plannedEndDate } : {}),
+      ...(input.notes !== undefined ? { notes: input.notes } : {}),
+      updatedAt: sql`now()`,
+    })
+    .where(eq(workOrders.id, workOrderId))
+    .returning();
+  return updated!;
+}
+
+const VALID_STAGE_TRANSITIONS: Record<string, string[]> = {
+  pending: ["in_progress", "skipped"],
+  in_progress: ["completed", "skipped"],
+  completed: [],
+  skipped: [],
+};
+
+/** Per-stage progress tracking — work_order_stages already carries status/machine/timestamps (instantiated from the BOM's routing in createWorkOrder), this is just the first endpoint that ever writes to it after creation. */
+export async function updateWorkOrderStage(workOrderId: string, stageId: string, input: UpdateWorkOrderStageInput) {
+  return db.transaction(async (tx) => {
+    const [stage] = await tx.select().from(workOrderStages).where(eq(workOrderStages.id, stageId)).limit(1);
+    if (!stage || stage.workOrderId !== workOrderId) throw ApiError.notFound(`Stage ${stageId} does not exist on this work order`);
+
+    if (input.status && input.status !== stage.status && !VALID_STAGE_TRANSITIONS[stage.status]?.includes(input.status)) {
+      throw ApiError.badRequest(`Can't move a stage from "${stage.status}" to "${input.status}"`);
+    }
+
+    if (input.machineId) {
+      const [machine] = await tx.select({ id: machines.id }).from(machines).where(eq(machines.id, input.machineId)).limit(1);
+      if (!machine) throw ApiError.notFound(`Machine ${input.machineId} does not exist`);
+    }
+
+    const [updated] = await tx
+      .update(workOrderStages)
+      .set({
+        ...(input.status !== undefined ? { status: input.status } : {}),
+        ...(input.status === "in_progress" ? { actualStartAt: sql`coalesce(actual_start_at, now())` } : {}),
+        ...(input.status === "completed" || input.status === "skipped" ? { actualEndAt: sql`now()` } : {}),
+        ...(input.machineId !== undefined ? { machineId: input.machineId } : {}),
+        ...(input.lineId !== undefined ? { lineId: input.lineId } : {}),
+      })
+      .where(eq(workOrderStages.id, stageId))
       .returning();
     return updated!;
   });

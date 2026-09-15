@@ -2,6 +2,7 @@ import { apiFetch } from "./apiClient";
 import type {
   BomDetail,
   BomListItem,
+  CostingReportRow,
   CreateBomInput,
   CreateFinishedGoodInput,
   CreateMaterialInput,
@@ -10,16 +11,22 @@ import type {
   FactoryLocation,
   FactoryMaterialCategory,
   FinishedGood,
+  FinishedGoodDetail,
   Machine,
   MaterialDetail,
   MaterialMovementInput,
   MaterialRequirement,
   MaterialSummary,
+  MrpReportRow,
   ProductionLine,
   RecordLaborInput,
   RecordOutputInput,
   RecordQualityCheckInput,
+  ScrapReport,
+  ShipFinishedGoodInput,
   StageTemplate,
+  UpdateWorkOrderInput,
+  UpdateWorkOrderStageInput,
   WorkOrderDetail,
   WorkOrderListItem,
 } from "./factoryTypes";
@@ -112,6 +119,15 @@ export function createFinishedGood(input: CreateFinishedGoodInput): Promise<Fini
   return apiFetch<FinishedGood>("/api/factory/finished-goods", { method: "POST", body: JSON.stringify(input) });
 }
 
+export function getFinishedGood(finishedGoodId: string): Promise<FinishedGoodDetail> {
+  return apiFetch<FinishedGoodDetail>(`/api/factory/finished-goods/${encodeURIComponent(finishedGoodId)}`);
+}
+
+/** The module's one deliberate hook into the brand side — records stock leaving the factory tagged with a brand id, never touching that brand's own tables. See finishedGoods.schema.ts. */
+export function shipFinishedGood(finishedGoodId: string, input: ShipFinishedGoodInput) {
+  return apiFetch(`/api/factory/finished-goods/${encodeURIComponent(finishedGoodId)}/ship`, { method: "POST", body: JSON.stringify(input) });
+}
+
 export function listBoms(finishedGoodId?: string): Promise<BomListItem[]> {
   const query = finishedGoodId ? `?finishedGoodId=${encodeURIComponent(finishedGoodId)}` : "";
   return apiFetch<BomListItem[]>(`/api/factory/boms${query}`);
@@ -150,10 +166,22 @@ export function createWorkOrder(input: CreateWorkOrderInput): Promise<{ id: stri
   return apiFetch<{ id: string; orderNumber: string }>("/api/factory/work-orders", { method: "POST", body: JSON.stringify(input) });
 }
 
-export function updateWorkOrderStatus(workOrderId: string, status: string) {
+export function updateWorkOrderStatus(workOrderId: string, status: string, reason?: string) {
   return apiFetch(`/api/factory/work-orders/${encodeURIComponent(workOrderId)}/status`, {
     method: "PATCH",
-    body: JSON.stringify({ status }),
+    body: JSON.stringify({ status, reason }),
+  });
+}
+
+/** Only accepted by the backend while the order is still draft/scheduled — see updateWorkOrder's guard in workOrders.service.ts. */
+export function updateWorkOrder(workOrderId: string, input: UpdateWorkOrderInput) {
+  return apiFetch(`/api/factory/work-orders/${encodeURIComponent(workOrderId)}`, { method: "PATCH", body: JSON.stringify(input) });
+}
+
+export function updateWorkOrderStage(workOrderId: string, stageId: string, input: UpdateWorkOrderStageInput) {
+  return apiFetch(`/api/factory/work-orders/${encodeURIComponent(workOrderId)}/stages/${encodeURIComponent(stageId)}`, {
+    method: "PATCH",
+    body: JSON.stringify(input),
   });
 }
 
@@ -177,4 +205,18 @@ export function recordQualityCheck(workOrderId: string, input: RecordQualityChec
     method: "POST",
     body: JSON.stringify(input),
   });
+}
+
+// --- reports (aggregate MRP, scrap/waste, costing) --------------------------
+
+export function getMrpReport(): Promise<MrpReportRow[]> {
+  return apiFetch<MrpReportRow[]>("/api/factory/reports/mrp");
+}
+
+export function getScrapReport(): Promise<ScrapReport> {
+  return apiFetch<ScrapReport>("/api/factory/reports/scrap");
+}
+
+export function getCostingReport(): Promise<CostingReportRow[]> {
+  return apiFetch<CostingReportRow[]>("/api/factory/reports/costing");
 }

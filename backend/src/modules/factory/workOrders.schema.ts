@@ -14,7 +14,32 @@ export type CreateWorkOrderInput = z.infer<typeof createWorkOrderSchema>;
 
 export const updateWorkOrderStatusSchema = z.object({
   status: z.enum(["draft", "scheduled", "in_progress", "paused", "completed", "cancelled"]),
+  // Recorded onto the order's notes for pause/cancel — an auditable "why", not
+  // a new column, since it's occasional context rather than structured data.
+  reason: z.string().trim().max(500).optional(),
 });
+
+/** Editable only while the order hasn't started production yet — see the guard in workOrders.service.ts's updateWorkOrder. */
+export const updateWorkOrderSchema = z
+  .object({
+    quantityOrdered: z.number().positive().optional(),
+    priority: z.enum(["low", "normal", "high", "urgent"]).optional(),
+    lineId: z.string().uuid().nullable().optional(),
+    plannedStartDate: z.string().date().nullable().optional(),
+    plannedEndDate: z.string().date().nullable().optional(),
+    notes: z.string().trim().max(1000).nullable().optional(),
+  })
+  .refine((data) => Object.keys(data).length > 0, { message: "Provide at least one field to update" });
+export type UpdateWorkOrderInput = z.infer<typeof updateWorkOrderSchema>;
+
+export const updateWorkOrderStageSchema = z
+  .object({
+    status: z.enum(["in_progress", "completed", "skipped"]).optional(),
+    machineId: z.string().uuid().nullable().optional(),
+    lineId: z.string().uuid().nullable().optional(),
+  })
+  .refine((data) => Object.keys(data).length > 0, { message: "Provide at least one field to update" });
+export type UpdateWorkOrderStageInput = z.infer<typeof updateWorkOrderStageSchema>;
 
 export const issueBomMaterialsSchema = z.object({
   fromLocationId: z.string().uuid(),
