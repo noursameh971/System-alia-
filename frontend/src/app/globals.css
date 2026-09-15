@@ -26,6 +26,15 @@ body {
      stack per-glyph, so mixed strings ("Alia Hijab — الطلبات") render each
      script in the font that actually has it. */
   font-family: var(--font-sans), var(--font-arabic), Arial, Helvetica, sans-serif;
+  /* Mobile safety net: nothing on desktop is ever wide enough to trigger
+     this (every page already has enough room), so it's a no-op there. On
+     mobile it's the last line of defense against any element — current or
+     future — that manages to force the page wider than the viewport, e.g.
+     an un-wrapped row of buttons or an unbreakable long string. Tables
+     specifically already scroll within their own container (see
+     components/ui/table.tsx's overflow-x-auto wrapper) rather than relying
+     on this. */
+  overflow-x: hidden;
 }
 
 /* Arabic runs ~15% shorter in x-height than Latin at the same px size and

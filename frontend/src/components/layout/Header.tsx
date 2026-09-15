@@ -28,7 +28,12 @@ export function Header() {
   }
 
   return (
-    <header className="sticky top-0 z-10 flex items-center justify-between gap-4 border-b border-slate-200 bg-white/95 px-4 py-3 backdrop-blur sm:px-6 dark:border-slate-800 dark:bg-slate-950/95">
+    // flex-wrap: the brand-identity block and the action-icon cluster below
+    // each get their own full-width row on a narrow phone instead of being
+    // forced to squeeze onto one and pushing the last icon off-screen —
+    // fits on a single row exactly as before whenever there's room (every
+    // desktop width, and most phones), so this only ever binds when needed.
+    <header className="sticky top-0 z-10 flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 bg-white/95 px-4 py-3 backdrop-blur sm:gap-4 sm:px-6 dark:border-slate-800 dark:bg-slate-950/95">
       <div className="flex items-center gap-3">
         <span
           className={`flex size-9 shrink-0 items-center justify-center rounded-lg text-xs font-bold tracking-wide text-white ${getBrandAccentClass(brand.code)}`}
@@ -41,7 +46,7 @@ export function Header() {
         </div>
       </div>
 
-      <div className="flex items-center gap-2">
+      <div className="flex flex-wrap items-center justify-end gap-2">
         {role === "admin" ? (
           <Link
             href="/dashboard"

@@ -132,7 +132,7 @@ export function SupplierDetail({ entityId }: { entityId: string }) {
             {entity.notes ? <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">{entity.notes}</p> : null}
           </div>
 
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:flex-wrap sm:items-center [&>*]:w-full sm:[&>*]:w-auto">
             <Button variant="outline" size="sm" onClick={() => setPayingEntity(true)}>
               <CircleDollarSign className="size-3.5" />
               {t("Record Payment")}

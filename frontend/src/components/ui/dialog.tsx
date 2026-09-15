@@ -28,7 +28,14 @@ function DialogContent({ className, children, ...props }: React.ComponentProps<t
       <DialogOverlay />
       <DialogPrimitive.Content
         className={cn(
-          "fixed left-1/2 top-1/2 z-50 grid max-h-[90vh] w-full max-w-md -translate-x-1/2 -translate-y-1/2 gap-4 overflow-y-auto rounded-xl border border-slate-200 bg-white p-6 shadow-xl dark:border-slate-800 dark:bg-slate-950",
+          // w-[calc(100%-2rem)] (not w-full): on a narrow phone viewport
+          // this is the operative constraint, giving a consistent 1rem
+          // side gutter instead of the dialog touching both screen edges.
+          // On desktop the caller's max-w-* (max-w-md/lg/2xl/3xl, merged in
+          // via `className` below) is always the smaller of the two and
+          // wins instead — width computes as min(this, max-w-*) either
+          // way, so desktop sizing is byte-for-byte unchanged.
+          "fixed left-1/2 top-1/2 z-50 grid max-h-[90vh] w-[calc(100%-2rem)] max-w-md -translate-x-1/2 -translate-y-1/2 gap-4 overflow-y-auto rounded-xl border border-slate-200 bg-white p-6 shadow-xl dark:border-slate-800 dark:bg-slate-950",
           className,
         )}
         {...props}
@@ -48,7 +55,15 @@ function DialogHeader({ className, ...props }: React.ComponentProps<"div">) {
 }
 
 function DialogFooter({ className, ...props }: React.ComponentProps<"div">) {
-  return <div className={cn("flex items-center justify-end gap-2 pt-2", className)} {...props} />;
+  return (
+    <div
+      // Stacked full-width on mobile (each direct child button gets
+      // w-full) instead of a cramped/overflowing side-by-side row; sm:
+      // reverts to the original single-row, content-width layout exactly.
+      className={cn("flex flex-col gap-2 pt-2 [&>*]:w-full sm:flex-row sm:items-center sm:justify-end sm:[&>*]:w-auto", className)}
+      {...props}
+    />
+  );
 }
 
 function DialogTitle({ className, ...props }: React.ComponentProps<typeof DialogPrimitive.Title>) {

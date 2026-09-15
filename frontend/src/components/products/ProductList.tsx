@@ -147,7 +147,7 @@ export function ProductList() {
           ))}
         </Select>
 
-        <div className="flex flex-wrap items-center gap-2 sm:ms-auto sm:shrink-0">
+        <div className="flex w-full flex-col gap-2 sm:ms-auto sm:w-auto sm:shrink-0 sm:flex-row sm:flex-wrap sm:items-center [&>*]:w-full sm:[&>*]:w-auto">
           <Button variant="outline" onClick={() => void handleExport()} disabled={exporting}>
             <Download className="size-4" />
             {exporting ? t("Exporting...") : t("Export Excel")}

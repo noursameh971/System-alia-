@@ -114,19 +114,19 @@ export function OrderList() {
           />
         </div>
 
-        <Button variant="outline" onClick={() => void handleExport()} disabled={exporting} className="sm:shrink-0">
+        <Button variant="outline" onClick={() => void handleExport()} disabled={exporting} className="w-full sm:w-auto sm:shrink-0">
           <Download className="size-4" />
           {exporting ? t("Exporting...") : t("Export Excel")}
         </Button>
 
         {canManage ? (
-          <Button variant="outline" onClick={() => setImportOpen(true)} className="sm:shrink-0">
+          <Button variant="outline" onClick={() => setImportOpen(true)} className="w-full sm:w-auto sm:shrink-0">
             <Upload className="size-4" />
             {t("Import Excel")}
           </Button>
         ) : null}
 
-        <Button onClick={() => setNewOrderOpen(true)} className="sm:shrink-0">
+        <Button onClick={() => setNewOrderOpen(true)} className="w-full sm:w-auto sm:shrink-0">
           <Plus className="size-4" />
           {t("New Order")}
         </Button>

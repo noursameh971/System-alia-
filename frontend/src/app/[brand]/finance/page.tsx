@@ -208,7 +208,10 @@ export default function FinancePage() {
           </p>
         </div>
 
-        <div className="flex flex-wrap items-center gap-2">
+        {/* Full-width stacked column on mobile ([&>*]:w-full), reverting to
+            the original wrapped inline-width row at sm: and up — desktop
+            layout is byte-for-byte unchanged. */}
+        <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:flex-wrap sm:items-center [&>*]:w-full sm:[&>*]:w-auto">
           <Button variant="outline" onClick={() => void handleExport()} disabled={exporting}>
             <Download className="size-4" />
             {exporting ? t("Exporting...") : t("Export Excel")}
