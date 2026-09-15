@@ -7,6 +7,7 @@ import type { Product, VariantStatus } from "@/lib/types";
 import { useLocale } from "@/context/LocaleContext";
 import { deleteProductVariant, setVariantStock, updateProductCost, updateProductPrice } from "@/lib/products";
 import { formatPrice } from "@/lib/formatPrice";
+import { attributeValue } from "@/lib/variantAttributes";
 import { ApiError } from "@/lib/apiClient";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -20,6 +21,8 @@ import {
 import { Sheet, SheetBody, SheetContent, SheetHeader, SheetTitle, SheetDescription } from "@/components/ui/sheet";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { ProductFormModal, type EditableVariant } from "./ProductFormModal";
+import { EditProductModal } from "./EditProductModal";
+import { AddVariantModal } from "./AddVariantModal";
 import { ProductCategorySelect } from "./ProductCategorySelect";
 import { ProductThumbnail } from "./ProductThumbnail";
 import { VariantPrintButton } from "./VariantPrintButton";
@@ -30,10 +33,6 @@ interface ProductProfileDrawerProps {
   onOpenChange: (open: boolean) => void;
   canManage: boolean;
   onMutate: () => void;
-}
-
-function attributeValue(attributes: { attributeName: string; value: string }[], name: string): string {
-  return attributes.find((a) => a.attributeName.toLowerCase() === name.toLowerCase())?.value ?? "—";
 }
 
 /** The product's "current" price/currency for display — the first priced variant's, plus whether every variant actually agrees with it. */
@@ -341,6 +340,8 @@ export function ProductProfileDrawer({ product, onOpenChange, canManage, onMutat
   const [editingVariant, setEditingVariant] = useState<EditableVariant | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<EditableVariant | null>(null);
   const [printTarget, setPrintTarget] = useState<PrintableVariant[] | null>(null);
+  const [editingProductInfo, setEditingProductInfo] = useState(false);
+  const [addingVariant, setAddingVariant] = useState(false);
 
   const open = product !== null;
   const totalStock = product ? product.variants.reduce((sum, v) => sum + v.stock, 0) : 0;
@@ -420,7 +421,11 @@ export function ProductProfileDrawer({ product, onOpenChange, canManage, onMutat
           {product ? (
             <>
               <SheetHeader className="gap-4 py-5">
-                <div className="flex items-start gap-4">
+                {/* pe-8: SheetContent's close (X) button is absolutely
+                    positioned at end-4 top-4, overlapping the header's own
+                    padding — without this, a trailing element in this row
+                    (the Edit Product button) sits right underneath it. */}
+                <div className="flex items-start gap-4 pe-8">
                   <ProductThumbnail imageUrl={product.imageUrl} name={product.name} size={64} className="mt-0.5" />
                   <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-center gap-2">
@@ -438,6 +443,18 @@ export function ProductProfileDrawer({ product, onOpenChange, canManage, onMutat
                       in stock
                     </SheetDescription>
                   </div>
+                  {canManage ? (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="shrink-0"
+                      onClick={() => setEditingProductInfo(true)}
+                    >
+                      <Pencil className="size-3.5" />
+                      {t("Edit Product")}
+                    </Button>
+                  ) : null}
                 </div>
 
                 <div className="flex flex-wrap items-start gap-3">
@@ -474,6 +491,15 @@ export function ProductProfileDrawer({ product, onOpenChange, canManage, onMutat
               </SheetHeader>
 
               <SheetBody>
+                {canManage ? (
+                  <div className="mb-3 flex justify-end">
+                    <Button type="button" variant="outline" size="sm" onClick={() => setAddingVariant(true)}>
+                      <Plus className="size-3.5" />
+                      {t("Add Variant")}
+                    </Button>
+                  </div>
+                ) : null}
+
                 <div className="overflow-hidden rounded-xl border border-slate-200 shadow-sm dark:border-slate-800">
                   <Table>
                     <TableHeader>
@@ -620,6 +646,21 @@ export function ProductProfileDrawer({ product, onOpenChange, canManage, onMutat
           editing={editingVariant}
           onSuccess={onMutate}
         />
+      ) : null}
+
+      {product && editingProductInfo ? (
+        <EditProductModal
+          open
+          onOpenChange={(next) => !next && setEditingProductInfo(false)}
+          product={product}
+          priceInfo={priceInfo}
+          costInfo={costInfo}
+          onSuccess={onMutate}
+        />
+      ) : null}
+
+      {product && addingVariant ? (
+        <AddVariantModal open onOpenChange={(next) => !next && setAddingVariant(false)} product={product} onSuccess={onMutate} />
       ) : null}
 
       {deleteTarget ? (

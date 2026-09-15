@@ -25,7 +25,7 @@ export const listProductsQuerySchema = z.object({
 
 export type ListProductsQuery = z.infer<typeof listProductsQuerySchema>;
 
-const quickVariantInputSchema = z.object({
+export const quickVariantInputSchema = z.object({
   color: z.string().trim().min(1, "Color is required").max(50),
   size: z.string().trim().min(1, "Size is required").max(50),
   price: z.number().positive("Price must be greater than 0"),
@@ -33,6 +33,11 @@ const quickVariantInputSchema = z.object({
   cost: z.number().nonnegative("Cost can't be negative").optional(),
   initialStock: z.number().int().min(0, "Initial stock can't be negative").max(1_000_000).default(0),
 });
+
+/** The Product Profile drawer's "Add Variant" modal — same shape as one entry of quickCreateProductSchema's variants array, but for a specific, already-existing product (:productId in the route), not a (brandId, name) lookup. */
+export const addVariantSchema = quickVariantInputSchema;
+
+export type AddVariantInput = z.infer<typeof addVariantSchema>;
 
 /**
  * Simplified create path for the Products page's "+ Add Product" modal —
@@ -112,6 +117,25 @@ export const updateProductCategorySchema = z.object({
 });
 
 export type UpdateProductCategoryInput = z.infer<typeof updateProductCategorySchema>;
+
+/**
+ * The Product Profile drawer's "Edit Product" modal — name and/or image,
+ * both plain columns on the `products` row. Unlike updateProductVariant's
+ * name/imageUrl fields (which exist there only because that form is keyed
+ * by a variantId for its color/size/status fields), this needs no
+ * variantId at all.
+ */
+export const updateProductInfoSchema = z
+  .object({
+    name: z.string().trim().min(1, "Product name is required").max(200).optional(),
+    /** Empty string explicitly clears the image; omitting the field leaves it untouched — same convention as updateProductVariantSchema's imageUrl. */
+    imageUrl: z.string().trim().max(500).optional(),
+  })
+  .refine((data) => data.name !== undefined || data.imageUrl !== undefined, {
+    message: "At least one field must be provided",
+  });
+
+export type UpdateProductInfoInput = z.infer<typeof updateProductInfoSchema>;
 
 /** The products table's bulk-select "Set Category" action — applies one category to every selected product. */
 export const bulkUpdateCategorySchema = z.object({

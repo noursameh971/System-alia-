@@ -2,6 +2,7 @@ import type { Request, Response } from "express";
 import { ApiError } from "../../utils/apiError.js";
 import { sendSuccess } from "../../utils/apiResponse.js";
 import {
+  addVariantToProduct,
   bulkDeleteProducts,
   bulkSetProductsCategory,
   createProductWithVariants,
@@ -12,6 +13,7 @@ import {
   setVariantStock,
   updateProductCategory,
   updateProductCost,
+  updateProductInfo,
   updateProductPrice,
   updateProductVariant,
 } from "./products.service.js";
@@ -19,6 +21,7 @@ import { exportProductsWorkbook, importProductRows } from "./products.io.service
 import { uploadProductImage } from "./products.image.service.js";
 import {
   listProductsQuerySchema,
+  type AddVariantInput,
   type BulkDeleteProductsInput,
   type BulkUpdateCategoryInput,
   type CreateProductInput,
@@ -26,6 +29,7 @@ import {
   type SetVariantStockInput,
   type UpdateProductCategoryInput,
   type UpdateProductCostInput,
+  type UpdateProductInfoInput,
   type UpdateProductPriceInput,
   type UpdateProductVariantInput,
 } from "./products.schema.js";
@@ -45,6 +49,16 @@ export async function quickCreateProductHandler(req: Request, res: Response): Pr
   const actorUserId = req.user!.id;
 
   const result = await createQuickProduct(input, actorUserId);
+  sendSuccess(res, 201, result);
+}
+
+/** POST /api/products/:productId/variants — the Product Profile drawer's "Add Variant" modal. */
+export async function addVariantHandler(req: Request, res: Response): Promise<void> {
+  const productId = String(req.params.productId ?? "");
+  const input = req.body as AddVariantInput;
+  const actorUserId = req.user!.id;
+
+  const result = await addVariantToProduct(productId, input, actorUserId);
   sendSuccess(res, 201, result);
 }
 
@@ -102,6 +116,15 @@ export async function updateProductCategoryHandler(req: Request, res: Response):
   const { category } = req.body as UpdateProductCategoryInput;
 
   const result = await updateProductCategory(productId, category);
+  sendSuccess(res, 200, result);
+}
+
+/** PATCH /api/products/:productId/info — the "Edit Product" modal's name/image fields. */
+export async function updateProductInfoHandler(req: Request, res: Response): Promise<void> {
+  const productId = String(req.params.productId ?? "");
+  const input = req.body as UpdateProductInfoInput;
+
+  const result = await updateProductInfo(productId, input);
   sendSuccess(res, 200, result);
 }
 

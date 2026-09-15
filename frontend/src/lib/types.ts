@@ -58,6 +58,11 @@ export interface QuickCreateProductResult {
   variants: { variantId: string; sku: string }[];
 }
 
+export interface AddVariantResult {
+  variantId: string;
+  sku: string;
+}
+
 export type VariantStatus = "active" | "discontinued";
 
 export interface UpdateProductVariantInput {
@@ -106,6 +111,18 @@ export interface UpdateProductCategoryResult {
   productId: string;
   categoryId: string;
   categoryName: string;
+}
+
+export interface UpdateProductInfoInput {
+  name?: string;
+  /** Empty string explicitly clears the image; omit to leave it untouched. */
+  imageUrl?: string;
+}
+
+export interface UpdateProductInfoResult {
+  productId: string;
+  name: string;
+  imageUrl: string | null;
 }
 
 export interface BulkUpdateCategoryResult {

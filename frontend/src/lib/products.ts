@@ -1,5 +1,6 @@
 import { apiFetch, apiFetchBlob, apiFetchUpload } from "./apiClient";
 import type {
+  AddVariantResult,
   BulkDeleteProductsResult,
   BulkUpdateCategoryResult,
   DeleteVariantResult,
@@ -7,9 +8,12 @@ import type {
   Product,
   QuickCreateProductInput,
   QuickCreateProductResult,
+  QuickVariantInput,
   SetVariantStockResult,
   UpdateProductCategoryResult,
   UpdateProductCostResult,
+  UpdateProductInfoInput,
+  UpdateProductInfoResult,
   UpdateProductPriceResult,
   UpdateProductVariantInput,
   UpdateProductVariantResult,
@@ -47,6 +51,14 @@ export function deleteProductVariant(variantId: string): Promise<DeleteVariantRe
   });
 }
 
+/** Backs the Product Profile drawer's "Add Variant" modal — a new color/size for this specific, already-existing product. Auto-generates the SKU and barcode, same as "+ Add Product"'s create path. */
+export function addVariantToProduct(productId: string, input: QuickVariantInput): Promise<AddVariantResult> {
+  return apiFetch<AddVariantResult>(`/api/products/${encodeURIComponent(productId)}/variants`, {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
 /** Backs the Product Profile drawer's inline stock editor — `quantity` is the new total, not a delta. */
 export function setVariantStock(variantId: string, quantity: number): Promise<SetVariantStockResult> {
   return apiFetch<SetVariantStockResult>(`/api/products/variants/${encodeURIComponent(variantId)}/stock`, {
@@ -76,6 +88,14 @@ export function updateProductCategory(productId: string, category: string): Prom
   return apiFetch<UpdateProductCategoryResult>(`/api/products/${encodeURIComponent(productId)}/category`, {
     method: "PATCH",
     body: JSON.stringify({ category }),
+  });
+}
+
+/** Backs the "Edit Product" modal's name/image fields. */
+export function updateProductInfo(productId: string, input: UpdateProductInfoInput): Promise<UpdateProductInfoResult> {
+  return apiFetch<UpdateProductInfoResult>(`/api/products/${encodeURIComponent(productId)}/info`, {
+    method: "PATCH",
+    body: JSON.stringify(input),
   });
 }
 

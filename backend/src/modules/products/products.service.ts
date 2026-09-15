@@ -25,8 +25,10 @@ import { pgErrorCode, POSTGRES_FOREIGN_KEY_VIOLATION_CODES } from "../../utils/p
 import { attributeSignature, buildVariantSku } from "../../utils/skuGenerator.js";
 import { buildQrPayload } from "../qrcode/qrcode.util.js";
 import type {
+  AddVariantInput,
   CreateProductInput,
   QuickCreateProductInput,
+  UpdateProductInfoInput,
   UpdateProductVariantInput,
 } from "./products.schema.js";
 import { compareVariantsByColorAndSize } from "./variantSort.js";
@@ -683,6 +685,107 @@ export async function createQuickProduct(
   });
 }
 
+export interface AddVariantResult {
+  variantId: string;
+  sku: string;
+}
+
+/**
+ * Adds one new color/size variant to a specific, already-existing product —
+ * the Product Profile drawer's "Add Variant" button. Deliberately keyed by
+ * productId, not a (brandId, name) lookup like createQuickProduct above:
+ * the caller already has this exact product open, so matching by name
+ * would be a real race condition if the product had just been renamed and
+ * the client's copy of `product.name` hadn't refetched yet — a stale name
+ * matching nothing in the database would silently create a whole new
+ * orphaned product instead of erroring or attaching to the right one.
+ * Same SKU/QR generation and price/cost/initial-stock inserts as
+ * createQuickProduct's variant loop, just scoped to one variant and one
+ * known product.
+ */
+export async function addVariantToProduct(
+  productId: string,
+  input: AddVariantInput,
+  actorUserId: string,
+): Promise<AddVariantResult> {
+  return db.transaction(async (tx) => {
+    const [product] = await tx
+      .select({ id: products.id, brandId: products.brandId, categoryId: products.categoryId })
+      .from(products)
+      .where(eq(products.id, productId))
+      .limit(1);
+    if (!product) throw ApiError.notFound(`Product ${productId} does not exist`);
+
+    const [brand] = await tx.select({ code: brands.code }).from(brands).where(eq(brands.id, product.brandId)).limit(1);
+    if (!brand) throw new Error(`Brand for product ${productId} not found`); // unreachable, FK-enforced
+
+    const [category] = await tx
+      .select({ code: categories.code })
+      .from(categories)
+      .where(eq(categories.id, product.categoryId))
+      .limit(1);
+    if (!category) throw new Error(`Category for product ${productId} not found`); // unreachable, FK-enforced
+
+    const colorAttributeId = await getOrCreateAttributeTx(tx, "Color");
+    const sizeAttributeId = await getOrCreateAttributeTx(tx, "Size");
+    const colorValue = await getOrCreateAttributeValueTx(tx, colorAttributeId, input.color);
+    const sizeValue = await getOrCreateAttributeValueTx(tx, sizeAttributeId, input.size);
+
+    const seqResult = await tx.execute<{ seq: string }>(sql`select nextval('product_sku_seq') as seq`);
+    const sequence = Number(seqResult.rows[0]?.seq);
+
+    // "Color" < "Size" alphabetically, matching createProductWithVariants'/createQuickProduct's sort-by-attribute-name.
+    const sku = buildVariantSku({
+      brandCode: brand.code,
+      categoryCode: category.code,
+      sequence,
+      attributeCodes: [colorValue.code, sizeValue.code],
+    });
+
+    const [variant] = await tx
+      .insert(productVariants)
+      .values({ productId, sku, qrCodeValue: await buildQrPayload(tx), status: "active" })
+      .returning({ id: productVariants.id });
+    if (!variant) throw new Error("Variant insert returned no row"); // unreachable
+
+    await tx.insert(variantAttributeValues).values([
+      { variantId: variant.id, attributeValueId: colorValue.id },
+      { variantId: variant.id, attributeValueId: sizeValue.id },
+    ]);
+
+    await tx.insert(variantPrices).values({
+      variantId: variant.id,
+      price: input.price.toFixed(2),
+      currency: "EGP",
+      createdBy: actorUserId,
+    });
+
+    if (input.cost !== undefined) {
+      await tx.insert(variantCosts).values({
+        variantId: variant.id,
+        cost: input.cost.toFixed(2),
+        currency: "EGP",
+        createdBy: actorUserId,
+      });
+    }
+
+    if (input.initialStock > 0) {
+      const defaultBinId = await getOrCreateDefaultBinTx(tx);
+      await incrementInventory(tx, { variantId: variant.id, binId: defaultBinId, quantity: input.initialStock });
+      await tx.insert(stockMovements).values({
+        variantId: variant.id,
+        movementType: "inbound",
+        quantity: input.initialStock,
+        toBinId: defaultBinId,
+        performedBy: actorUserId,
+        notes: "Initial stock on variant creation",
+      });
+    }
+
+    return { variantId: variant.id, sku };
+  });
+}
+
 /**
  * Closes out the active `variant_prices` row (effective_to = now()) for
  * every variant of `productId` and inserts a fresh one at `price` for each —
@@ -903,6 +1006,33 @@ export async function updateProductCategory(productId: string, categoryName: str
 
     return { productId, categoryId: category.id, categoryName: category.name };
   });
+}
+
+export interface UpdateProductInfoResult {
+  productId: string;
+  name: string;
+  imageUrl: string | null;
+}
+
+/**
+ * Backs the Product Profile drawer's "Edit Product" modal — name and/or
+ * image, applied directly to the `products` row. No fan-out to variants
+ * needed (unlike price/cost): both are single columns on the product
+ * itself, same as category above.
+ */
+export async function updateProductInfo(productId: string, input: UpdateProductInfoInput): Promise<UpdateProductInfoResult> {
+  const [updated] = await db
+    .update(products)
+    .set({
+      ...(input.name !== undefined ? { name: input.name } : {}),
+      ...(input.imageUrl !== undefined ? { imageUrl: input.imageUrl.trim() || null } : {}),
+      updatedAt: sql`now()`,
+    })
+    .where(eq(products.id, productId))
+    .returning({ id: products.id, name: products.name, imageUrl: products.imageUrl });
+
+  if (!updated) throw ApiError.notFound(`Product ${productId} does not exist`);
+  return { productId: updated.id, name: updated.name, imageUrl: updated.imageUrl };
 }
 
 export interface BulkUpdateCategoryResult {

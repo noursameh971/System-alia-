@@ -89,7 +89,22 @@ export const ar: Record<string, string> = {
   "Cost can't be negative": "لا يمكن أن تكون التكلفة بالسالب",
   "Whole number, 0+": "رقم صحيح، صفر فأكثر",
   "Duplicate color/size combination": "تكرار في تركيبة اللون/المقاس",
+  "Category is required": "الفئة مطلوبة",
   "Product updated": "تم تحديث المنتج",
+
+  // Product Profile drawer — Edit Product / Add Variant
+  "Edit Product": "تعديل المنتج",
+  "Name, image, category, price, and production cost — applies to the whole product, every color and size.":
+    "الاسم والصورة والتصنيف والسعر وتكلفة الإنتاج — تُطبَّق على المنتج بالكامل، بكل الألوان والمقاسات.",
+  "Price and cost changes apply to every color and size of this product.":
+    "تُطبَّق تغييرات السعر والتكلفة على كل الألوان والمقاسات لهذا المنتج.",
+  "Add Variant": "إضافة موديل",
+  "Add variant": "إضافة موديل",
+  "Variant added": "تمت إضافة الموديل",
+  "A new color/size combination for": "تركيبة لون/مقاس جديدة لـ",
+  "the SKU and barcode are generated automatically.": "يتم إنشاء رمز SKU والباركود تلقائيًا.",
+  "This color/size combination already exists": "تركيبة اللون/المقاس هذه موجودة بالفعل",
+  "Initial stock": "المخزون الابتدائي",
   "Product created with": "تم إنشاء المنتج بـ",
   "Product created, but the image upload failed": "تم إنشاء المنتج، لكن فشل رفع الصورة",
   "Something went wrong — please try again": "حدث خطأ ما — يُرجى المحاولة مرة أخرى",

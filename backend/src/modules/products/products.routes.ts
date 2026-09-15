@@ -4,6 +4,7 @@ import { rawBody } from "../../middleware/rawBody.js";
 import { validateBody } from "../../middleware/validate.js";
 import { asyncHandler } from "../../utils/asyncHandler.js";
 import {
+  addVariantHandler,
   bulkDeleteProductsHandler,
   bulkUpdateCategoryHandler,
   createProduct,
@@ -16,11 +17,13 @@ import {
   setVariantStockHandler,
   updateProductCategoryHandler,
   updateProductCostHandler,
+  updateProductInfoHandler,
   updateProductPriceHandler,
   updateProductVariantHandler,
   uploadProductImageHandler,
 } from "./products.controller.js";
 import {
+  addVariantSchema,
   bulkDeleteProductsSchema,
   bulkUpdateCategorySchema,
   createProductSchema,
@@ -28,6 +31,7 @@ import {
   setVariantStockSchema,
   updateProductCategorySchema,
   updateProductCostSchema,
+  updateProductInfoSchema,
   updateProductPriceSchema,
   updateProductVariantSchema,
 } from "./products.schema.js";
@@ -60,6 +64,15 @@ productsRouter.post(
   requireBrandAccess("body"),
   validateBody(quickCreateProductSchema),
   asyncHandler(quickCreateProductHandler),
+);
+
+// The Product Profile drawer's "Add Variant" modal — admin only, same as the other catalog-editing routes.
+productsRouter.post(
+  "/:productId/variants",
+  requireAuth,
+  requireRole("admin"),
+  validateBody(addVariantSchema),
+  asyncHandler(addVariantHandler),
 );
 
 // The "Export Excel" button — both roles, same access as the plain product list.
@@ -144,6 +157,15 @@ productsRouter.patch(
   requireRole("admin"),
   validateBody(updateProductCategorySchema),
   asyncHandler(updateProductCategoryHandler),
+);
+
+// The Product Profile drawer's "Edit Product" modal — name/image, admin only, same as the other product-level fields.
+productsRouter.patch(
+  "/:productId/info",
+  requireAuth,
+  requireRole("admin"),
+  validateBody(updateProductInfoSchema),
+  asyncHandler(updateProductInfoHandler),
 );
 
 // The Add/Edit modal's file-upload image path — admin only. Raw body, not JSON: see rawImageBody above.
