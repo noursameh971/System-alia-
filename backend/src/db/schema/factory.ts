@@ -1,8 +1,11 @@
 /**
  * Factory & Manufacturing ERP — standalone from the retail brands (Alia
- * Hijab / Noori). Nothing here references `brands`; the only bridge to the
- * retail catalog is `finishedGoods.linkedVariantId`, a nullable soft link so
- * the two systems *can* be connected later without being coupled now.
+ * Hijab / Noori). The module runs fully independently of the retail catalog;
+ * the only bridges are `finishedGoods.linkedVariantId` (a nullable soft link
+ * to a specific product variant) and `finishedGoods.brandId` (which retail
+ * brand a finished product is manufactured for — required going forward so
+ * the factory can organize production across multiple brands, but nullable
+ * at the DB level so it stays optional, not a hard dependency).
  *
  * Two recurring shapes, both copied from patterns already proven elsewhere
  * in this schema:
@@ -16,6 +19,7 @@
  */
 import { boolean, check, date, index, integer, numeric, pgTable, text, timestamp, unique, uniqueIndex, uuid, varchar } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
+import { brands } from "./brands.js";
 import { productVariants } from "./catalog.js";
 import {
   finishedGoodsMovementTypeEnum,
@@ -192,6 +196,11 @@ export const finishedGoods = pgTable(
     name: varchar("name", { length: 200 }).notNull(),
     sku: varchar("sku", { length: 60 }).notNull().unique(),
     unit: varchar("unit", { length: 20 }).notNull().default("piece"),
+    // Which retail brand this finished product is manufactured for — nullable
+    // at the DB level (existing rows predate this column, and the module
+    // must keep working with it unset), but the create form requires picking
+    // one going forward so factory output can be organized per brand.
+    brandId: uuid("brand_id").references(() => brands.id, { onDelete: "set null" }),
     // Optional, one-directional bridge to the retail catalog — NOT a
     // dependency: this table (and everything else in this file) works fully
     // standalone with this left null.
@@ -200,7 +209,10 @@ export const finishedGoods = pgTable(
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
-  (table) => [index("ix_finished_goods_linked_variant").on(table.linkedVariantId)],
+  (table) => [
+    index("ix_finished_goods_linked_variant").on(table.linkedVariantId),
+    index("ix_finished_goods_brand").on(table.brandId),
+  ],
 );
 
 export const boms = pgTable(

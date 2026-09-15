@@ -4,6 +4,7 @@ import {
   bomLines,
   bomStages,
   boms,
+  brands,
   finishedGoods,
   materialStock,
   productionStageTemplates,
@@ -13,17 +14,33 @@ import { ApiError } from "../../utils/apiError.js";
 import type { CreateBomInput, CreateFinishedGoodInput } from "./boms.schema.js";
 
 export function listFinishedGoods() {
-  return db.select().from(finishedGoods).orderBy(finishedGoods.name);
+  return db
+    .select({
+      id: finishedGoods.id,
+      name: finishedGoods.name,
+      sku: finishedGoods.sku,
+      unit: finishedGoods.unit,
+      brandId: finishedGoods.brandId,
+      brandName: brands.name,
+      linkedVariantId: finishedGoods.linkedVariantId,
+      isActive: finishedGoods.isActive,
+    })
+    .from(finishedGoods)
+    .leftJoin(brands, eq(brands.id, finishedGoods.brandId))
+    .orderBy(finishedGoods.name);
 }
 
 export async function createFinishedGood(input: CreateFinishedGoodInput) {
+  const [brand] = await db.select({ id: brands.id }).from(brands).where(eq(brands.id, input.brandId)).limit(1);
+  if (!brand) throw ApiError.notFound(`Brand ${input.brandId} does not exist`);
+
   const seqResult = await db.execute<{ seq: string }>(sql`select nextval('factory_finished_good_sku_seq') as seq`);
   const sequence = Number(seqResult.rows[0]?.seq);
   const sku = `FG-${String(sequence).padStart(5, "0")}`;
 
   const [created] = await db
     .insert(finishedGoods)
-    .values({ name: input.name, unit: input.unit, sku, linkedVariantId: input.linkedVariantId ?? null })
+    .values({ name: input.name, unit: input.unit, sku, brandId: input.brandId, linkedVariantId: input.linkedVariantId ?? null })
     .returning();
   return created!;
 }
@@ -32,6 +49,7 @@ export interface BomListItem {
   id: string;
   finishedGoodId: string;
   finishedGoodName: string;
+  brandName: string | null;
   version: number;
   label: string | null;
   status: string;
@@ -45,6 +63,7 @@ export async function listBoms(finishedGoodId?: string): Promise<BomListItem[]> 
       id: boms.id,
       finishedGoodId: boms.finishedGoodId,
       finishedGoodName: finishedGoods.name,
+      brandName: brands.name,
       version: boms.version,
       label: boms.label,
       status: boms.status,
@@ -53,6 +72,7 @@ export async function listBoms(finishedGoodId?: string): Promise<BomListItem[]> 
     })
     .from(boms)
     .innerJoin(finishedGoods, eq(finishedGoods.id, boms.finishedGoodId))
+    .leftJoin(brands, eq(brands.id, finishedGoods.brandId))
     .where(finishedGoodId ? eq(boms.finishedGoodId, finishedGoodId) : undefined)
     .orderBy(desc(boms.createdAt));
 
@@ -87,6 +107,7 @@ export async function getBom(bomId: string): Promise<BomDetail> {
       id: boms.id,
       finishedGoodId: boms.finishedGoodId,
       finishedGoodName: finishedGoods.name,
+      brandName: brands.name,
       version: boms.version,
       label: boms.label,
       status: boms.status,
@@ -96,6 +117,7 @@ export async function getBom(bomId: string): Promise<BomDetail> {
     })
     .from(boms)
     .innerJoin(finishedGoods, eq(finishedGoods.id, boms.finishedGoodId))
+    .leftJoin(brands, eq(brands.id, finishedGoods.brandId))
     .where(eq(boms.id, bomId))
     .limit(1);
   if (!bom) throw ApiError.notFound(`BOM ${bomId} does not exist`);

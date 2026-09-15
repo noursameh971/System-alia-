@@ -696,6 +696,8 @@ export const ar: Record<string, string> = {
   "No BOMs yet": "لا توجد قوائم مواد بعد",
   "Create a Bill of Materials to define what a finished good is made from.": "أنشئ قائمة مواد لتحديد المكونات التي يُصنع منها المنتج التام.",
   "Finished Good": "المنتج التام",
+  Brand: "البراند",
+  "Select a brand": "اختر البراند",
   Version: "الإصدار",
   "Batch output": "ناتج الدفعة",
   View: "عرض",

@@ -3,6 +3,7 @@ import { z } from "zod";
 export const createFinishedGoodSchema = z.object({
   name: z.string().trim().min(1).max(200),
   unit: z.string().trim().min(1).max(20).default("piece"),
+  brandId: z.string().uuid(),
   linkedVariantId: z.string().uuid().optional(),
 });
 export type CreateFinishedGoodInput = z.infer<typeof createFinishedGoodSchema>;

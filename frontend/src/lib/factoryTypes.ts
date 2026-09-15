@@ -92,6 +92,8 @@ export interface FinishedGood {
   name: string;
   sku: string;
   unit: string;
+  brandId: string | null;
+  brandName: string | null;
   linkedVariantId: string | null;
   isActive: boolean;
 }
@@ -99,6 +101,7 @@ export interface FinishedGood {
 export interface CreateFinishedGoodInput {
   name: string;
   unit?: string;
+  brandId: string;
   linkedVariantId?: string;
 }
 
@@ -106,6 +109,7 @@ export interface BomListItem {
   id: string;
   finishedGoodId: string;
   finishedGoodName: string;
+  brandName: string | null;
   version: number;
   label: string | null;
   status: string;

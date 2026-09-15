@@ -15,6 +15,7 @@ import {
   listStageTemplates,
   updateBomStatus,
 } from "@/lib/factory";
+import { listBrands } from "@/lib/brands";
 import type { BomDetail } from "@/lib/factoryTypes";
 import { useLocale } from "@/context/LocaleContext";
 import { Spinner } from "@/components/ui/Spinner";
@@ -70,7 +71,14 @@ export default function BomsPage() {
           ) : (
             finishedGoods!.map((fg) => (
               <div key={fg.id} className="rounded-lg border border-slate-200 bg-slate-50 px-3.5 py-2.5 dark:border-slate-800 dark:bg-slate-900">
-                <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">{fg.name}</p>
+                <div className="flex items-center gap-1.5">
+                  <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">{fg.name}</p>
+                  {fg.brandName ? (
+                    <Badge variant="neutral" size="sm">
+                      {fg.brandName}
+                    </Badge>
+                  ) : null}
+                </div>
                 <p className="font-mono text-xs text-slate-400">
                   {fg.sku} · {t(fg.unit)}
                 </p>
@@ -104,6 +112,7 @@ export default function BomsPage() {
                 <TableHeader>
                   <TableRow className="hover:bg-transparent">
                     <TableHead>{t("Finished Good")}</TableHead>
+                    <TableHead>{t("Brand")}</TableHead>
                     <TableHead>{t("Version")}</TableHead>
                     <TableHead>{t("Status")}</TableHead>
                     <TableHead>{t("Batch output")}</TableHead>
@@ -114,6 +123,7 @@ export default function BomsPage() {
                   {boms.map((bom) => (
                     <TableRow key={bom.id}>
                       <TableCell className="font-medium">{bom.finishedGoodName}</TableCell>
+                      <TableCell>{bom.brandName ?? "—"}</TableCell>
                       <TableCell>v{bom.version}{bom.label ? ` — ${bom.label}` : ""}</TableCell>
                       <TableCell>
                         <Badge variant={STATUS_VARIANT[bom.status] ?? "neutral"} size="sm">
@@ -165,19 +175,21 @@ export default function BomsPage() {
 
 function AddFinishedGoodModal({ open, onOpenChange, onSuccess }: { open: boolean; onOpenChange: (open: boolean) => void; onSuccess: () => void }) {
   const { t } = useLocale();
+  const { data: brands } = useSWR("brands", listBrands);
   const [name, setName] = useState("");
   // Blank rather than a hardcoded "piece" default — that English word would
   // show as-is in an Arabic session; handleSubmit already falls back to
   // "piece" itself when this is left empty.
   const [unit, setUnit] = useState("");
+  const [brandId, setBrandId] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
   async function handleSubmit(event: FormEvent) {
     event.preventDefault();
-    if (!name.trim()) return;
+    if (!name.trim() || !brandId) return;
     setSubmitting(true);
     try {
-      await createFinishedGood({ name: name.trim(), unit: unit.trim() || "piece" });
+      await createFinishedGood({ name: name.trim(), unit: unit.trim() || "piece", brandId });
       toast.success(t("Finished good added"));
       onSuccess();
       onOpenChange(false);
@@ -201,6 +213,17 @@ function AddFinishedGoodModal({ open, onOpenChange, onSuccess }: { open: boolean
             <Input id="fg-name" value={name} onChange={(e) => setName(e.target.value)} placeholder={t("e.g. Classic Abaya")} disabled={submitting} />
           </div>
           <div className="flex flex-col gap-1.5">
+            <Label htmlFor="fg-brand">{t("Brand")}</Label>
+            <Select id="fg-brand" value={brandId} onChange={(e) => setBrandId(e.target.value)} disabled={submitting}>
+              <option value="">{t("Select a brand")}</option>
+              {(brands ?? []).map((b) => (
+                <option key={b.id} value={b.id}>
+                  {b.name}
+                </option>
+              ))}
+            </Select>
+          </div>
+          <div className="flex flex-col gap-1.5">
             <Label htmlFor="fg-unit">{t("Unit")}</Label>
             <Input id="fg-unit" value={unit} onChange={(e) => setUnit(e.target.value)} placeholder={t("piece")} disabled={submitting} />
           </div>
@@ -208,7 +231,7 @@ function AddFinishedGoodModal({ open, onOpenChange, onSuccess }: { open: boolean
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={submitting}>
               {t("Cancel")}
             </Button>
-            <Button type="submit" disabled={submitting || !name.trim()}>
+            <Button type="submit" disabled={submitting || !name.trim() || !brandId}>
               {submitting ? t("Saving...") : t("Add Finished Good")}
             </Button>
           </DialogFooter>
