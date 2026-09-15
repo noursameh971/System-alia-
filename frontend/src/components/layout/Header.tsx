@@ -1,12 +1,13 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { KeyRound, Plus } from "lucide-react";
+import { Factory, KeyRound, Plus } from "lucide-react";
 import { useWorkspace } from "@/context/WorkspaceContext";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { useLocale } from "@/context/LocaleContext";
 import { logout } from "@/lib/auth";
 import { getBrandAccentClass, getBrandInitials } from "@/lib/brandColor";
+import { FACTORY_LANDING } from "@/lib/routing";
 import { Button } from "@/components/ui/button";
 import { ChangePasswordModal } from "@/components/users/ChangePasswordModal";
 import { BuildingIcon, LogoutIcon } from "./icons";
@@ -55,6 +56,16 @@ export function Header() {
           >
             <BuildingIcon className="h-4 w-4 shrink-0" />
             <span className="hidden sm:inline">{t("Company Dashboard")}</span>
+          </Link>
+        ) : null}
+        {role === "admin" ? (
+          <Link
+            href={FACTORY_LANDING}
+            aria-label="Factory"
+            className="flex items-center gap-1.5 rounded-lg border border-slate-300 px-2.5 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50 sm:px-3 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
+          >
+            <Factory className="h-4 w-4 shrink-0" />
+            <span className="hidden sm:inline">{t("Factory")}</span>
           </Link>
         ) : null}
         <WorkspaceSwitcher />

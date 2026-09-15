@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import useSWR, { mutate as globalMutate } from "swr";
 import { toast } from "sonner";
-import { Trash2 } from "lucide-react";
+import { Factory, Trash2 } from "lucide-react";
 import { deleteBrand, listBrands } from "@/lib/brands";
 import { getBrandAccentClass, getBrandInitials } from "@/lib/brandColor";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
@@ -13,7 +13,7 @@ import { useLocale } from "@/context/LocaleContext";
 import { logout } from "@/lib/auth";
 import { ApiError } from "@/lib/apiClient";
 import { PLATFORM_CAPTION, PLATFORM_NAME } from "@/lib/platform";
-import { ADMIN_LANDING, workspaceHomePath } from "@/lib/routing";
+import { ADMIN_LANDING, FACTORY_LANDING, workspaceHomePath } from "@/lib/routing";
 import { Spinner } from "@/components/ui/Spinner";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { BuildingIcon, LogoutIcon } from "@/components/layout/icons";
@@ -124,6 +124,15 @@ export default function WorkspacesPage() {
           >
             <BuildingIcon className="h-4 w-4" />
             {t("Company Dashboard")}
+          </Link>
+        ) : null}
+        {isAdmin ? (
+          <Link
+            href={FACTORY_LANDING}
+            className="flex items-center gap-1.5 text-sm font-medium text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200"
+          >
+            <Factory className="h-4 w-4" />
+            {t("Factory")}
           </Link>
         ) : null}
         <button

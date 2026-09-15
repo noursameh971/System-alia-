@@ -9,6 +9,7 @@ import { brandsRouter } from "./modules/brands/brands.routes.js";
 import { categoriesRouter } from "./modules/categories/categories.routes.js";
 import { dashboardRouter } from "./modules/dashboard/dashboard.routes.js";
 import { expensesRouter } from "./modules/expenses/expenses.routes.js";
+import { factoryRouter } from "./modules/factory/factory.routes.js";
 import { inventoryRouter } from "./modules/inventory/inventory.routes.js";
 import { ledgerRouter } from "./modules/ledger/ledger.routes.js";
 import { ordersRouter } from "./modules/orders/orders.routes.js";
@@ -105,6 +106,7 @@ export function createApp(): Express {
   app.use("/api/revenues", revenuesRouter);
   app.use("/api/ledger", ledgerRouter);
   app.use("/api/uploads", uploadsRouter);
+  app.use("/api/factory", factoryRouter);
 
   // Must be registered last — Express only routes here on thrown/forwarded errors.
   app.use(errorHandler);

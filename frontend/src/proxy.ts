@@ -1,5 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { ADMIN_LANDING, WORKSPACE_PICKER, landingPathFor } from "@/lib/routing";
+import { ADMIN_LANDING, FACTORY_LANDING, WORKSPACE_PICKER, landingPathFor } from "@/lib/routing";
 import { SESSION_COOKIE, verifySessionToken, type SessionPayload } from "@/lib/serverSession";
 
 const PUBLIC_PATHS = ["/login"];
@@ -89,6 +89,16 @@ export async function proxy(req: NextRequest) {
 
   // Executive Company Dashboard is admin-only.
   if (pathname === ADMIN_LANDING || pathname.startsWith(`${ADMIN_LANDING}/`)) {
+    if (session.role !== "admin") {
+      return NextResponse.redirect(new URL(homeFor(session), req.url));
+    }
+    return NextResponse.next();
+  }
+
+  // Factory & Manufacturing is its own standalone workspace, same admin-only
+  // gate as the Executive Company Dashboard above — it isn't scoped to any
+  // brand, so there's no [brand] segment to check against.
+  if (pathname === FACTORY_LANDING || pathname.startsWith(`${FACTORY_LANDING}/`)) {
     if (session.role !== "admin") {
       return NextResponse.redirect(new URL(homeFor(session), req.url));
     }

@@ -16,6 +16,9 @@ export type SessionRole = "admin" | "warehouse_staff" | "finance";
 /** Executive Company Dashboard — cross-brand, admin only. */
 export const ADMIN_LANDING = "/dashboard";
 
+/** Factory & Manufacturing module — standalone from every brand, admin only, same access level as ADMIN_LANDING. */
+export const FACTORY_LANDING = "/factory";
+
 /** Brand chooser. Its own route rather than "/" so that "/" can be a pure role-based redirector without stranding admins who want to switch workspace. */
 export const WORKSPACE_PICKER = "/workspaces";
 
