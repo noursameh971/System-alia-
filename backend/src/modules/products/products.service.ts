@@ -29,6 +29,7 @@ import type {
   QuickCreateProductInput,
   UpdateProductVariantInput,
 } from "./products.schema.js";
+import { compareVariantsByColorAndSize } from "./variantSort.js";
 
 // PgTransaction's generic params aren't meaningfully constrainable here; see inventoryOperations.ts's identical alias.
 export type Tx = PgTransaction<any, any, any>;
@@ -327,6 +328,13 @@ export async function listProductsWithVariants(filters: { brandId?: string }): P
       stock: stockByVariant.get(variant.id) ?? 0,
     });
     variantsByProduct.set(variant.productId, list);
+  }
+
+  // Grouped by color, sized within each color — see variantSort.ts. Applied
+  // once here so every consumer of this list (the Product Profile drawer's
+  // variant table, batch label printing, etc.) gets the same order.
+  for (const list of variantsByProduct.values()) {
+    list.sort(compareVariantsByColorAndSize);
   }
 
   return productRows.map((p) => ({
