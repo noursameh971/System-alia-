@@ -13,6 +13,7 @@ import { RecentMovementsLog } from "./RecentMovementsLog";
 const MOVEMENT_TYPES: { key: MovementKind; label: string }[] = [
   { key: "inbound", label: "Inbound" },
   { key: "outbound", label: "Outbound" },
+  { key: "gift", label: "Gift" },
   { key: "return", label: "Return" },
 ];
 

@@ -3,6 +3,7 @@
 import { useRef, useState } from "react";
 import { getVariantBySku } from "@/lib/variants";
 import { useLocale } from "@/context/LocaleContext";
+import { getUsLayoutChar } from "@/lib/physicalKeyboard";
 import { ApiError } from "@/lib/apiClient";
 import type { VariantLookupResult } from "@/lib/types";
 import { Badge } from "@/components/ui/Badge";
@@ -130,6 +131,23 @@ export function VariantScanInput({
                 const value = sku;
                 setSku("");
                 void resolve(value);
+                return;
+              }
+
+              // A SKU is always ASCII, but a scanner emulates a physical
+              // keyboard — if the OS's active layout is Arabic (or anything
+              // non-Latin), the *characters* the browser sees are whatever
+              // that layout maps the physical keys to, not what's printed
+              // on the barcode ("No variant with SKU ..." on an otherwise
+              // valid scan). Reconstruct the intended character from the
+              // physical key instead, so the active layout can't matter.
+              // Skipped for modifier combos so paste/select-all etc. still
+              // work normally.
+              if (e.ctrlKey || e.metaKey || e.altKey) return;
+              const char = getUsLayoutChar(e);
+              if (char !== null) {
+                e.preventDefault();
+                setSku((prev) => prev + char);
               }
             }}
             placeholder="e.g. ALH-HIJ-00001-BLK-CHF-M"

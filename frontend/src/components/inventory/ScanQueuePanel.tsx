@@ -18,7 +18,7 @@ import { Label } from "@/components/ui/label";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 
-export type MovementKind = "inbound" | "outbound" | "transfer" | "return";
+export type MovementKind = "inbound" | "outbound" | "gift" | "transfer" | "return";
 
 interface QueueItem {
   variantId: string;
@@ -31,6 +31,7 @@ interface QueueItem {
 const KIND_COPY: Record<MovementKind, string> = {
   inbound: "Stock entering the warehouse (e.g. new purchase). Scan continuously — items queue up below.",
   outbound: "Stock leaving the warehouse (sale/shipping). Scan continuously — items queue up below.",
+  gift: "Stock given away for free (not a sale). Scan continuously — items queue up below.",
   transfer: "Move stock between bins. Scan continuously — items queue up below.",
   return: "Process returned stock — restock if salable, or log as damaged/lost. Scan continuously — items queue up below.",
 };
@@ -38,6 +39,7 @@ const KIND_COPY: Record<MovementKind, string> = {
 const KIND_ACTION_LABEL: Record<MovementKind, string> = {
   inbound: "Receive",
   outbound: "Ship",
+  gift: "Give Away",
   transfer: "Transfer",
   return: "Process Return",
 };
@@ -93,7 +95,7 @@ export function ScanQueuePanel({ movementType, onExecuted }: { movementType: Mov
   const contextReady =
     movementType === "inbound"
       ? Boolean(toBinId)
-      : movementType === "outbound"
+      : movementType === "outbound" || movementType === "gift"
         ? Boolean(fromBinId)
         : movementType === "transfer"
           ? Boolean(fromBinId) && Boolean(toBinId) && fromBinId !== toBinId
@@ -105,6 +107,7 @@ export function ScanQueuePanel({ movementType, onExecuted }: { movementType: Mov
     const items = queue.map((item) => ({ variantId: item.variantId, quantity: item.quantity }));
     if (movementType === "inbound") return { movementType: "inbound", toBinId, items };
     if (movementType === "outbound") return { movementType: "outbound", fromBinId, items };
+    if (movementType === "gift") return { movementType: "gift", fromBinId, items };
     if (movementType === "transfer") return { movementType: "transfer", fromBinId, toBinId, items };
     return {
       movementType: "return",
@@ -154,7 +157,7 @@ export function ScanQueuePanel({ movementType, onExecuted }: { movementType: Mov
           <BinSelect label="Destination bin" value={toBinId} onChange={setToBinId} options={bindOptions} />
         ) : null}
 
-        {movementType === "outbound" ? (
+        {movementType === "outbound" || movementType === "gift" ? (
           <BinSelect label="Source bin" value={fromBinId} onChange={setFromBinId} options={bindOptions} />
         ) : null}
 

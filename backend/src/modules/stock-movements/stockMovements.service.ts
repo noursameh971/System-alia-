@@ -159,6 +159,55 @@ export async function recordOutboundMovement(
   return db.transaction((tx) => recordOutboundMovementInTx(tx, input, actorUserId));
 }
 
+/**
+ * Records a `gift` movement — stock given away for free. Same bin shape and
+ * inventory effect as an outbound sale (decrements a source bin, no
+ * destination), but a distinct movement_type so it never gets counted as a
+ * sale in the Recent Movements Log or any reporting built on movement_type.
+ * Reuses OutboundMovementInput's shape (variantId/binId/quantity +
+ * reference fields) rather than a byte-identical twin schema — this is only
+ * ever called from the batch scan queue today, never a standalone route.
+ */
+export async function recordGiftMovementInTx(
+  tx: Tx,
+  input: OutboundMovementInput,
+  actorUserId: string,
+): Promise<MovementResult> {
+  await assertVariantExists(tx, input.variantId);
+  await assertBinExists(tx, input.binId);
+
+  const quantityAfter = await decrementInventory(tx, {
+    variantId: input.variantId,
+    binId: input.binId,
+    quantity: input.quantity,
+  });
+
+  const [movement] = await tx
+    .insert(stockMovements)
+    .values({
+      variantId: input.variantId,
+      movementType: "gift",
+      quantity: input.quantity,
+      fromBinId: input.binId,
+      referenceType: input.referenceType,
+      referenceId: input.referenceId,
+      performedBy: actorUserId,
+      notes: input.notes,
+    })
+    .returning();
+  if (!movement) throw new Error("Movement insert returned no row"); // unreachable
+
+  return {
+    movementId: movement.id,
+    variantId: input.variantId,
+    quantity: input.quantity,
+    fromBinId: input.binId,
+    toBinId: null,
+    fromBinQuantityAfter: quantityAfter,
+    toBinQuantityAfter: null,
+  };
+}
+
 export async function recordTransferMovementInTx(
   tx: Tx,
   input: TransferMovementInput,
@@ -319,6 +368,12 @@ export async function recordBatchMovement(input: BatchMovementInput, actorUserId
       for (const item of input.items) {
         results.push(
           await recordOutboundMovementInTx(tx, { variantId: item.variantId, binId: input.fromBinId, quantity: item.quantity }, actorUserId),
+        );
+      }
+    } else if (input.movementType === "gift") {
+      for (const item of input.items) {
+        results.push(
+          await recordGiftMovementInTx(tx, { variantId: item.variantId, binId: input.fromBinId, quantity: item.quantity }, actorUserId),
         );
       }
     } else if (input.movementType === "transfer") {

@@ -69,6 +69,14 @@ export const batchMovementSchema = z.discriminatedUnion("movementType", [
     fromBinId: z.string().uuid(),
     items: z.array(batchItemSchema).min(1, "Scan at least one item"),
   }),
+  // Items given away for free — same bin shape as "outbound" (leaves a
+  // source bin, no destination), tagged as its own movement_type so gifts
+  // never get counted as sales in reporting.
+  z.object({
+    movementType: z.literal("gift"),
+    fromBinId: z.string().uuid(),
+    items: z.array(batchItemSchema).min(1, "Scan at least one item"),
+  }),
   z
     .object({
       movementType: z.literal("transfer"),

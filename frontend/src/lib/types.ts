@@ -229,6 +229,7 @@ export interface BatchMovementItemInput {
 export type BatchMovementInput =
   | { movementType: "inbound"; toBinId: string; items: BatchMovementItemInput[] }
   | { movementType: "outbound"; fromBinId: string; items: BatchMovementItemInput[] }
+  | { movementType: "gift"; fromBinId: string; items: BatchMovementItemInput[] }
   | { movementType: "transfer"; fromBinId: string; toBinId: string; items: BatchMovementItemInput[] }
   | {
       movementType: "return";

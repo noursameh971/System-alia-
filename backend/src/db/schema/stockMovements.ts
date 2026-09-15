@@ -43,6 +43,7 @@ export const stockMovements = pgTable(
         (${table.movementType} = 'outbound'  AND ${table.fromBinId} IS NOT NULL AND ${table.toBinId} IS NULL) OR
         (${table.movementType} = 'transfer'  AND ${table.fromBinId} IS NOT NULL AND ${table.toBinId} IS NOT NULL) OR
         (${table.movementType} = 'return_in' AND ${table.fromBinId} IS NULL) OR
+        (${table.movementType} = 'gift'      AND ${table.fromBinId} IS NOT NULL AND ${table.toBinId} IS NULL) OR
         (${table.movementType} = 'adjustment')
       `,
     ),

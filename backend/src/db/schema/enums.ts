@@ -9,6 +9,7 @@ export const movementTypeEnum = pgEnum("movement_type", [
   "transfer",
   "return_in",
   "adjustment",
+  "gift",
 ]);
 export const reasonScopeEnum = pgEnum("reason_scope", ["stock_movement", "return", "both"]);
 export const orderStatusEnum = pgEnum("order_status", [
