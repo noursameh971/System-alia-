@@ -72,7 +72,7 @@ export default function BomsPage() {
               <div key={fg.id} className="rounded-lg border border-slate-200 bg-slate-50 px-3.5 py-2.5 dark:border-slate-800 dark:bg-slate-900">
                 <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">{fg.name}</p>
                 <p className="font-mono text-xs text-slate-400">
-                  {fg.sku} · {fg.unit}
+                  {fg.sku} · {t(fg.unit)}
                 </p>
               </div>
             ))
@@ -166,7 +166,10 @@ export default function BomsPage() {
 function AddFinishedGoodModal({ open, onOpenChange, onSuccess }: { open: boolean; onOpenChange: (open: boolean) => void; onSuccess: () => void }) {
   const { t } = useLocale();
   const [name, setName] = useState("");
-  const [unit, setUnit] = useState("piece");
+  // Blank rather than a hardcoded "piece" default — that English word would
+  // show as-is in an Arabic session; handleSubmit already falls back to
+  // "piece" itself when this is left empty.
+  const [unit, setUnit] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
   async function handleSubmit(event: FormEvent) {
@@ -199,7 +202,7 @@ function AddFinishedGoodModal({ open, onOpenChange, onSuccess }: { open: boolean
           </div>
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="fg-unit">{t("Unit")}</Label>
-            <Input id="fg-unit" value={unit} onChange={(e) => setUnit(e.target.value)} disabled={submitting} />
+            <Input id="fg-unit" value={unit} onChange={(e) => setUnit(e.target.value)} placeholder={t("piece")} disabled={submitting} />
           </div>
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={submitting}>
@@ -336,7 +339,7 @@ function CreateBomModal({
                   <option value="">{t("Select material")}</option>
                   {(materials ?? []).map((m) => (
                     <option key={m.id} value={m.id}>
-                      {m.name} ({m.unit})
+                      {m.name} ({t(m.unit)})
                     </option>
                   ))}
                 </Select>
@@ -388,7 +391,7 @@ function CreateBomModal({
                   <option value="">{t("Select stage")}</option>
                   {(stageTemplates ?? []).map((s) => (
                     <option key={s.id} value={s.id}>
-                      {s.name}
+                      {t(s.name)}
                     </option>
                   ))}
                 </Select>
@@ -436,8 +439,8 @@ function ViewBomModal({ bomId, onOpenChange }: { bomId: string; onOpenChange: (o
                   <li key={l.id} className="flex justify-between">
                     <span>{l.materialName}</span>
                     <span className="tabular-nums text-slate-500">
-                      {l.quantityPerBatch} {l.materialUnit}
-                      {l.wasteAllowancePct > 0 ? ` (+${l.wasteAllowancePct}% waste)` : ""}
+                      {l.quantityPerBatch} {t(l.materialUnit)}
+                      {l.wasteAllowancePct > 0 ? ` (+${l.wasteAllowancePct}% ${t("waste")})` : ""}
                     </span>
                   </li>
                 ))}
@@ -449,7 +452,7 @@ function ViewBomModal({ bomId, onOpenChange }: { bomId: string; onOpenChange: (o
                 <ol className="flex flex-col gap-1 text-sm">
                   {bom.stages.map((s, i) => (
                     <li key={s.id}>
-                      {i + 1}. {s.stageName}
+                      {i + 1}. {t(s.stageName)}
                     </li>
                   ))}
                 </ol>

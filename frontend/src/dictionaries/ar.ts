@@ -684,6 +684,7 @@ export const ar: Record<string, string> = {
   "Waste / damage": "هالك / تلف",
   "Stock count adjustment": "تسوية جرد المخزون",
   Location: "الموقع",
+  "Select a category": "اختر تصنيفًا",
   "Select a location": "اختر موقعًا",
   "New quantity": "الكمية الجديدة",
 
@@ -792,4 +793,44 @@ export const ar: Record<string, string> = {
   rework: "إعادة تشغيل",
   "Inspector notes": "ملاحظات المفتش",
   "Quality check recorded": "تم تسجيل فحص الجودة",
+
+  // Placeholders and small phrases used in the factory forms.
+  "e.g. Cotton Fabric — White": "مثال: قماش قطني — أبيض",
+  "e.g. Classic Abaya": "مثال: عباية كلاسيكية",
+  'Optional, e.g. "Winter fabric"': 'اختياري، مثال: "قماش شتوي"',
+  waste: "هالك",
+
+  // Seeded material categories (database/migrations/0020_add_factory_module.sql)
+  // — "Fabric", "Packaging", and "Other" already have entries above (shared
+  // with the expense/ledger category dictionaries).
+  "Trims & Accessories": "إكسسوارات وتوابع",
+  "Dyes & Chemicals": "أصباغ ومواد كيميائية",
+
+  // Seeded factory locations
+  "Raw Material Store": "مخزن المواد الخام",
+  "Production Floor": "صالة الإنتاج",
+  "Finished Goods Store": "مخزن المنتجات التامة",
+
+  // Seeded production stage templates
+  Cutting: "قص",
+  Sewing: "خياطة",
+  Finishing: "تشطيب",
+  "Quality Control": "مراقبة الجودة",
+  Packing: "تعبئة",
+
+  // Suggested material units (frontend/src/app/factory/materials/page.tsx) —
+  // the canonical value saved is always this English word (so t(unit) keeps
+  // resolving correctly everywhere a material's unit is displayed later,
+  // regardless of which locale it was created under); this is just the
+  // Arabic label shown in the picker and everywhere the unit is displayed.
+  kg: "كيلوغرام",
+  gram: "غرام",
+  meter: "متر",
+  cm: "سم",
+  liter: "لتر",
+  ml: "مل",
+  piece: "قطعة",
+  roll: "لفة",
+  yard: "ياردة",
+  hrs: "ساعة",
 };

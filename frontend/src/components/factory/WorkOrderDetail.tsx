@@ -146,7 +146,7 @@ export function WorkOrderDetail({ workOrderId }: { workOrderId: string }) {
             <ol className="flex flex-wrap gap-2">
               {wo.stages.map((s, i) => (
                 <li key={s.id} className="rounded-full border border-slate-200 px-3 py-1 text-xs font-medium text-slate-600 dark:border-slate-700 dark:text-slate-300">
-                  {i + 1}. {s.stageName}
+                  {i + 1}. {t(s.stageName)}
                 </li>
               ))}
             </ol>
@@ -178,15 +178,15 @@ export function WorkOrderDetail({ workOrderId }: { workOrderId: string }) {
                 <TableRow key={r.materialId}>
                   <TableCell className="font-medium">{r.materialName}</TableCell>
                   <TableCell className="tabular-nums">
-                    {r.requiredQuantity.toFixed(2)} {r.unit}
+                    {r.requiredQuantity.toFixed(2)} {t(r.unit)}
                   </TableCell>
                   <TableCell className="tabular-nums">
-                    {r.availableQuantity.toFixed(2)} {r.unit}
+                    {r.availableQuantity.toFixed(2)} {t(r.unit)}
                   </TableCell>
                   <TableCell className="tabular-nums">
                     {r.shortfall > 0 ? (
                       <Badge variant="danger" size="sm">
-                        {r.shortfall.toFixed(2)} {r.unit}
+                        {r.shortfall.toFixed(2)} {t(r.unit)}
                       </Badge>
                     ) : (
                       "—"
@@ -216,7 +216,7 @@ export function WorkOrderDetail({ workOrderId }: { workOrderId: string }) {
                 <li key={l.id} className="flex items-center justify-between rounded-lg bg-slate-50 px-3 py-2 text-sm dark:bg-slate-900">
                   <span>{l.workerName}</span>
                   <span className="tabular-nums text-slate-500">
-                    {l.hoursWorked}h · {l.quantityProduced} {t("units")}
+                    {l.hoursWorked} {t("hrs")} · {l.quantityProduced} {t("units")}
                   </span>
                 </li>
               ))
@@ -344,7 +344,7 @@ function IssueMaterialsModal({
               <option value="">{t("Select a location")}</option>
               {(locations ?? []).map((l) => (
                 <option key={l.id} value={l.id}>
-                  {l.name}
+                  {t(l.name)}
                 </option>
               ))}
             </Select>
@@ -512,7 +512,7 @@ function RecordOutputModal({
               <option value="">{t("Default finished-goods location")}</option>
               {(locations ?? []).map((l) => (
                 <option key={l.id} value={l.id}>
-                  {l.name}
+                  {t(l.name)}
                 </option>
               ))}
             </Select>

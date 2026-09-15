@@ -97,11 +97,11 @@ export default function MaterialsPage() {
                       </div>
                       <div className="font-mono text-xs text-slate-400">{m.sku}</div>
                     </TableCell>
-                    <TableCell>{m.categoryName}</TableCell>
-                    <TableCell>{m.unit}</TableCell>
+                    <TableCell>{t(m.categoryName)}</TableCell>
+                    <TableCell>{t(m.unit)}</TableCell>
                     <TableCell className="tabular-nums">{m.currentCostPerUnit != null ? formatPrice(m.currentCostPerUnit) : "—"}</TableCell>
                     <TableCell className="tabular-nums">
-                      {m.totalStock} {m.unit}
+                      {m.totalStock} {t(m.unit)}
                       {m.belowReorderLevel ? (
                         <Badge variant="warning" size="sm" className="ms-2">
                           {t("Low stock")}
@@ -141,7 +141,12 @@ function AddMaterialModal({ open, onOpenChange, onSuccess }: { open: boolean; on
 
   const [name, setName] = useState("");
   const [categoryId, setCategoryId] = useState("");
-  const [unit, setUnit] = useState("meter");
+  // No hardcoded default: the datalist's suggestion values are the
+  // canonical English unit words (so t(material.unit) always resolves
+  // later), but their *visible* label is translated — a pre-filled English
+  // default would look wrong in an Arabic session, so this starts blank and
+  // the picker/typing fills it in instead.
+  const [unit, setUnit] = useState("");
   const [reorderLevel, setReorderLevel] = useState("0");
   const [initialCost, setInitialCost] = useState("");
   const [initialLocationId, setInitialLocationId] = useState("");
@@ -211,7 +216,7 @@ function AddMaterialModal({ open, onOpenChange, onSuccess }: { open: boolean; on
                 <option value="">{t("Select a category")}</option>
                 {(categories ?? []).map((c) => (
                   <option key={c.id} value={c.id}>
-                    {c.name}
+                    {t(c.name)}
                   </option>
                 ))}
               </Select>
@@ -232,10 +237,24 @@ function AddMaterialModal({ open, onOpenChange, onSuccess }: { open: boolean; on
 
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="material-unit">{t("Unit")}</Label>
-              <Input id="material-unit" list="material-unit-options" value={unit} onChange={(e) => setUnit(e.target.value)} disabled={submitting} />
+              <Input
+                id="material-unit"
+                list="material-unit-options"
+                value={unit}
+                onChange={(e) => setUnit(e.target.value)}
+                placeholder={t("meter")}
+                disabled={submitting}
+              />
               <datalist id="material-unit-options">
+                {/* value stays the canonical English unit stored in the DB
+                    (so t(material.unit) keeps working everywhere it's
+                    displayed later, regardless of which locale a material
+                    was created in) — the Arabic text content is what most
+                    browsers show as the suggestion's visible label. */}
                 {SUGGESTED_UNITS.map((u) => (
-                  <option key={u} value={u} />
+                  <option key={u} value={u}>
+                    {t(u)}
+                  </option>
                 ))}
               </datalist>
             </div>
@@ -268,7 +287,7 @@ function AddMaterialModal({ open, onOpenChange, onSuccess }: { open: boolean; on
                 <option value="">{t("None")}</option>
                 {(locations ?? []).map((l) => (
                   <option key={l.id} value={l.id}>
-                    {l.name}
+                    {t(l.name)}
                   </option>
                 ))}
               </Select>
@@ -354,7 +373,7 @@ function RecordMovementModal({
               {t("Record Movement")} — {material.name}
             </DialogTitle>
             <DialogDescription>
-              {t("Current stock")}: {material.totalStock} {material.unit}
+              {t("Current stock")}: {material.totalStock} {t(material.unit)}
             </DialogDescription>
           </DialogHeader>
 
@@ -376,12 +395,12 @@ function RecordMovementModal({
 
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div className="flex flex-col gap-1.5">
-              <Label htmlFor="movement-location">{movementType === "adjustment" ? t("Location") : t("Location")}</Label>
+              <Label htmlFor="movement-location">{t("Location")}</Label>
               <Select id="movement-location" value={locationId} onChange={(e) => setLocationId(e.target.value)} disabled={submitting}>
                 <option value="">{t("Select a location")}</option>
                 {(locations ?? []).map((l) => (
                   <option key={l.id} value={l.id}>
-                    {l.name}
+                    {t(l.name)}
                   </option>
                 ))}
               </Select>
