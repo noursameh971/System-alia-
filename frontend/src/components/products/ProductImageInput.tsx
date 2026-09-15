@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { useLocale } from "@/context/LocaleContext";
+import { dataUrlToFile } from "@/lib/images";
 
 interface ProductImageInputProps {
   /** Object URL of a staged file, the typed URL, or the existing product's resolved image — whichever is currently "the" image, for the live preview. */
@@ -31,6 +32,23 @@ export function ProductImageInput({ previewUrl, urlValue, onUrlChange, onFileSel
     onFileSelect(null);
   }
 
+  /**
+   * A pasted `data:image/...;base64,...` value (e.g. from "Copy image" in a
+   * browser, or a clipboard paste) can't be saved as-is — the imageUrl field
+   * is validated as a real URL, and a base64 image is far longer than that
+   * allows, so it used to fail save with an opaque "Validation failed"
+   * error. Route it through the file-upload path instead, which already
+   * handles arbitrary image bytes correctly.
+   */
+  function handleUrlChange(value: string) {
+    const asFile = dataUrlToFile(value);
+    if (asFile) {
+      onFileSelect(asFile);
+      return;
+    }
+    onUrlChange(value);
+  }
+
   return (
     <div className="flex flex-col gap-1.5">
       <Label>{t("Product image")}</Label>
@@ -52,7 +70,7 @@ export function ProductImageInput({ previewUrl, urlValue, onUrlChange, onFileSel
           <Input
             dir="ltr"
             value={urlValue}
-            onChange={(e) => onUrlChange(e.target.value)}
+            onChange={(e) => handleUrlChange(e.target.value)}
             placeholder="https://..."
             disabled={disabled}
           />
