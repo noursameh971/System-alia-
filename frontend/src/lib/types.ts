@@ -458,13 +458,15 @@ export interface CategoryValueItem {
   inventoryValue: number;
 }
 
-/** One point per day (oldest first) — powers each KPI card's sparkline. inventoryUnits/inventoryValue are end-of-day absolute levels; revenue/orderCount/expenses/netProfit are that day's own totals. */
+/** One point per day (oldest first) — powers each KPI card's sparkline. inventoryUnits/inventoryValue/potentialRetailValue are end-of-day absolute levels; revenue/orderCount/expenses/netProfit are that day's own totals. */
 export interface DashboardTrendPoint {
   day: string;
   revenue: number;
   orderCount: number;
   inventoryUnits: number;
   inventoryValue: number;
+  /** Currently identical to inventoryValue — see BrandDashboardSummary's doc comment on potentialRetailValue. */
+  potentialRetailValue: number;
   /** That day's production cost (COGS) + shipping fees. */
   expenses: number;
   /** That day's revenue - expenses. */
@@ -475,7 +477,15 @@ export interface BrandDashboardSummary {
   brand: Brand;
   revenue: number;
   orderCount: number;
+  /** qty * current selling price. */
   inventoryValue: number;
+  /**
+   * qty * current selling price — the total value of on-hand stock if sold
+   * at retail. Deliberately the same formula (and today, the same number)
+   * as inventoryValue rather than a true cost-basis figure: production
+   * cost is only set on a handful of variants right now.
+   */
+  potentialRetailValue: number;
   inventoryUnitCount: number;
   totalExpenses: number;
   netProfit: number;

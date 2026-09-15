@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import useSWR from "swr";
-import { DollarSign, Package, PiggyBank, Receipt, ShoppingCart, TrendingUp, Wallet } from "lucide-react";
+import { DollarSign, Package, PiggyBank, Receipt, ShoppingCart, Tag, TrendingUp, Wallet } from "lucide-react";
 import { useWorkspace } from "@/context/WorkspaceContext";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { useLocale } from "@/context/LocaleContext";
@@ -57,35 +57,58 @@ export default function BrandDashboardPage() {
         />
       ) : !data ? null : (
         <>
-          <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 xl:grid-cols-4">
-            <StatTile
-              label={t("Inventory value")}
-              value={formatPrice(data.inventoryValue)}
-              icon={Wallet}
-              iconColor="indigo"
-              trendData={data.trend.map((point) => point.inventoryValue)}
-            />
-            <StatTile
-              label={t("Units in stock")}
-              value={String(data.inventoryUnitCount)}
-              icon={Package}
-              iconColor="blue"
-              trendData={data.trend.map((point) => point.inventoryUnits)}
-            />
-            <StatTile
-              label={t("Revenue")}
-              value={formatPrice(data.revenue)}
-              icon={TrendingUp}
-              iconColor="emerald"
-              trendData={data.trend.map((point) => point.revenue)}
-            />
-            <StatTile
-              label={t("Orders")}
-              value={String(data.orderCount)}
-              icon={ShoppingCart}
-              iconColor="violet"
-              trendData={data.trend.map((point) => point.orderCount)}
-            />
+          {/* flex-wrap + min-width + flex-1 rather than a fixed grid column
+              count: with 5 tiles, no column count (2, 3, 4, or 5) divides
+              evenly at every breakpoint, so a CSS grid always leaves one row
+              short with an empty gap. This is the same pattern (and the same
+              reasoning) as the "Company performance at a glance" row on the
+              executive dashboard — see that page for the fuller comment. */}
+          <div className="flex flex-wrap gap-5">
+            <div className="min-w-[200px] flex-1">
+              <StatTile
+                label={t("Inventory value")}
+                value={formatPrice(data.inventoryValue)}
+                icon={Wallet}
+                iconColor="indigo"
+                trendData={data.trend.map((point) => point.inventoryValue)}
+              />
+            </div>
+            <div className="min-w-[200px] flex-1">
+              <StatTile
+                label={t("Potential retail value")}
+                value={formatPrice(data.potentialRetailValue)}
+                icon={Tag}
+                iconColor="amber"
+                trendData={data.trend.map((point) => point.potentialRetailValue)}
+              />
+            </div>
+            <div className="min-w-[200px] flex-1">
+              <StatTile
+                label={t("Units in stock")}
+                value={String(data.inventoryUnitCount)}
+                icon={Package}
+                iconColor="blue"
+                trendData={data.trend.map((point) => point.inventoryUnits)}
+              />
+            </div>
+            <div className="min-w-[200px] flex-1">
+              <StatTile
+                label={t("Revenue")}
+                value={formatPrice(data.revenue)}
+                icon={TrendingUp}
+                iconColor="emerald"
+                trendData={data.trend.map((point) => point.revenue)}
+              />
+            </div>
+            <div className="min-w-[200px] flex-1">
+              <StatTile
+                label={t("Orders")}
+                value={String(data.orderCount)}
+                icon={ShoppingCart}
+                iconColor="violet"
+                trendData={data.trend.map((point) => point.orderCount)}
+              />
+            </div>
           </div>
 
           {isAdmin ? (

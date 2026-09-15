@@ -243,13 +243,15 @@ export interface CategoryValueItem {
   inventoryValue: number;
 }
 
-/** One point per day (oldest first) — powers each KPI card's sparkline. inventoryUnits/inventoryValue are end-of-day absolute levels (reconstructed by walking the daily net change backward from today's real total); revenue/orderCount/expenses/netProfit are that day's own totals, not cumulative. */
+/** One point per day (oldest first) — powers each KPI card's sparkline. inventoryUnits/inventoryValue/potentialRetailValue are end-of-day absolute levels (reconstructed by walking the daily net change backward from today's real total); revenue/orderCount/expenses/netProfit are that day's own totals, not cumulative. */
 export interface DashboardTrendPoint {
   day: string;
   revenue: number;
   orderCount: number;
   inventoryUnits: number;
   inventoryValue: number;
+  /** Currently identical to inventoryValue — see BrandDashboardSummary's doc comment on potentialRetailValue. */
+  potentialRetailValue: number;
   /** That day's production cost (COGS) + shipping fees. */
   expenses: number;
   /** That day's revenue - expenses. */
@@ -260,7 +262,18 @@ export interface BrandDashboardSummary {
   brand: { id: string; name: string; code: string };
   revenue: number;
   orderCount: number;
+  /** qty * current selling price. */
   inventoryValue: number;
+  /**
+   * qty * current selling price — the total value of on-hand stock if sold
+   * at retail. Deliberately the same formula (and today, the same number)
+   * as inventoryValue rather than a true cost-basis figure: production
+   * cost is only set on a handful of variants right now, so qty * cost
+   * would read as misleadingly near-zero for most of the catalog. Kept as
+   * its own field so the frontend already has a distinct data source to
+   * switch to once cost data is populated widely enough to be meaningful.
+   */
+  potentialRetailValue: number;
   inventoryUnitCount: number;
   totalExpenses: number;
   netProfit: number;
@@ -311,6 +324,7 @@ interface DailyOrdersRow {
 interface DailyMovementsRow {
   day: string;
   net_units: number;
+  /** Net change in inventoryValue/potentialRetailValue (qty * price — see BrandDashboardSummary's doc comment on inventoryValue) for the day. */
   net_value: string;
   [key: string]: unknown;
 }
@@ -405,6 +419,13 @@ export async function getBrandDashboardSummary(brandId: string): Promise<BrandDa
     .from(orders)
     .where(and(eq(orders.brandId, brandId), ne(orders.status, "cancelled")));
 
+  // inventoryValue and potentialRetailValue are the same qty * price
+  // aggregate today — see BrandDashboardSummary's doc comment on
+  // inventoryValue for why this isn't split into a true cost-basis figure
+  // yet (production cost is set on only a handful of variants right now,
+  // which would make a cost-based inventoryValue read as misleadingly near
+  // zero). Kept as two fields rather than one so the frontend cards already
+  // have distinct data sources to point at once cost data is populated.
   const [inventoryRow] = await db
     .select({
       unitCount: sql<number>`coalesce(sum(${inventory.quantity}), 0)::int`,
@@ -547,12 +568,16 @@ export async function getBrandDashboardSummary(brandId: string): Promise<BrandDa
   const trend: DashboardTrendPoint[] = dailyOrders.map((row, i) => {
     const dayRevenue = Number(row.revenue);
     const dayExpenses = Number(row.cogs) + Number(row.shipping_fee);
+    // inventoryValue and potentialRetailValue share the same underlying
+    // qty * price levels today — see BrandDashboardSummary's doc comment.
+    const dayValue = valueLevels[i] ?? currentInventoryValue;
     return {
       day: row.day,
       revenue: dayRevenue,
       orderCount: row.order_count,
       inventoryUnits: unitLevels[i] ?? currentInventoryUnitCount,
-      inventoryValue: valueLevels[i] ?? currentInventoryValue,
+      inventoryValue: dayValue,
+      potentialRetailValue: dayValue,
       expenses: dayExpenses,
       netProfit: dayRevenue - dayExpenses,
     };
@@ -585,6 +610,7 @@ export async function getBrandDashboardSummary(brandId: string): Promise<BrandDa
     revenue,
     orderCount: revenueRow?.orderCount ?? 0,
     inventoryValue: currentInventoryValue,
+    potentialRetailValue: currentInventoryValue,
     inventoryUnitCount: currentInventoryUnitCount,
     totalExpenses,
     netProfit,

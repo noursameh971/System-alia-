@@ -604,6 +604,7 @@ export const ar: Record<string, string> = {
   "Recent activity": "النشاط الأخير",
   "By brand": "حسب العلامة التجارية",
   "Inventory value": "قيمة المخزون",
+  "Potential retail value": "القيمة البيعية المحتملة",
   "Units in stock": "الوحدات بالمخزون",
   "Top stocked variants": "الأكثر توفرًا بالمخزون",
   "Inventory distribution by category": "توزيع المخزون حسب التصنيف",
