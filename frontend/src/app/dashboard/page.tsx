@@ -4,7 +4,7 @@ import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import useSWR from "swr";
-import { Building2, DollarSign, Package, PiggyBank, Receipt, ShoppingCart, TrendingUp, Wallet } from "lucide-react";
+import { Building2, DollarSign, Package, PiggyBank, Receipt, ShoppingCart, Tag, TrendingUp, Wallet } from "lucide-react";
 import { getDashboardSummary } from "@/lib/dashboard";
 import { WORKSPACE_PICKER, landingPathFor } from "@/lib/routing";
 import { ApiError } from "@/lib/apiClient";
@@ -88,6 +88,15 @@ export default function DashboardPage() {
               <div className="mt-6 flex flex-wrap gap-4">
                 <div className="min-w-[200px] flex-1">
                   <StatTile variant="flat" label={t("Combined inventory value")} value={formatPrice(data.totals.inventoryValue)} icon={Wallet} iconColor="indigo" />
+                </div>
+                <div className="min-w-[200px] flex-1">
+                  <StatTile
+                    variant="flat"
+                    label={t("Total Retail Inventory Value")}
+                    value={formatPrice(data.totals.potentialRetailValue)}
+                    icon={Tag}
+                    iconColor="rose"
+                  />
                 </div>
                 <div className="min-w-[200px] flex-1">
                   <StatTile variant="flat" label={t("Total items in stock")} value={String(data.totals.inventoryUnitCount)} icon={Package} iconColor="blue" />

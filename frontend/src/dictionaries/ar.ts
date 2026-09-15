@@ -613,6 +613,7 @@ export const ar: Record<string, string> = {
   "Net Profit": "صافي الربح",
   Revenue: "الإيرادات",
   "Combined inventory value": "قيمة المخزون الإجمالية",
+  "Total Retail Inventory Value": "إجمالي قيمة المخزون للعملاء",
   "Total items in stock": "إجمالي العناصر بالمخزون",
   "Active brands": "العلامات التجارية النشطة",
   "Revenue & inventory value by brand": "الإيرادات وقيمة المخزون حسب العلامة التجارية",

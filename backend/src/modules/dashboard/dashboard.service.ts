@@ -25,6 +25,8 @@ export interface BrandSummary {
   revenue: number;
   orderCount: number;
   inventoryValue: number;
+  /** qty * current active selling price, summed across this brand's stock — what the shelf is worth if sold at list price, not what it cost to make (see inventoryValue). */
+  potentialRetailValue: number;
   inventoryUnitCount: number;
   /** Production cost (COGS) + shipping fees across this brand's non-cancelled orders. */
   totalExpenses: number;
@@ -38,6 +40,8 @@ export interface DashboardTotals {
   revenue: number;
   orderCount: number;
   inventoryValue: number;
+  /** qty * current active selling price, summed across every brand's stock. */
+  potentialRetailValue: number;
   inventoryUnitCount: number;
   totalExpenses: number;
   netProfit: number;
@@ -99,17 +103,21 @@ export async function getDashboardSummary(): Promise<DashboardSummary> {
     .where(ne(orders.status, "cancelled"))
     .groupBy(orders.brandId);
 
-  // On-hand unit count + inventory value (qty * current active cost) per
-  // brand — cost, not price: this is "money invested in stock" (an asset/
-  // COGS value), matching getBrandDashboardSummary's inventoryValue below
-  // so the two dashboards never disagree about what the same-named metric
-  // means. LEFT JOIN variant_costs because a variant with no active cost
-  // should still count its units, just contribute 0 to value.
+  // On-hand unit count + inventory value (qty * current active cost) +
+  // potential retail value (qty * current active selling price) per brand.
+  // Cost is "money invested in stock" (an asset/COGS value), matching
+  // getBrandDashboardSummary's inventoryValue below so the two dashboards
+  // never disagree about what the same-named metric means; retail is what
+  // the shelf is worth if sold at list price — a genuinely different number,
+  // not a duplicate (see getBrandDashboardSummary's own comment on this).
+  // LEFT JOIN both cost/price tables because a variant with no active
+  // cost/price should still count its units, just contribute 0 to that value.
   const inventoryRows = await db
     .select({
       brandId: products.brandId,
       unitCount: sql<number>`coalesce(sum(${inventory.quantity}), 0)::int`,
       inventoryValue: sql<string>`coalesce(sum(${inventory.quantity} * coalesce(${variantCosts.cost}, 0)), 0)`,
+      potentialRetailValue: sql<string>`coalesce(sum(${inventory.quantity} * coalesce(${variantPrices.price}, 0)), 0)`,
     })
     .from(inventory)
     .innerJoin(productVariants, eq(productVariants.id, inventory.variantId))
@@ -117,6 +125,10 @@ export async function getDashboardSummary(): Promise<DashboardSummary> {
     .leftJoin(
       variantCosts,
       and(eq(variantCosts.variantId, productVariants.id), isNull(variantCosts.effectiveTo)),
+    )
+    .leftJoin(
+      variantPrices,
+      and(eq(variantPrices.variantId, productVariants.id), isNull(variantPrices.effectiveTo)),
     )
     .groupBy(products.brandId);
 
@@ -139,6 +151,7 @@ export async function getDashboardSummary(): Promise<DashboardSummary> {
       revenue,
       orderCount: rev?.orderCount ?? 0,
       inventoryValue: inv ? Number(inv.inventoryValue) : 0,
+      potentialRetailValue: inv ? Number(inv.potentialRetailValue) : 0,
       inventoryUnitCount: inv?.unitCount ?? 0,
       totalExpenses,
       netProfit,
@@ -151,11 +164,20 @@ export async function getDashboardSummary(): Promise<DashboardSummary> {
       revenue: acc.revenue + b.revenue,
       orderCount: acc.orderCount + b.orderCount,
       inventoryValue: acc.inventoryValue + b.inventoryValue,
+      potentialRetailValue: acc.potentialRetailValue + b.potentialRetailValue,
       inventoryUnitCount: acc.inventoryUnitCount + b.inventoryUnitCount,
       totalExpenses: acc.totalExpenses + b.totalExpenses,
       netProfit: acc.netProfit + b.netProfit,
     }),
-    { revenue: 0, orderCount: 0, inventoryValue: 0, inventoryUnitCount: 0, totalExpenses: 0, netProfit: 0 },
+    {
+      revenue: 0,
+      orderCount: 0,
+      inventoryValue: 0,
+      potentialRetailValue: 0,
+      inventoryUnitCount: 0,
+      totalExpenses: 0,
+      netProfit: 0,
+    },
   );
   // Margin is derived from the summed totals, not averaged/summed across
   // brands' individual margins (which wouldn't be a meaningful percentage).

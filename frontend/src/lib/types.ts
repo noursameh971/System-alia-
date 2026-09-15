@@ -396,6 +396,8 @@ export interface DashboardBrandSummary {
   revenue: number;
   orderCount: number;
   inventoryValue: number;
+  /** qty * current active selling price, summed across this brand's stock. */
+  potentialRetailValue: number;
   inventoryUnitCount: number;
   /** Production cost (COGS) + shipping fees across this brand's non-cancelled orders. */
   totalExpenses: number;
@@ -409,6 +411,8 @@ export interface DashboardTotals {
   revenue: number;
   orderCount: number;
   inventoryValue: number;
+  /** qty * current active selling price, summed across every brand's stock. */
+  potentialRetailValue: number;
   inventoryUnitCount: number;
   totalExpenses: number;
   netProfit: number;
