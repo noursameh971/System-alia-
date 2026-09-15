@@ -504,13 +504,20 @@ export function ProductProfileDrawer({ product, onOpenChange, canManage, onMutat
                   <Table>
                     <TableHeader>
                       <TableRow className="hover:bg-transparent">
-                        <TableHead className="px-3">{t("Color")}</TableHead>
-                        <TableHead className="px-3">{t("Size")}</TableHead>
-                        <TableHead className="px-3">{t("SKU")}</TableHead>
-                        <TableHead className="px-3">{t("Price")}</TableHead>
-                        {canManage ? <TableHead className="px-3">{t("Cost")}</TableHead> : null}
-                        <TableHead className="px-3">{t("Stock")}</TableHead>
-                        <TableHead className="px-3 text-end">{t("Actions")}</TableHead>
+                        {/* sm:px-3 (not just px-3): TableHead/TableCell default to
+                            sm:px-5 at desktop widths, so an override needs the same
+                            "sm:" variant to actually win — a bare px-3 is silently
+                            ignored once the viewport crosses the sm breakpoint. This
+                            table has 7 columns in a fixed-width (max-w-3xl) drawer,
+                            so trimming that padding is what keeps it from needing a
+                            horizontal scrollbar on desktop. */}
+                        <TableHead className="px-2 sm:px-3">{t("Color")}</TableHead>
+                        <TableHead className="px-2 sm:px-3">{t("Size")}</TableHead>
+                        <TableHead className="px-2 sm:px-3">{t("SKU")}</TableHead>
+                        <TableHead className="px-2 sm:px-3">{t("Price")}</TableHead>
+                        {canManage ? <TableHead className="px-2 sm:px-3">{t("Cost")}</TableHead> : null}
+                        <TableHead className="px-2 sm:px-3">{t("Stock")}</TableHead>
+                        <TableHead className="px-2 text-end sm:px-3">{t("Actions")}</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -519,27 +526,27 @@ export function ProductProfileDrawer({ product, onOpenChange, canManage, onMutat
                         const size = attributeValue(variant.attributes, "size");
                         return (
                           <TableRow key={variant.id}>
-                            <TableCell className="max-w-[100px] truncate px-3 py-3 font-medium" title={color}>
+                            <TableCell className="max-w-[88px] truncate px-2 py-3 font-medium sm:px-3" title={color}>
                               {color}
                             </TableCell>
-                            <TableCell className="max-w-[84px] truncate px-3 py-3" title={size}>
+                            <TableCell className="max-w-[72px] truncate px-2 py-3 sm:px-3" title={size}>
                               {size}
                             </TableCell>
                             <TableCell
-                              className="max-w-[150px] truncate px-3 py-3 font-mono text-xs text-slate-500 dark:text-slate-400"
+                              className="max-w-[130px] truncate px-2 py-3 font-mono text-xs text-slate-500 sm:px-3 dark:text-slate-400"
                               title={variant.sku}
                             >
                               {variant.sku}
                             </TableCell>
-                            <TableCell className="px-3 py-3 whitespace-nowrap tabular-nums">
+                            <TableCell className="px-2 py-3 whitespace-nowrap tabular-nums sm:px-3">
                               {formatPrice(variant.price, variant.currency)}
                             </TableCell>
                             {canManage ? (
-                              <TableCell className="px-3 py-3 whitespace-nowrap tabular-nums text-slate-600 dark:text-slate-400">
+                              <TableCell className="px-2 py-3 whitespace-nowrap tabular-nums text-slate-600 sm:px-3 dark:text-slate-400">
                                 {formatPrice(variant.cost)}
                               </TableCell>
                             ) : null}
-                            <TableCell className="px-3 py-2.5">
+                            <TableCell className="px-2 py-2.5 sm:px-3">
                               <StockStepper
                                 key={`${variant.id}:${variant.stock}`}
                                 variantId={variant.id}
@@ -548,8 +555,8 @@ export function ProductProfileDrawer({ product, onOpenChange, canManage, onMutat
                                 onSaved={onMutate}
                               />
                             </TableCell>
-                            <TableCell className="px-3 py-2.5 text-end">
-                              <div className="flex items-center justify-end gap-1.5">
+                            <TableCell className="px-2 py-2.5 text-end sm:px-3">
+                              <div className="flex items-center justify-end gap-1">
                                 <VariantPrintButton
                                   variant={{
                                     sku: variant.sku,
