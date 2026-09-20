@@ -438,11 +438,47 @@ const DEFAULT_WAREHOUSE_NAME = "Main Warehouse";
 const DEFAULT_ZONE_CODE = "MAIN";
 const DEFAULT_BIN_CODE = "BIN-01";
 
+/**
+ * Get-or-create by a unique column, race-safe *within a transaction*: a
+ * plain SELECT-then-INSERT-if-missing has a window where two concurrent
+ * requests creating the same new row (e.g. two people each adding a "Red"
+ * color for the first time) both pass the SELECT, then the second INSERT
+ * trips the unique constraint — and inside Postgres, a failed statement
+ * poisons the rest of that transaction (every later query errors with
+ * "current transaction is aborted" until it's rolled back), so a plain
+ * try/catch-and-retry doesn't work here the way it would outside a
+ * transaction. `ON CONFLICT ... DO NOTHING` sidesteps that entirely: it
+ * never raises on a conflict, so the insert either creates the row or
+ * silently no-ops (the concurrent request won the race), and either way a
+ * follow-up SELECT in the same transaction reliably finds it.
+ */
+export async function getOrCreateByUniqueColumnTx<TRow>(
+  tx: Tx,
+  select: () => Promise<TRow | undefined>,
+  insertOnConflictDoNothing: () => Promise<TRow | undefined>,
+): Promise<TRow> {
+  const existing = await select();
+  if (existing !== undefined) return existing;
+
+  const inserted = await insertOnConflictDoNothing();
+  if (inserted !== undefined) return inserted;
+
+  // Only reachable if a concurrent request won the race between the SELECT
+  // and INSERT above — its row now exists.
+  const raced = await select();
+  if (raced === undefined) throw new Error("get-or-create: row missing after insert conflict"); // unreachable
+  return raced;
+}
+
 export async function getOrCreateAttributeTx(tx: Tx, name: string): Promise<string> {
-  const [existing] = await tx.select({ id: attributes.id }).from(attributes).where(eq(attributes.name, name)).limit(1);
-  if (existing) return existing.id;
-  const [created] = await tx.insert(attributes).values({ name }).returning({ id: attributes.id });
-  return created!.id;
+  return getOrCreateByUniqueColumnTx(
+    tx,
+    async () => (await tx.select({ id: attributes.id }).from(attributes).where(eq(attributes.name, name)).limit(1))[0]?.id,
+    async () =>
+      (
+        await tx.insert(attributes).values({ name }).onConflictDoNothing({ target: attributes.name }).returning({ id: attributes.id })
+      )[0]?.id,
+  );
 }
 
 /** Short, non-null code for an attribute_values row — only unique per (attributeId, value), so collisions across values are harmless. */
@@ -457,18 +493,24 @@ export async function getOrCreateAttributeValueTx(
   rawValue: string,
 ): Promise<{ id: string; code: string }> {
   const value = rawValue.trim();
-  const [existing] = await tx
-    .select({ id: attributeValues.id, code: attributeValues.code })
-    .from(attributeValues)
-    .where(and(eq(attributeValues.attributeId, attributeId), eq(attributeValues.value, value)))
-    .limit(1);
-  if (existing) return existing;
+  const select = async () =>
+    (
+      await tx
+        .select({ id: attributeValues.id, code: attributeValues.code })
+        .from(attributeValues)
+        .where(and(eq(attributeValues.attributeId, attributeId), eq(attributeValues.value, value)))
+        .limit(1)
+    )[0];
 
-  const [created] = await tx
-    .insert(attributeValues)
-    .values({ attributeId, value, code: attributeCode(value) })
-    .returning({ id: attributeValues.id, code: attributeValues.code });
-  return created!;
+  return getOrCreateByUniqueColumnTx(tx, select, async () =>
+    (
+      await tx
+        .insert(attributeValues)
+        .values({ attributeId, value, code: attributeCode(value) })
+        .onConflictDoNothing({ target: [attributeValues.attributeId, attributeValues.value] })
+        .returning({ id: attributeValues.id, code: attributeValues.code })
+    )[0],
+  );
 }
 
 /** Base code candidate for a new category row — unlike attribute_values.code, categories.code is globally unique, so this is only a starting point for getOrCreateCategoryTx's collision loop below. */
@@ -487,27 +529,25 @@ function baseCategoryCode(name: string): string {
  */
 export async function getOrCreateCategoryTx(tx: Tx, rawName: string): Promise<{ id: string; name: string }> {
   const name = rawName.trim();
-  const [existing] = await tx
-    .select({ id: categories.id, name: categories.name })
-    .from(categories)
-    .where(eq(categories.name, name))
-    .limit(1);
-  if (existing) return existing;
+  const selectByName = async () =>
+    (await tx.select({ id: categories.id, name: categories.name }).from(categories).where(eq(categories.name, name)).limit(1))[0];
 
-  const base = baseCategoryCode(name);
-  let code = base;
-  for (let suffix = 2; ; suffix += 1) {
-    const [taken] = await tx.select({ id: categories.id }).from(categories).where(eq(categories.code, code)).limit(1);
-    if (!taken) break;
-    const suffixStr = String(suffix);
-    code = `${base.slice(0, 10 - suffixStr.length)}${suffixStr}`;
-  }
+  return getOrCreateByUniqueColumnTx(tx, selectByName, async () => {
+    const base = baseCategoryCode(name);
+    let code = base;
+    for (let suffix = 2; ; suffix += 1) {
+      const [taken] = await tx.select({ id: categories.id }).from(categories).where(eq(categories.code, code)).limit(1);
+      if (!taken) break;
+      const suffixStr = String(suffix);
+      code = `${base.slice(0, 10 - suffixStr.length)}${suffixStr}`;
+    }
 
-  const [created] = await tx
-    .insert(categories)
-    .values({ name, code })
-    .returning({ id: categories.id, name: categories.name });
-  return created!;
+    // Bare (no target): categories has two independent unique columns
+    // (name, code) either of which a concurrent request could win the race
+    // on — both mean "this get-or-create's job is already done", so both
+    // should fall through to the reselect-by-name below rather than raise.
+    return (await tx.insert(categories).values({ name, code }).onConflictDoNothing().returning({ id: categories.id, name: categories.name }))[0];
+  });
 }
 
 /**
@@ -578,33 +618,38 @@ export async function createQuickProduct(
     const colorAttributeId = await getOrCreateAttributeTx(tx, "Color");
     const sizeAttributeId = await getOrCreateAttributeTx(tx, "Size");
 
-    const [existingProduct] = await tx
-      .select({ id: products.id })
-      .from(products)
-      .where(and(eq(products.brandId, brand.id), eq(products.name, input.name)))
-      .limit(1);
+    const selectExistingProduct = async () =>
+      (
+        await tx
+          .select({ id: products.id })
+          .from(products)
+          .where(and(eq(products.brandId, brand.id), eq(products.name, input.name)))
+          .limit(1)
+      )[0];
 
     // Category only applies when this call actually creates the product —
     // adding another variant to an existing product (existingProduct set)
     // leaves its category alone even if a different one was typed here, same
-    // as how the name field is ignored once it's just a lookup key.
-    let productId: string;
-    if (existingProduct) {
-      productId = existingProduct.id;
-    } else {
+    // as how the name field is ignored once it's just a lookup key. Race-safe
+    // the same way as getOrCreate*Tx above: two concurrent "+ Add Product"
+    // submissions with the same brand-new name would otherwise trip the
+    // products_brand_id_name_key constraint as a raw, unhandled error.
+    const { id: productId } = await getOrCreateByUniqueColumnTx(tx, selectExistingProduct, async () => {
       const category = await getOrCreateCategoryTx(tx, input.category?.trim() || DEFAULT_CATEGORY_NAME);
-      const [created] = await tx
-        .insert(products)
-        .values({
-          brandId: brand.id,
-          categoryId: category.id,
-          name: input.name,
-          status: "active",
-          imageUrl: input.imageUrl?.trim() || null,
-        })
-        .returning({ id: products.id });
-      productId = created!.id;
-    }
+      return (
+        await tx
+          .insert(products)
+          .values({
+            brandId: brand.id,
+            categoryId: category.id,
+            name: input.name,
+            status: "active",
+            imageUrl: input.imageUrl?.trim() || null,
+          })
+          .onConflictDoNothing({ target: [products.brandId, products.name] })
+          .returning({ id: products.id })
+      )[0];
+    });
 
     // Looked up by productId (rather than reused from the branch above) so
     // it's correct either way: the category just created for a brand-new
