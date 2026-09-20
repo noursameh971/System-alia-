@@ -124,9 +124,31 @@ export function ScanQueuePanel({ movementType, onExecuted }: { movementType: Mov
     setStatus(null);
     try {
       const result = await recordBatchMovement(buildPayload());
-      toast.success(
-        `${result.itemCount} item${result.itemCount === 1 ? "" : "s"} processed — ${result.totalQuantity} unit${result.totalQuantity === 1 ? "" : "s"} total.`,
-      );
+      const processedSummary = `${result.itemCount} item${result.itemCount === 1 ? "" : "s"} processed — ${result.totalQuantity} unit${result.totalQuantity === 1 ? "" : "s"} total.`;
+
+      if (result.skipped.length > 0) {
+        // Partial batch: the short lines stay queued (with their scanned
+        // quantities intact) so the operator can correct the count and
+        // re-run just those, instead of re-scanning everything.
+        const skippedByVariant = new Map(result.skipped.map((item) => [item.variantId, item]));
+        const detail = result.skipped
+          .map((item) => {
+            const queued = queue.find((q) => q.variantId === item.variantId);
+            return `${queued?.sku ?? item.variantId} (asked ${item.requested}, only ${item.available} on hand)`;
+          })
+          .join("; ");
+
+        toast.success(processedSummary);
+        setQueue((prev) => prev.filter((item) => skippedByVariant.has(item.variantId)));
+        setStatus({
+          kind: "warning",
+          message: `${processedSummary} ${result.skipped.length} line${result.skipped.length === 1 ? "" : "s"} skipped — not enough stock: ${detail}. ${result.skipped.length === 1 ? "It is" : "They are"} still queued below — adjust the quantity and run the batch again.`,
+        });
+        onExecuted();
+        return;
+      }
+
+      toast.success(processedSummary);
       setQueue([]);
       setReason("");
       onExecuted();

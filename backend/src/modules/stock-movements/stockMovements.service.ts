@@ -1,8 +1,8 @@
-import { desc, eq } from "drizzle-orm";
+import { and, desc, eq, inArray } from "drizzle-orm";
 import type { PgTransaction } from "drizzle-orm/pg-core";
 import { db } from "../../db/client.js";
 import { decrementInventory, incrementInventory } from "../../db/inventoryOperations.js";
-import { productVariants, products, reasonCodes, stockMovements, users, warehouseBins } from "../../db/schema/index.js";
+import { inventory, productVariants, products, reasonCodes, stockMovements, users, warehouseBins } from "../../db/schema/index.js";
 import { ApiError } from "../../utils/apiError.js";
 import type {
   BatchMovementInput,
@@ -339,45 +339,125 @@ export async function listMovementsForVariant(variantId: string, limit = 50) {
 
 const DAMAGED_REASON_CODE = "DAMAGED";
 
+/** A queued line that couldn't be applied because the source bin didn't hold enough stock — reported back per line instead of failing the whole batch. */
+export interface SkippedBatchItem {
+  variantId: string;
+  requested: number;
+  available: number;
+}
+
 export interface BatchMovementResult {
   movementType: BatchMovementInput["movementType"];
   itemCount: number;
   totalQuantity: number;
   results: MovementResult[];
+  /** Empty for a fully-applied batch. Lines here were left untouched — the client keeps them queued so the operator can fix the count and retry just those. */
+  skipped: SkippedBatchItem[];
+}
+
+interface BatchItem {
+  variantId: string;
+  quantity: number;
+}
+
+/**
+ * Splits a batch's line items into the ones the source bin can actually
+ * cover and the ones it can't, so a single short line doesn't take the rest
+ * of the scan queue down with it (see recordBatchMovement).
+ *
+ * This read is a *scheduling* filter, not the safety guard: decrementInventory's
+ * `quantity >= requested` WHERE clause is still the sole authority on whether
+ * a decrement is allowed, and still runs for every line that gets through
+ * here. A concurrent movement landing between this read and the write is
+ * therefore still caught correctly by that clause — this pass just avoids
+ * queueing up work that's already known to fail.
+ *
+ * The running `remaining` tally matters when the same variant appears on
+ * more than one line (the scan UI merges duplicates, but the API is callable
+ * directly): without it, two lines of 3 against 4 on hand would both look
+ * affordable here and the second would then fail at write time.
+ */
+async function splitByAvailability(
+  tx: Tx,
+  binId: string,
+  items: BatchItem[],
+): Promise<{ applicable: BatchItem[]; skipped: SkippedBatchItem[] }> {
+  const variantIds = [...new Set(items.map((item) => item.variantId))];
+  const rows = await tx
+    .select({ variantId: inventory.variantId, quantity: inventory.quantity })
+    .from(inventory)
+    .where(and(eq(inventory.binId, binId), inArray(inventory.variantId, variantIds)));
+
+  const remaining = new Map(rows.map((row) => [row.variantId, row.quantity]));
+  const applicable: BatchItem[] = [];
+  const skipped: SkippedBatchItem[] = [];
+
+  for (const item of items) {
+    const available = remaining.get(item.variantId) ?? 0;
+    if (item.quantity > available) {
+      skipped.push({ variantId: item.variantId, requested: item.quantity, available });
+      continue;
+    }
+    remaining.set(item.variantId, available - item.quantity);
+    applicable.push(item);
+  }
+
+  return { applicable, skipped };
 }
 
 /**
  * Processes the Inventory page's Scanned Batch Queue: every line item goes
  * through the exact same `record*InTx` function (and therefore the exact
  * same validation/insufficient-stock checks) a single-item movement would,
- * but all inside ONE transaction — so a bad line (e.g. insufficient stock
- * on item 7 of 10) rolls back every item in the batch instead of leaving a
- * half-applied scan behind.
+ * inside ONE transaction.
+ *
+ * Partial application, deliberately: a line the source bin can't cover is
+ * skipped and reported in `skipped` rather than aborting the batch. This
+ * used to be all-or-nothing, which meant one miscounted line (or one label
+ * scanned twice) threw away an entire scanning session's work — with 17
+ * requested against 4 on hand, all 17 lines were lost and nothing recorded
+ * which line was at fault. Lines that DO apply are still atomic with each
+ * other: they share one transaction, so a genuine failure (a bad variant
+ * id, a DB error, a concurrent decrement beating this one) still rolls the
+ * whole thing back. The skip list is only ever "this bin doesn't hold that
+ * many", which is an operator-fixable counting mistake, not a failure.
+ *
+ * A batch where NOTHING can be applied still throws the 409 it always did —
+ * there's no partial success to report, and the caller should see it as a
+ * failed batch rather than a silent no-op.
  */
 export async function recordBatchMovement(input: BatchMovementInput, actorUserId: string): Promise<BatchMovementResult> {
   return db.transaction(async (tx) => {
     const results: MovementResult[] = [];
+    let skipped: SkippedBatchItem[] = [];
 
     if (input.movementType === "inbound") {
+      // Inbound only ever adds stock — nothing to be short of.
       for (const item of input.items) {
         results.push(
           await recordInboundMovementInTx(tx, { variantId: item.variantId, binId: input.toBinId, quantity: item.quantity }, actorUserId),
         );
       }
     } else if (input.movementType === "outbound") {
-      for (const item of input.items) {
+      const split = await splitByAvailability(tx, input.fromBinId, input.items);
+      skipped = split.skipped;
+      for (const item of split.applicable) {
         results.push(
           await recordOutboundMovementInTx(tx, { variantId: item.variantId, binId: input.fromBinId, quantity: item.quantity }, actorUserId),
         );
       }
     } else if (input.movementType === "gift") {
-      for (const item of input.items) {
+      const split = await splitByAvailability(tx, input.fromBinId, input.items);
+      skipped = split.skipped;
+      for (const item of split.applicable) {
         results.push(
           await recordGiftMovementInTx(tx, { variantId: item.variantId, binId: input.fromBinId, quantity: item.quantity }, actorUserId),
         );
       }
     } else if (input.movementType === "transfer") {
-      for (const item of input.items) {
+      const split = await splitByAvailability(tx, input.fromBinId, input.items);
+      skipped = split.skipped;
+      for (const item of split.applicable) {
         results.push(
           await recordTransferMovementInTx(
             tx,
@@ -413,11 +493,27 @@ export async function recordBatchMovement(input: BatchMovementInput, actorUserId
       }
     }
 
+    // Every line was short — there's no partial success to report, so this
+    // stays the 409 it has always been (the client's existing
+    // "nothing in this batch was saved" path). `details` keeps the original
+    // single-line shape so that message renders unchanged, plus the full
+    // per-line list for a multi-line batch.
+    if (results.length === 0 && skipped.length > 0) {
+      const [first] = skipped;
+      throw ApiError.conflict("Insufficient stock in the source bin", {
+        variantId: first!.variantId,
+        requested: first!.requested,
+        available: first!.available,
+        skipped,
+      });
+    }
+
     return {
       movementType: input.movementType,
       itemCount: results.length,
       totalQuantity: results.reduce((sum, r) => sum + r.quantity, 0),
       results,
+      skipped,
     };
   });
 }

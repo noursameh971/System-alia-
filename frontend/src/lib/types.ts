@@ -257,11 +257,20 @@ export type BatchMovementInput =
       items: BatchMovementItemInput[];
     };
 
+/** A queued line the source bin couldn't cover — reported back per line so the operator can fix just that count instead of losing the whole batch. */
+export interface SkippedBatchItem {
+  variantId: string;
+  requested: number;
+  available: number;
+}
+
 export interface BatchMovementResult {
   movementType: BatchMovementInput["movementType"];
   itemCount: number;
   totalQuantity: number;
   results: MovementResult[];
+  /** Empty for a fully-applied batch. These lines were left untouched and stay in the scan queue. */
+  skipped: SkippedBatchItem[];
 }
 
 export interface RecentMovementLogItem {
