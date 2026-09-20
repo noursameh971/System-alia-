@@ -39,8 +39,11 @@ import {
 // Raw request body as a Buffer (the upload is file bytes, not JSON) — see middleware/rawBody.ts.
 const rawXlsxBody = rawBody("15mb");
 
-// Same pattern, for the product image upload route.
-const rawImageBody = rawBody("6mb");
+// Same pattern, for the product image upload route. Must stay above
+// products.image.service.ts's MAX_IMAGE_BYTES (8MB) — otherwise a photo
+// between this limit and that one gets killed by the raw body parser before
+// ever reaching that service's friendlier "must be 8MB or smaller" message.
+const rawImageBody = rawBody("9mb");
 
 export const productsRouter = Router();
 
