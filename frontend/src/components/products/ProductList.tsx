@@ -8,7 +8,7 @@ import { useWorkspace } from "@/context/WorkspaceContext";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { useLocale } from "@/context/LocaleContext";
 import { listCategories } from "@/lib/categories";
-import { listProducts, exportProductsWorkbook, bulkDeleteProducts, reorderProduct } from "@/lib/products";
+import { listProducts, exportProductsWorkbook, bulkDeleteProducts, bulkReorderProducts, reorderProduct } from "@/lib/products";
 import { ApiError } from "@/lib/apiClient";
 import { Spinner } from "@/components/ui/Spinner";
 import { EmptyState } from "@/components/ui/EmptyState";
@@ -83,6 +83,27 @@ export function ProductList() {
       void mutate();
     } catch (err) {
       toast.error(err instanceof ApiError ? err.message : "Failed to reorder product");
+    }
+  }
+
+  /**
+   * Backs the table's drag-and-drop reordering. Updates the local SWR cache
+   * immediately (so the drop feels instant, not just the buttons) instead of
+   * waiting on the round trip, then persists and reconciles with the
+   * server's version — rolling back to it on failure.
+   */
+  async function handleDragReorder(orderedProductIds: string[]) {
+    if (!products) return;
+    const byId = new Map(products.map((p) => [p.id, p]));
+    const reordered = orderedProductIds.map((id) => byId.get(id)).filter((p): p is NonNullable<typeof p> => p != null);
+    void mutate(reordered, false);
+
+    try {
+      await bulkReorderProducts(orderedProductIds);
+      void mutate();
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : "Failed to reorder products");
+      void mutate();
     }
   }
 
@@ -231,6 +252,7 @@ export function ProductList() {
           canManageCategory={canManage}
           onProductUpdated={handleCategoriesChanged}
           onReorder={canManage ? handleReorder : undefined}
+          onReorderDrag={canManage ? handleDragReorder : undefined}
           selection={canManage ? { selectedIds, onToggleOne: toggleOne, onToggleMany: toggleMany } : undefined}
         />
       )}

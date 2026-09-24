@@ -121,6 +121,10 @@ export interface ReorderProductResult {
   swappedWithProductId: string | null;
 }
 
+export interface SetProductSortOrderResult {
+  updatedCount: number;
+}
+
 export interface UpdateProductInfoInput {
   name?: string;
   /** Empty string explicitly clears the image; omit to leave it untouched. */

@@ -1153,6 +1153,38 @@ export async function reorderProduct(productId: string, direction: "up" | "down"
   });
 }
 
+export interface SetProductOrderResult {
+  updatedCount: number;
+}
+
+/**
+ * Backs the Products page's drag-and-drop reordering: `productIds` is the
+ * *complete*, already-reordered list of a brand's product ids (as dragged
+ * into place on the client), and every listed product's sort_order is set
+ * to its index in that array — one statement, so dropping a row several
+ * positions away is a single round trip instead of N neighbor swaps.
+ *
+ * Deliberately separate from reorderProduct's one-step up/down swap above:
+ * that endpoint still backs the arrow buttons unchanged, this one backs the
+ * mouse-drag path, and both write the same sort_order column so either can
+ * be used interchangeably from one edit to the next.
+ */
+export async function setProductSortOrder(productIds: string[]): Promise<SetProductOrderResult> {
+  if (productIds.length === 0) return { updatedCount: 0 };
+
+  return db.transaction(async (tx) => {
+    const valueRows = productIds.map((id, index) => sql`(${id}::uuid, ${index}::int)`);
+    await tx.execute(sql`
+      UPDATE products AS p
+      SET sort_order = v.ord, updated_at = now()
+      FROM (VALUES ${sql.join(valueRows, sql`, `)}) AS v(id, ord)
+      WHERE p.id = v.id
+    `);
+
+    return { updatedCount: productIds.length };
+  });
+}
+
 export interface BulkUpdateCategoryResult {
   categoryId: string;
   categoryName: string;

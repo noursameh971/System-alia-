@@ -15,6 +15,7 @@ import {
   importProductsHandler,
   quickCreateProductHandler,
   reorderProductHandler,
+  setProductSortOrderHandler,
   setVariantStockHandler,
   updateProductCategoryHandler,
   updateProductCostHandler,
@@ -30,6 +31,7 @@ import {
   createProductSchema,
   quickCreateProductSchema,
   reorderProductSchema,
+  setProductSortOrderSchema,
   setVariantStockSchema,
   updateProductCategorySchema,
   updateProductCostSchema,
@@ -135,6 +137,16 @@ productsRouter.patch(
   requireAuth,
   validateBody(setVariantStockSchema),
   asyncHandler(setVariantStockHandler),
+);
+
+// The products table's drag-and-drop reordering — admin only, same as the row-level catalog edits.
+// Registered before "/:productId/reorder" so the literal "bulk" segment isn't swallowed as a :productId.
+productsRouter.patch(
+  "/bulk/reorder",
+  requireAuth,
+  requireRole("admin"),
+  validateBody(setProductSortOrderSchema),
+  asyncHandler(setProductSortOrderHandler),
 );
 
 // The Products page's per-row up/down move buttons — admin only, same as the other row-level catalog edits.

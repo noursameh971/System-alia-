@@ -10,6 +10,7 @@ import type {
   QuickCreateProductResult,
   QuickVariantInput,
   ReorderProductResult,
+  SetProductSortOrderResult,
   SetVariantStockResult,
   UpdateProductCategoryResult,
   UpdateProductCostResult,
@@ -97,6 +98,20 @@ export function reorderProduct(productId: string, direction: "up" | "down"): Pro
   return apiFetch<ReorderProductResult>(`/api/products/${encodeURIComponent(productId)}/reorder`, {
     method: "PATCH",
     body: JSON.stringify({ direction }),
+  });
+}
+
+/**
+ * Backs the products table's drag-and-drop reordering — `productIds` is the
+ * complete, already-reordered list; every listed product's sort_order is
+ * set to its index in one statement. Same underlying column as
+ * reorderProduct above, just for an arbitrary drop position instead of a
+ * one-step neighbor swap.
+ */
+export function bulkReorderProducts(productIds: string[]): Promise<SetProductSortOrderResult> {
+  return apiFetch<SetProductSortOrderResult>("/api/products/bulk/reorder", {
+    method: "PATCH",
+    body: JSON.stringify({ productIds }),
   });
 }
 

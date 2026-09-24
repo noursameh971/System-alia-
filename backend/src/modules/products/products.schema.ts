@@ -152,6 +152,13 @@ export const reorderProductSchema = z.object({
 
 export type ReorderProductInput = z.infer<typeof reorderProductSchema>;
 
+/** The Products page's drag-and-drop reordering — the complete, already-reordered list of a brand's product ids. */
+export const setProductSortOrderSchema = z.object({
+  productIds: z.array(z.string().uuid()).min(1, "At least one product is required"),
+});
+
+export type SetProductSortOrderInput = z.infer<typeof setProductSortOrderSchema>;
+
 export const bulkDeleteProductsSchema = z.object({
   productIds: z.array(z.string().uuid()).min(1, "Select at least one product"),
 });

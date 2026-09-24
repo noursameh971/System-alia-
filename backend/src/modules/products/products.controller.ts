@@ -11,6 +11,7 @@ import {
   getVariantBySku,
   listProductsWithVariants,
   reorderProduct,
+  setProductSortOrder,
   setVariantStock,
   updateProductCategory,
   updateProductCost,
@@ -28,6 +29,7 @@ import {
   type CreateProductInput,
   type QuickCreateProductInput,
   type ReorderProductInput,
+  type SetProductSortOrderInput,
   type SetVariantStockInput,
   type UpdateProductCategoryInput,
   type UpdateProductCostInput,
@@ -136,6 +138,14 @@ export async function reorderProductHandler(req: Request, res: Response): Promis
   const { direction } = req.body as ReorderProductInput;
 
   const result = await reorderProduct(productId, direction);
+  sendSuccess(res, 200, result);
+}
+
+/** PATCH /api/products/bulk/reorder — the table's drag-and-drop reordering; body is the complete, already-reordered product id list. */
+export async function setProductSortOrderHandler(req: Request, res: Response): Promise<void> {
+  const { productIds } = req.body as SetProductSortOrderInput;
+
+  const result = await setProductSortOrder(productIds);
   sendSuccess(res, 200, result);
 }
 
