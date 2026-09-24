@@ -9,6 +9,7 @@ import type {
   QuickCreateProductInput,
   QuickCreateProductResult,
   QuickVariantInput,
+  ReorderProductResult,
   SetVariantStockResult,
   UpdateProductCategoryResult,
   UpdateProductCostResult,
@@ -88,6 +89,14 @@ export function updateProductCategory(productId: string, category: string): Prom
   return apiFetch<UpdateProductCategoryResult>(`/api/products/${encodeURIComponent(productId)}/category`, {
     method: "PATCH",
     body: JSON.stringify({ category }),
+  });
+}
+
+/** Backs the products table's per-row up/down move buttons — swaps this product one step with its neighbor. */
+export function reorderProduct(productId: string, direction: "up" | "down"): Promise<ReorderProductResult> {
+  return apiFetch<ReorderProductResult>(`/api/products/${encodeURIComponent(productId)}/reorder`, {
+    method: "PATCH",
+    body: JSON.stringify({ direction }),
   });
 }
 

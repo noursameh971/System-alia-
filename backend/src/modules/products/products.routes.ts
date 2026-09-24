@@ -14,6 +14,7 @@ import {
   getVariantBySkuHandler,
   importProductsHandler,
   quickCreateProductHandler,
+  reorderProductHandler,
   setVariantStockHandler,
   updateProductCategoryHandler,
   updateProductCostHandler,
@@ -28,6 +29,7 @@ import {
   bulkUpdateCategorySchema,
   createProductSchema,
   quickCreateProductSchema,
+  reorderProductSchema,
   setVariantStockSchema,
   updateProductCategorySchema,
   updateProductCostSchema,
@@ -133,6 +135,15 @@ productsRouter.patch(
   requireAuth,
   validateBody(setVariantStockSchema),
   asyncHandler(setVariantStockHandler),
+);
+
+// The Products page's per-row up/down move buttons — admin only, same as the other row-level catalog edits.
+productsRouter.patch(
+  "/:productId/reorder",
+  requireAuth,
+  requireRole("admin"),
+  validateBody(reorderProductSchema),
+  asyncHandler(reorderProductHandler),
 );
 
 // The Product Profile drawer's "Update Product Price" field — admin only, same as the row-level catalog edits.

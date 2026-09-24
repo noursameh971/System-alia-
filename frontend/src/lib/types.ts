@@ -29,6 +29,8 @@ export interface Product {
   description: string | null;
   imageUrl: string | null;
   status: string;
+  /** Manual display position within the brand's Products page — lower sorts first. */
+  sortOrder: number;
   brand: Brand;
   category: { id: string; name: string; code: string };
   variants: ProductVariant[];
@@ -111,6 +113,12 @@ export interface UpdateProductCategoryResult {
   productId: string;
   categoryId: string;
   categoryName: string;
+}
+
+export interface ReorderProductResult {
+  productId: string;
+  /** The neighbor product it swapped positions with, or null if it was already at that end of the order. */
+  swappedWithProductId: string | null;
 }
 
 export interface UpdateProductInfoInput {

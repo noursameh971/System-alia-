@@ -8,7 +8,7 @@ import { useWorkspace } from "@/context/WorkspaceContext";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { useLocale } from "@/context/LocaleContext";
 import { listCategories } from "@/lib/categories";
-import { listProducts, exportProductsWorkbook, bulkDeleteProducts } from "@/lib/products";
+import { listProducts, exportProductsWorkbook, bulkDeleteProducts, reorderProduct } from "@/lib/products";
 import { ApiError } from "@/lib/apiClient";
 import { Spinner } from "@/components/ui/Spinner";
 import { EmptyState } from "@/components/ui/EmptyState";
@@ -75,6 +75,15 @@ export function ProductList() {
   function handleCategoriesChanged() {
     void mutate();
     void globalMutate("categories");
+  }
+
+  async function handleReorder(productId: string, direction: "up" | "down") {
+    try {
+      await reorderProduct(productId, direction);
+      void mutate();
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : "Failed to reorder product");
+    }
   }
 
   async function handleBulkDelete() {
@@ -221,6 +230,7 @@ export function ProductList() {
           onOpenProduct={(product) => setSelectedProductId(product.id)}
           canManageCategory={canManage}
           onProductUpdated={handleCategoriesChanged}
+          onReorder={canManage ? handleReorder : undefined}
           selection={canManage ? { selectedIds, onToggleOne: toggleOne, onToggleMany: toggleMany } : undefined}
         />
       )}

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { ChevronDown, ChevronUp } from "lucide-react";
 import type { Product } from "@/lib/types";
 import { useLocale } from "@/context/LocaleContext";
 import { Badge } from "@/components/ui/Badge";
@@ -20,6 +21,15 @@ interface ProductsGroupedTableProps {
   canManageCategory?: boolean;
   /** Refreshes the product list after a row's category changes. Required whenever canManageCategory is true. */
   onProductUpdated?: () => void;
+  /**
+   * Lets the Products page's rows be manually reordered with up/down move
+   * buttons — omitted entirely (no column) for callers/roles that shouldn't
+   * edit the catalog. Only meaningful while the list is unfiltered (search
+   * and category filter both empty), since a move swaps with the row's true
+   * neighbor in the full brand order, which may not be adjacent once the
+   * list is filtered — the buttons disable themselves in that case.
+   */
+  onReorder?: (productId: string, direction: "up" | "down") => void;
   /** Bulk-select checkboxes for the "Set Category" action — omitted entirely (no checkbox column) for callers/roles that don't need it. */
   selection?: {
     selectedIds: Set<string>;
@@ -101,6 +111,7 @@ export function ProductsGroupedTable({
   onOpenProduct,
   canManageCategory = false,
   onProductUpdated,
+  onReorder,
   selection,
 }: ProductsGroupedTableProps) {
   const { t } = useLocale();
@@ -138,7 +149,15 @@ export function ProductsGroupedTable({
   const currentPage = Math.min(page, totalPages);
   const visible = filtered.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
   const visibleIds = useMemo(() => visible.map((row) => row.product.id), [visible]);
-  const columnCount = selection ? 7 : 6;
+
+  // Reordering swaps a row with its true neighbor in the full brand-sorted
+  // list (see products.service.ts's reorderProduct) — only sound to expose
+  // while that order is actually what's on screen, i.e. no search or
+  // category filter narrowing which rows are visible/adjacent.
+  const canReorderNow = Boolean(onReorder) && !search.trim() && !categoryFilter;
+  const filteredIndexById = useMemo(() => new Map(filtered.map((row, i) => [row.product.id, i])), [filtered]);
+
+  const columnCount = (selection ? 1 : 0) + (onReorder ? 1 : 0) + 6;
 
   return (
     <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-950">
@@ -150,6 +169,7 @@ export function ProductsGroupedTable({
                 <SelectAllCheckbox visibleIds={visibleIds} selectedIds={selection.selectedIds} onToggleMany={selection.onToggleMany} />
               </TableHead>
             ) : null}
+            {onReorder ? <TableHead className="w-16 py-3">{t("Order")}</TableHead> : null}
             <TableHead className="w-14 py-3">{t("Image")}</TableHead>
             <TableHead className="py-3">{t("Product")}</TableHead>
             <TableHead className="py-3">{t("Category")}</TableHead>
@@ -185,6 +205,32 @@ export function ProductsGroupedTable({
                         aria-label={`Select ${row.product.name}`}
                         className="size-4 rounded border-slate-300 accent-indigo-600 dark:border-slate-700"
                       />
+                    </TableCell>
+                  ) : null}
+                  {onReorder ? (
+                    <TableCell className="py-4" onClick={(e) => e.stopPropagation()}>
+                      <div className="flex flex-col items-center gap-0.5">
+                        <button
+                          type="button"
+                          onClick={() => onReorder(row.product.id, "up")}
+                          disabled={!canReorderNow || (filteredIndexById.get(row.product.id) ?? 0) === 0}
+                          aria-label={`${t("Move up")} — ${row.product.name}`}
+                          title={canReorderNow ? undefined : t("Clear search and category filter to reorder")}
+                          className="rounded p-0.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700 disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:bg-transparent dark:hover:bg-slate-800 dark:hover:text-slate-200"
+                        >
+                          <ChevronUp className="size-4" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => onReorder(row.product.id, "down")}
+                          disabled={!canReorderNow || (filteredIndexById.get(row.product.id) ?? 0) === filtered.length - 1}
+                          aria-label={`${t("Move down")} — ${row.product.name}`}
+                          title={canReorderNow ? undefined : t("Clear search and category filter to reorder")}
+                          className="rounded p-0.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700 disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:bg-transparent dark:hover:bg-slate-800 dark:hover:text-slate-200"
+                        >
+                          <ChevronDown className="size-4" />
+                        </button>
+                      </div>
                     </TableCell>
                   ) : null}
                   <TableCell className="py-4">

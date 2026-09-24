@@ -145,6 +145,13 @@ export const bulkUpdateCategorySchema = z.object({
 
 export type BulkUpdateCategoryInput = z.infer<typeof bulkUpdateCategorySchema>;
 
+/** The Products page's per-row up/down move buttons — swaps this product one step with its neighbor. */
+export const reorderProductSchema = z.object({
+  direction: z.enum(["up", "down"]),
+});
+
+export type ReorderProductInput = z.infer<typeof reorderProductSchema>;
+
 export const bulkDeleteProductsSchema = z.object({
   productIds: z.array(z.string().uuid()).min(1, "Select at least one product"),
 });

@@ -1,4 +1,4 @@
-import { and, eq, inArray, isNull, notExists, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gt, inArray, isNull, lt, notExists, or, sql } from "drizzle-orm";
 import type { PgTransaction } from "drizzle-orm/pg-core";
 import { db } from "../../db/client.js";
 import { decrementInventory, incrementInventory } from "../../db/inventoryOperations.js";
@@ -35,6 +35,17 @@ import { compareVariantsByColorAndSize } from "./variantSort.js";
 
 // PgTransaction's generic params aren't meaningfully constrainable here; see inventoryOperations.ts's identical alias.
 export type Tx = PgTransaction<any, any, any>;
+
+/**
+ * SQL fragment computing "one past the current highest sort_order in this
+ * brand" — used on every new-product insert so newly created products land
+ * at the end of the manual order instead of jumping to the front (which a
+ * bare column default of 0 would otherwise do, once existing rows have been
+ * reordered to other values).
+ */
+function nextSortOrderSql(brandId: string) {
+  return sql`(select coalesce(max(${products.sortOrder}), -1) + 1 from ${products} where ${products.brandId} = ${brandId})`;
+}
 
 export interface CreatedVariant {
   id: string;
@@ -110,6 +121,7 @@ export async function createProductWithVariants(
         name: input.name,
         description: input.description ?? null,
         imageUrl: input.imageUrl || null,
+        sortOrder: nextSortOrderSql(input.brandId),
       })
       .returning();
     if (!product) throw new Error("Product insert returned no row");
@@ -213,6 +225,7 @@ export interface ProductListItem {
   description: string | null;
   imageUrl: string | null;
   status: string;
+  sortOrder: number;
   brand: { id: string; name: string; code: string };
   category: { id: string; name: string; code: string };
   variants: ProductListVariant[];
@@ -232,6 +245,7 @@ export async function listProductsWithVariants(filters: { brandId?: string }): P
       description: products.description,
       imageUrl: products.imageUrl,
       status: products.status,
+      sortOrder: products.sortOrder,
       brandId: brands.id,
       brandName: brands.name,
       brandCode: brands.code,
@@ -243,7 +257,10 @@ export async function listProductsWithVariants(filters: { brandId?: string }): P
     .innerJoin(brands, eq(brands.id, products.brandId))
     .innerJoin(categories, eq(categories.id, products.categoryId))
     .where(filters.brandId ? eq(products.brandId, filters.brandId) : undefined)
-    .orderBy(products.name);
+    // Manual order first (the Products page's drag/up-down reordering),
+    // name as a stable tiebreaker for rows that still share a sort_order
+    // (e.g. every product before the first manual reorder ever happens).
+    .orderBy(asc(products.sortOrder), asc(products.name));
 
   if (productRows.length === 0) return [];
 
@@ -345,6 +362,7 @@ export async function listProductsWithVariants(filters: { brandId?: string }): P
     description: p.description,
     imageUrl: p.imageUrl,
     status: p.status,
+    sortOrder: p.sortOrder,
     brand: { id: p.brandId, name: p.brandName, code: p.brandCode },
     category: { id: p.categoryId, name: p.categoryName, code: p.categoryCode },
     variants: variantsByProduct.get(p.id) ?? [],
@@ -645,6 +663,7 @@ export async function createQuickProduct(
             name: input.name,
             status: "active",
             imageUrl: input.imageUrl?.trim() || null,
+            sortOrder: nextSortOrderSql(brand.id),
           })
           .onConflictDoNothing({ target: [products.brandId, products.name] })
           .returning({ id: products.id })
@@ -1078,6 +1097,60 @@ export async function updateProductInfo(productId: string, input: UpdateProductI
 
   if (!updated) throw ApiError.notFound(`Product ${productId} does not exist`);
   return { productId: updated.id, name: updated.name, imageUrl: updated.imageUrl };
+}
+
+export interface ReorderProductResult {
+  productId: string;
+  /** The neighbor product it swapped positions with, or null if it was already at that end of the order. */
+  swappedWithProductId: string | null;
+}
+
+/**
+ * Backs the Products page's per-row up/down move buttons: swaps this
+ * product's sort_order with its immediate neighbor (in the same brand,
+ * ordered the same way listProductsWithVariants sorts — sort_order then
+ * name) one step in the requested direction. A no-op (not an error) if the
+ * product is already first/last, so a disabled-looking button that still
+ * gets clicked (e.g. a stale UI) does nothing instead of erroring.
+ */
+export async function reorderProduct(productId: string, direction: "up" | "down"): Promise<ReorderProductResult> {
+  return db.transaction(async (tx) => {
+    const [product] = await tx
+      .select({ id: products.id, brandId: products.brandId, name: products.name, sortOrder: products.sortOrder })
+      .from(products)
+      .where(eq(products.id, productId))
+      .limit(1);
+    if (!product) throw ApiError.notFound(`Product ${productId} does not exist`);
+
+    // "Previous" (up) is the nearest row with a smaller (sortOrder, name)
+    // pair; "next" (down) the nearest with a larger one — same tiebreak
+    // order as the list query, so a move always swaps with whichever
+    // neighbor the user actually sees adjacent to this row.
+    const isUp = direction === "up";
+    const neighborCondition = isUp
+      ? or(
+          lt(products.sortOrder, product.sortOrder),
+          and(eq(products.sortOrder, product.sortOrder), lt(products.name, product.name)),
+        )
+      : or(
+          gt(products.sortOrder, product.sortOrder),
+          and(eq(products.sortOrder, product.sortOrder), gt(products.name, product.name)),
+        );
+
+    const [neighbor] = await tx
+      .select({ id: products.id, sortOrder: products.sortOrder })
+      .from(products)
+      .where(and(eq(products.brandId, product.brandId), neighborCondition))
+      .orderBy(isUp ? desc(products.sortOrder) : asc(products.sortOrder), isUp ? desc(products.name) : asc(products.name))
+      .limit(1);
+
+    if (!neighbor) return { productId, swappedWithProductId: null };
+
+    await tx.update(products).set({ sortOrder: neighbor.sortOrder, updatedAt: sql`now()` }).where(eq(products.id, product.id));
+    await tx.update(products).set({ sortOrder: product.sortOrder, updatedAt: sql`now()` }).where(eq(products.id, neighbor.id));
+
+    return { productId, swappedWithProductId: neighbor.id };
+  });
 }
 
 export interface BulkUpdateCategoryResult {

@@ -1,5 +1,6 @@
 import {
   AnyPgColumn,
+  integer,
   pgTable,
   primaryKey,
   text,
@@ -37,6 +38,8 @@ export const products = pgTable(
     description: text("description"),
     imageUrl: text("image_url"),
     status: productStatusEnum("status").notNull().default("active"),
+    /** Manual display position within the brand's Products page — lower sorts first. Defaults to 0; see database/migrations/0022_add_product_sort_order.sql for the backfill of existing rows. */
+    sortOrder: integer("sort_order").notNull().default(0),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
