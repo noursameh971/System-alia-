@@ -115,6 +115,57 @@ function toRow(product: Product): ProductRowData {
 const PAGE_SIZE = 15;
 const MAX_COLOR_CHIPS = 4;
 
+/**
+ * A small numeric field showing a row's 1-based position in the full brand
+ * order, editable in place — committing a new number (on blur or Enter)
+ * moves the product straight there, including across pages. Uncontrolled
+ * (defaultValue, not value): the parent doesn't fight the user's keystrokes
+ * while they're typing, and the `key` remounts it to the fresh position
+ * once a move actually lands (or is cancelled by re-typing the same page's
+ * data), so it never shows a stale number after the list resorts.
+ */
+function OrderNumberInput({
+  productId,
+  position,
+  total,
+  disabled,
+  onMove,
+  label,
+}: {
+  productId: string;
+  position: number;
+  total: number;
+  disabled: boolean;
+  onMove: (productId: string, targetIndex: number) => void;
+  label: string;
+}) {
+  function commit(raw: string) {
+    const parsed = Number(raw);
+    if (!Number.isFinite(parsed)) return;
+    const clamped = Math.min(total, Math.max(1, Math.round(parsed)));
+    if (clamped !== position) onMove(productId, clamped - 1);
+  }
+
+  return (
+    <input
+      key={position}
+      type="number"
+      min={1}
+      max={total}
+      defaultValue={position}
+      disabled={disabled}
+      onClick={(e) => e.stopPropagation()}
+      onKeyDown={(e) => {
+        if (e.key === "Enter") e.currentTarget.blur();
+      }}
+      onBlur={(e) => commit(e.target.value)}
+      aria-label={label}
+      title={disabled ? undefined : label}
+      className="w-11 rounded border border-slate-200 bg-white px-1 py-0.5 text-center text-xs font-medium tabular-nums text-slate-700 focus:border-indigo-400 focus:outline-none focus:ring-1 focus:ring-indigo-400 disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-400 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:disabled:bg-slate-800 dark:disabled:text-slate-600"
+    />
+  );
+}
+
 interface ProductTableRowProps {
   row: ProductRowData;
   onOpenProduct: (product: Product) => void;
@@ -124,8 +175,11 @@ interface ProductTableRowProps {
   selection?: ProductsGroupedTableProps["selection"];
   showOrderColumn: boolean;
   onReorder?: (productId: string, direction: "up" | "down") => void;
+  onMoveToPosition?: (productId: string, targetIndex: number) => void;
   canReorderNow: boolean;
   dragEnabled: boolean;
+  index: number;
+  total: number;
   isFirst: boolean;
   isLast: boolean;
   t: (key: string) => string;
@@ -145,8 +199,11 @@ function ProductTableRow({
   selection,
   showOrderColumn,
   onReorder,
+  onMoveToPosition,
   canReorderNow,
   dragEnabled,
+  index,
+  total,
   isFirst,
   isLast,
   t,
@@ -225,6 +282,16 @@ function ProductTableRow({
                 </button>
               </div>
             ) : null}
+            {onMoveToPosition ? (
+              <OrderNumberInput
+                productId={row.product.id}
+                position={index + 1}
+                total={total}
+                disabled={!canReorderNow}
+                onMove={onMoveToPosition}
+                label={`${t("Set position")} — ${row.product.name}`}
+              />
+            ) : null}
           </div>
         </TableCell>
       ) : null}
@@ -278,6 +345,10 @@ export function ProductsGroupedTable({
 }: ProductsGroupedTableProps) {
   const { t } = useLocale();
   const [page, setPage] = useState(1);
+  // "View all" trades pagination for one scrollable list — mainly so
+  // dragging or typing a position across a wide range doesn't require
+  // paging back and forth first.
+  const [viewAll, setViewAll] = useState(false);
 
   // Search and the category filter are both owned by the page header above
   // this card. Resetting to page 1 when either changes is a render-time
@@ -307,9 +378,10 @@ export function ProductsGroupedTable({
     );
   }, [rows, search, categoryFilter]);
 
-  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const effectivePageSize = viewAll ? Math.max(filtered.length, 1) : PAGE_SIZE;
+  const totalPages = Math.max(1, Math.ceil(filtered.length / effectivePageSize));
   const currentPage = Math.min(page, totalPages);
-  const visible = filtered.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
+  const visible = filtered.slice((currentPage - 1) * effectivePageSize, currentPage * effectivePageSize);
   const visibleIds = useMemo(() => visible.map((row) => row.product.id), [visible]);
 
   // Reordering (both the up/down buttons and dragging) swaps/moves a row
@@ -342,9 +414,25 @@ export function ProductsGroupedTable({
     // `filtered` already equals the full unfiltered brand order (dragEnabled
     // guarantees that above).
     const fullOrderIds = filtered.map((row) => row.product.id);
-    const pageStart = (currentPage - 1) * PAGE_SIZE;
+    const pageStart = (currentPage - 1) * effectivePageSize;
     fullOrderIds.splice(pageStart, reorderedVisible.length, ...reorderedVisible);
     onReorderDrag(fullOrderIds);
+  }
+
+  /**
+   * Backs the typed position field — moves a product straight to an
+   * arbitrary index in the full brand order, across pages, in one step.
+   * Reuses onReorderDrag's persistence (same full-order-array shape as a
+   * drag drop produces), so there's one move path on the wire either way.
+   */
+  function handleMoveToPosition(productId: string, targetIndex: number) {
+    if (!onReorderDrag || !dragEnabled) return;
+    const fullOrderIds = filtered.map((row) => row.product.id);
+    const oldIndex = fullOrderIds.indexOf(productId);
+    const clampedTarget = Math.min(targetIndex, fullOrderIds.length - 1);
+    if (oldIndex === -1 || oldIndex === clampedTarget) return;
+
+    onReorderDrag(arrayMove(fullOrderIds, oldIndex, clampedTarget));
   }
 
   const showOrderColumn = Boolean(onReorder || onReorderDrag);
@@ -361,7 +449,8 @@ export function ProductsGroupedTable({
                   <SelectAllCheckbox visibleIds={visibleIds} selectedIds={selection.selectedIds} onToggleMany={selection.onToggleMany} />
                 </TableHead>
               ) : null}
-              {showOrderColumn ? <TableHead className="w-20 py-3">{t("Order")}</TableHead> : null}
+              {/* "Position" here, not "Order" — the dictionary's "Order" key means a sales order elsewhere in the app. */}
+              {showOrderColumn ? <TableHead className="w-32 py-3">{t("Position")}</TableHead> : null}
               <TableHead className="w-24 py-3">{t("Image")}</TableHead>
               <TableHead className="py-3">{t("Product")}</TableHead>
               <TableHead className="py-3">{t("Category")}</TableHead>
@@ -392,8 +481,11 @@ export function ProductsGroupedTable({
                       selection={selection}
                       showOrderColumn={showOrderColumn}
                       onReorder={onReorder}
+                      onMoveToPosition={dragEnabled ? handleMoveToPosition : undefined}
                       canReorderNow={canReorderNow}
                       dragEnabled={dragEnabled}
+                      index={index}
+                      total={filtered.length}
                       isFirst={index === 0}
                       isLast={index === filtered.length - 1}
                       t={t}
@@ -407,11 +499,26 @@ export function ProductsGroupedTable({
       </DndContext>
 
       <div className="flex flex-col gap-3 border-t border-slate-200 px-5 py-3.5 sm:flex-row sm:items-center sm:justify-between dark:border-slate-800">
-        <p className="text-sm text-slate-500 dark:text-slate-400">
-          {t("Showing")} {filtered.length === 0 ? 0 : (currentPage - 1) * PAGE_SIZE + 1}–
-          {Math.min(filtered.length, currentPage * PAGE_SIZE)} {t("of")} {filtered.length}
-        </p>
-        <Pagination page={currentPage} totalPages={totalPages} onPageChange={setPage} />
+        <div className="flex items-center gap-3">
+          <p className="text-sm text-slate-500 dark:text-slate-400">
+            {viewAll
+              ? `${t("Showing all")} ${filtered.length}`
+              : `${t("Showing")} ${filtered.length === 0 ? 0 : (currentPage - 1) * effectivePageSize + 1}–${Math.min(filtered.length, currentPage * effectivePageSize)} ${t("of")} ${filtered.length}`}
+          </p>
+          {filtered.length > PAGE_SIZE ? (
+            <button
+              type="button"
+              onClick={() => {
+                setViewAll((v) => !v);
+                setPage(1);
+              }}
+              className="text-xs font-medium text-indigo-600 hover:underline dark:text-indigo-400"
+            >
+              {viewAll ? t("Show pages") : t("View all")}
+            </button>
+          ) : null}
+        </div>
+        {viewAll ? null : <Pagination page={currentPage} totalPages={totalPages} onPageChange={setPage} />}
       </div>
     </div>
   );
