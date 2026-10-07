@@ -84,10 +84,19 @@ function toApiError(err: unknown): unknown {
   }
   if (err instanceof Anthropic.APIError) {
     console.error(`Assistant: Anthropic API error ${err.status ?? ""}`, err.message);
-    // 529 (overloaded) and 5xx are transient; anything else is a request we built wrong.
-    return err.status && err.status >= 500
-      ? ApiError.serviceUnavailable("The assistant service is busy — try again shortly")
-      : new ApiError(502, "The assistant couldn't process that request");
+    // 529 (overloaded) and 5xx are transient.
+    if (err.status && err.status >= 500) {
+      return ApiError.serviceUnavailable("The assistant service is busy — try again shortly");
+    }
+    // Any other rejection: pass Anthropic's own explanation through. It's
+    // written for the account holder (e.g. "Your credit balance is too low
+    // …"), and only admins can reach this route, so it's both safe and the
+    // fastest way for them to see what to fix.
+    const reason = (err.error as { error?: { message?: unknown } } | undefined)?.error?.message;
+    return new ApiError(
+      502,
+      typeof reason === "string" && reason ? `The assistant service refused the request: ${reason}` : "The assistant couldn't process that request",
+    );
   }
   return err;
 }
