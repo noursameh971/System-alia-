@@ -1,4 +1,5 @@
 import { z } from "zod";
+import type { ActionRow } from "../actions.service.js";
 
 export interface BrandRef {
   id: string;
@@ -16,6 +17,8 @@ export interface ToolContext {
   activeBrand: BrandRef | null;
   /** Filled by the propose_* tools as they run, so the chat response can hand the UI its confirmation cards. */
   proposedActionIds: string[];
+  /** Streaming: called the moment a draft is stored, so its card can appear before the reply finishes. */
+  onActionProposed?: (action: ActionRow) => void;
 }
 
 /**

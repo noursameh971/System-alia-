@@ -6,6 +6,7 @@ import { chatRateLimit } from "./assistant.rateLimit.js";
 import { chatBodySchema, confirmActionBodySchema } from "./assistant.schema.js";
 import {
   chatHandler,
+  chatStreamHandler,
   confirmActionHandler,
   deleteConversationHandler,
   getConversationHandler,
@@ -34,6 +35,8 @@ assistantRouter.delete("/conversations/:id", asyncHandler(deleteConversationHand
 // expenses/revenue, which come back as actions for the UI to show as
 // confirmation cards. Nothing is written to the books here.
 assistantRouter.post("/chat", chatRateLimit, validateBody(chatBodySchema), asyncHandler(chatHandler));
+// The same turn, streamed as server-sent events — what the chat panel uses.
+assistantRouter.post("/chat/stream", chatRateLimit, validateBody(chatBodySchema), asyncHandler(chatStreamHandler));
 
 // The only path by which an assistant draft becomes a real record.
 assistantRouter.post("/actions/:id/confirm", validateBody(confirmActionBodySchema), asyncHandler(confirmActionHandler));

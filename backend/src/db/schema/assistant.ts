@@ -56,6 +56,8 @@ export const aiActions = pgTable(
       .references(() => brands.id, { onDelete: "cascade" }),
     /** The already-validated service input — exactly what Confirm will write. */
     payload: jsonb("payload").$type<Record<string, unknown>>().notNull(),
+    /** Payload fields the model defaulted rather than took from the admin — highlighted on the card. See 0025. */
+    assumedFields: text("assumed_fields").array().notNull().default(sql`'{}'::text[]`),
     status: aiActionStatusEnum("status").notNull().default("proposed"),
     resultTable: varchar("result_table", { length: 64 }),
     resultId: uuid("result_id"),

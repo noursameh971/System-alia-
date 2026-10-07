@@ -30,6 +30,7 @@ export interface ConversationAction {
   toolName: string;
   brandId: string;
   payload: Record<string, unknown>;
+  assumedFields: string[];
   /** "proposed" past its expires_at reads as "expired", whether or not a sweep has updated the row yet. */
   status: AiActionStatus;
   resultTable: string | null;
@@ -91,6 +92,7 @@ export async function getConversation(id: string, userId: string): Promise<Conve
     toolName: row.toolName,
     brandId: row.brandId,
     payload: row.payload,
+    assumedFields: row.assumedFields,
     status: row.status === "proposed" && row.expiresAt.getTime() <= now ? ("expired" as const) : row.status,
     resultTable: row.resultTable,
     resultId: row.resultId,

@@ -28,11 +28,16 @@ export function mergeConsecutiveRoles(messages: MessageParam[]): MessageParam[] 
   return merged;
 }
 
-export function replyText(message: MessageParam | undefined): string {
-  if (!message || message.role !== "assistant") return "";
-  return asBlocks(message.content)
-    .flatMap((block) => (block.type === "text" ? [block.text] : []))
-    .join("\n\n")
-    .trim();
+/**
+ * Everything the assistant wrote during a turn, across its tool round-trips
+ * ("Let me check October." … "You spent 3,000 EGP."), as the admin saw it
+ * stream in.
+ */
+export function turnReplyText(messages: MessageParam[]): string {
+  return messages
+    .filter((message) => message.role === "assistant")
+    .flatMap((message) => asBlocks(message.content))
+    .flatMap((block) => (block.type === "text" && block.text.trim() ? [block.text.trim()] : []))
+    .join("\n\n");
 }
 

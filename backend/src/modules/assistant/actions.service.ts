@@ -62,6 +62,7 @@ export async function createProposedAction(input: {
   toolUseId: string | null;
   brandId: string;
   payload: Record<string, unknown>;
+  assumedFields: string[];
   proposedBy: string;
 }): Promise<ActionRow> {
   const [row] = await db
@@ -72,6 +73,7 @@ export async function createProposedAction(input: {
       toolUseId: input.toolUseId,
       brandId: input.brandId,
       payload: input.payload,
+      assumedFields: input.assumedFields,
       proposedBy: input.proposedBy,
     })
     .returning();

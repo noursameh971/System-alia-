@@ -7,7 +7,7 @@ import { ApiError } from "../../utils/apiError.js";
 import { listBrands } from "../brands/brands.service.js";
 import { discardActions, type ActionRow } from "./actions.service.js";
 import { getAnthropicClient } from "./assistant.client.js";
-import { mergeConsecutiveRoles, replyText } from "./history.js";
+import { mergeConsecutiveRoles, turnReplyText } from "./history.js";
 import { buildTurnContext, SYSTEM_PROMPT } from "./prompt.js";
 import type { BrandRef, ToolContext } from "./tools/context.js";
 import { buildProposeTools } from "./tools/proposeTools.js";
@@ -37,6 +37,28 @@ export interface ChatTurnResult {
 }
 
 /**
+ * What the streaming endpoint sends, as server-sent events, in order:
+ * start → (text | tool | action)* → done, or error at any point after start.
+ * runChatTurn emits start/text/tool/action; the controller adds done/error.
+ */
+export type ChatStreamEvent =
+  | { type: "start"; conversationId: string }
+  /** A chunk of the reply. Joined in order, the chunks are the reply as it's written. */
+  | { type: "text"; delta: string }
+  /** Claude is calling a tool — the UI shows what it's checking while it waits. */
+  | { type: "tool"; name: string }
+  /** A draft was stored — render its confirmation card now. */
+  | { type: "action"; action: ActionRow }
+  | { type: "done"; result: ChatTurnResult }
+  | { type: "error"; message: string; status: number };
+
+export interface ChatTurnOptions {
+  onEvent?: (event: ChatStreamEvent) => void;
+  /** Aborted when the admin closes the panel or the connection drops — stops the Claude request mid-turn. */
+  signal?: AbortSignal;
+}
+
+/**
  * Conversations whose turn is still running. Two overlapping turns would
  * both append to the same history and interleave tool calls, so the second
  * is refused. In-memory, which is enough for one backend instance — running
@@ -46,6 +68,10 @@ const turnsInFlight = new Set<string>();
 
 /** SDK errors → what the admin's browser should see. Subclasses before Anthropic.APIError, which they all extend. */
 function toApiError(err: unknown): unknown {
+  // The browser went away mid-turn — nobody is left to tell, and it isn't an API fault worth logging.
+  if (err instanceof Anthropic.APIUserAbortError) {
+    return new ApiError(499, "Cancelled");
+  }
   if (err instanceof Anthropic.RateLimitError) {
     return new ApiError(429, "The assistant is getting too many requests right now — try again in a minute");
   }
@@ -88,7 +114,8 @@ async function loadOrCreateConversation(input: ChatTurnInput, brands: BrandRef[]
   return created!;
 }
 
-export async function runChatTurn(input: ChatTurnInput): Promise<ChatTurnResult> {
+export async function runChatTurn(input: ChatTurnInput, options: ChatTurnOptions = {}): Promise<ChatTurnResult> {
+  const emit = options.onEvent ?? (() => {});
   const client = getAnthropicClient();
   const brands = await listBrands();
   const conversation = await loadOrCreateConversation(input, brands);
@@ -104,9 +131,14 @@ export async function runChatTurn(input: ChatTurnInput): Promise<ChatTurnResult>
     brands,
     activeBrand: brands.find((brand) => brand.id === (input.brandId === undefined ? conversation.brandId : input.brandId)) ?? null,
     proposedActionIds: [],
+    onActionProposed: (action) => emit({ type: "action", action }),
   };
 
   try {
+    // After the checks above, so a 404/409 is still a plain HTTP error
+    // rather than an event on an already-open stream.
+    emit({ type: "start", conversationId: conversation.id });
+
     const [history, priorActions] = await Promise.all([
       db
         .select({ role: aiMessages.role, content: aiMessages.content })
@@ -124,39 +156,62 @@ export async function runChatTurn(input: ChatTurnInput): Promise<ChatTurnResult>
     const messages = mergeConsecutiveRoles([...history, userMessage]);
     const initialLength = messages.length;
 
-    const runner = client.beta.messages.toolRunner({
-      model: env.ASSISTANT_MODEL,
-      max_tokens: MAX_OUTPUT_TOKENS,
-      thinking: { type: "adaptive" },
-      // Chat wants snappy answers; these are short lookups and drafts, not
-      // deep reasoning. Raise if the test set shows multi-step reports
-      // coming out wrong.
-      output_config: { effort: "medium" },
-      max_iterations: MAX_TOOL_ITERATIONS,
-      system: [
-        // Tools render before system, so this breakpoint caches the tool
-        // definitions plus the static prompt across every turn.
-        { type: "text", text: SYSTEM_PROMPT, cache_control: { type: "ephemeral" } },
-        {
-          type: "text",
-          text: buildTurnContext({
-            brands,
-            activeBrand: ctx.activeBrand,
-            actions: priorActions.map((action) => ({
-              id: action.id,
-              toolName: action.toolName,
-              status: action.status === "proposed" && action.expiresAt.getTime() <= Date.now() ? "expired" : action.status,
-            })),
-          }),
-        },
-      ],
-      tools: [...buildReadTools(ctx), ...buildProposeTools(ctx)],
-      messages,
-    });
+    const runner = client.beta.messages.toolRunner(
+      {
+        model: env.ASSISTANT_MODEL,
+        max_tokens: MAX_OUTPUT_TOKENS,
+        thinking: { type: "adaptive" },
+        // Chat wants snappy answers; these are short lookups and drafts, not
+        // deep reasoning. Raise if the test set shows multi-step reports
+        // coming out wrong.
+        output_config: { effort: "medium" },
+        max_iterations: MAX_TOOL_ITERATIONS,
+        system: [
+          // Tools render before system, so this breakpoint caches the tool
+          // definitions plus the static prompt across every turn.
+          { type: "text", text: SYSTEM_PROMPT, cache_control: { type: "ephemeral" } },
+          {
+            type: "text",
+            text: buildTurnContext({
+              brands,
+              activeBrand: ctx.activeBrand,
+              actions: priorActions.map((action) => ({
+                id: action.id,
+                toolName: action.toolName,
+                status: action.status === "proposed" && action.expiresAt.getTime() <= Date.now() ? "expired" : action.status,
+              })),
+            }),
+          },
+        ],
+        tools: [...buildReadTools(ctx), ...buildProposeTools(ctx)],
+        messages,
+        // Always streamed, even for the JSON endpoint: text reaches the admin
+        // as it's written, and long turns don't sit on an idle socket.
+        // eager_input_streaming is left off — tool inputs here are a few
+        // short fields, nothing worth showing as it arrives.
+        stream: true,
+      },
+      { signal: options.signal },
+    );
 
     const responses: Anthropic.Beta.Messages.BetaMessage[] = [];
-    for await (const response of runner) {
-      responses.push(response);
+    let wroteText = false;
+    for await (const stream of runner) {
+      stream.on("streamEvent", (event) => {
+        if (event.type !== "content_block_start") return;
+        if (event.content_block.type === "tool_use") {
+          emit({ type: "tool", name: event.content_block.name });
+        } else if (event.content_block.type === "text" && wroteText) {
+          // Same paragraph break turnReplyText puts between text blocks, so
+          // the streamed reply and the final one read the same.
+          emit({ type: "text", delta: "\n\n" });
+        }
+      });
+      stream.on("text", (delta) => {
+        wroteText = true;
+        emit({ type: "text", delta });
+      });
+      responses.push(await stream.finalMessage());
     }
     const last = responses.at(-1);
 
@@ -187,7 +242,7 @@ export async function runChatTurn(input: ChatTurnInput): Promise<ChatTurnResult>
         .where(eq(aiConversations.id, conversation.id));
     });
 
-    let reply = replyText(newMessages.at(-1));
+    let reply = turnReplyText(newMessages);
     if (last?.stop_reason === "refusal") {
       reply = reply || "I can't help with that request.";
     } else if (newMessages.at(-1)?.role !== "assistant") {

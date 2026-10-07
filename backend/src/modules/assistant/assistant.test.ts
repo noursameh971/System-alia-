@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { businessDate } from "../../utils/businessDate.js";
-import { mergeConsecutiveRoles, replyText } from "./history.js";
+import { mergeConsecutiveRoles, turnReplyText } from "./history.js";
 import { buildTurnContext } from "./prompt.js";
 import { resolveBrand, ToolInputError, type ToolContext } from "./tools/context.js";
 
@@ -42,19 +42,22 @@ test("mergeConsecutiveRoles joins a trailing tool_result turn with the next user
   );
 });
 
-test("replyText returns only the assistant's text blocks", () => {
+test("turnReplyText joins the assistant's text across a turn's tool round-trips", () => {
   assert.equal(
-    replyText({
-      role: "assistant",
-      content: [
-        { type: "text", text: "Drafted." },
-        { type: "tool_use", id: "t1", name: "propose_expense", input: {} },
-        { type: "text", text: "Confirm the card." },
-      ],
-    }),
-    "Drafted.\n\nConfirm the card.",
+    turnReplyText([
+      {
+        role: "assistant",
+        content: [
+          { type: "text", text: "Let me check October." },
+          { type: "tool_use", id: "t1", name: "get_finance_summary", input: {} },
+        ],
+      },
+      { role: "user", content: [{ type: "tool_result", tool_use_id: "t1", content: "{}" }] },
+      { role: "assistant", content: [{ type: "text", text: "You spent 3,000 EGP." }, { type: "text", text: "  " }] },
+    ]),
+    "Let me check October.\n\nYou spent 3,000 EGP.",
   );
-  assert.equal(replyText({ role: "user", content: "hi" }), "");
+  assert.equal(turnReplyText([{ role: "user", content: "hi" }]), "");
 });
 
 test("businessDate uses Cairo time, not UTC", () => {
