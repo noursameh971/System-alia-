@@ -1,11 +1,17 @@
 import { Router } from "express";
 import { requireAuth, requireRole } from "../../middleware/auth.js";
+import { validateBody } from "../../middleware/validate.js";
 import { asyncHandler } from "../../utils/asyncHandler.js";
+import { chatRateLimit } from "./assistant.rateLimit.js";
+import { chatBodySchema, confirmActionBodySchema } from "./assistant.schema.js";
 import {
+  chatHandler,
+  confirmActionHandler,
   deleteConversationHandler,
   getConversationHandler,
   getStatusHandler,
   listConversationsHandler,
+  rejectActionHandler,
 } from "./assistant.controller.js";
 
 export const assistantRouter = Router();
@@ -24,4 +30,11 @@ assistantRouter.get("/conversations", asyncHandler(listConversationsHandler));
 assistantRouter.get("/conversations/:id", asyncHandler(getConversationHandler));
 assistantRouter.delete("/conversations/:id", asyncHandler(deleteConversationHandler));
 
-// Next (Phase 1, steps 4–5): POST /chat, POST /actions/:id/confirm, POST /actions/:id/reject.
+// One chat turn: Claude reads data through typed tools and may draft
+// expenses/revenue, which come back as actions for the UI to show as
+// confirmation cards. Nothing is written to the books here.
+assistantRouter.post("/chat", chatRateLimit, validateBody(chatBodySchema), asyncHandler(chatHandler));
+
+// The only path by which an assistant draft becomes a real record.
+assistantRouter.post("/actions/:id/confirm", validateBody(confirmActionBodySchema), asyncHandler(confirmActionHandler));
+assistantRouter.post("/actions/:id/reject", asyncHandler(rejectActionHandler));

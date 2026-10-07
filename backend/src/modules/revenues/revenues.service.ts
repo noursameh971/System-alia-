@@ -1,5 +1,5 @@
 import { and, desc, eq, gte, lte, sql } from "drizzle-orm";
-import { db } from "../../db/client.js";
+import { db, type DbExecutor } from "../../db/client.js";
 import { revenues } from "../../db/schema/index.js";
 import { ApiError } from "../../utils/apiError.js";
 import type { CreateRevenueInput, ListRevenuesQuery, RevenueCategory, UpdateRevenueInput } from "./revenues.schema.js";
@@ -45,8 +45,12 @@ export async function listRevenues(query: ListRevenuesQuery): Promise<RevenueRec
   return rows.map(toRecord);
 }
 
-export async function createRevenue(input: CreateRevenueInput, actorUserId: string): Promise<RevenueRecord> {
-  const [created] = await db
+export async function createRevenue(
+  input: CreateRevenueInput,
+  actorUserId: string,
+  executor: DbExecutor = db,
+): Promise<RevenueRecord> {
+  const [created] = await executor
     .insert(revenues)
     .values({
       brandId: input.brandId,

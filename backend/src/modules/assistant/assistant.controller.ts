@@ -1,9 +1,16 @@
 import type { Request, Response } from "express";
 import { ApiError } from "../../utils/apiError.js";
 import { sendSuccess } from "../../utils/apiResponse.js";
+import { confirmAction, rejectAction } from "./actions.service.js";
 import { checkAnthropicConnection } from "./assistant.client.js";
 import { deleteConversation, getAssistantStatus, getConversation, listConversations } from "./assistant.service.js";
-import { conversationIdParamSchema, statusQuerySchema } from "./assistant.schema.js";
+import {
+  actionIdParamSchema,
+  conversationIdParamSchema,
+  statusQuerySchema,
+  type ChatBody,
+} from "./assistant.schema.js";
+import { runChatTurn } from "./chat.service.js";
 
 /** A malformed id can't match any row, so it's a 404 like any other miss — not a Postgres uuid-cast error. */
 function parseConversationId(req: Request): string {
@@ -35,4 +42,24 @@ export async function getConversationHandler(req: Request, res: Response): Promi
 export async function deleteConversationHandler(req: Request, res: Response): Promise<void> {
   await deleteConversation(parseConversationId(req), req.user!.id);
   sendSuccess(res, 200, { deleted: true });
+}
+
+function parseActionId(req: Request): string {
+  const parsed = actionIdParamSchema.safeParse(req.params);
+  if (!parsed.success) throw ApiError.notFound("Action not found");
+  return parsed.data.id;
+}
+
+export async function chatHandler(req: Request, res: Response): Promise<void> {
+  const body = req.body as ChatBody;
+  sendSuccess(res, 200, await runChatTurn({ userId: req.user!.id, ...body }));
+}
+
+export async function confirmActionHandler(req: Request, res: Response): Promise<void> {
+  const overrides = (req.body as { overrides?: Record<string, unknown> } | undefined)?.overrides;
+  sendSuccess(res, 200, await confirmAction(parseActionId(req), req.user!.id, overrides));
+}
+
+export async function rejectActionHandler(req: Request, res: Response): Promise<void> {
+  sendSuccess(res, 200, await rejectAction(parseActionId(req), req.user!.id));
 }

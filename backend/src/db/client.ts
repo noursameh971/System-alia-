@@ -25,3 +25,15 @@ pool.on("error", (err) => {
 export const db = drizzle(pool, { schema });
 
 export type Database = typeof db;
+
+/** The handle a transaction callback receives — same query API as `db`. */
+export type DbTransaction = Parameters<Parameters<Database["transaction"]>[0]>[0];
+
+/**
+ * Either the pool or an open transaction. Services that accept one let a
+ * caller fold their write into a larger transaction (e.g. the assistant's
+ * confirm step, which must record the expense and mark its action executed
+ * atomically); `executor.transaction()` on a transaction becomes a
+ * savepoint, so the service's own all-or-nothing guarantee still holds.
+ */
+export type DbExecutor = Database | DbTransaction;

@@ -1,7 +1,8 @@
 import { and, desc, eq, gte, lte, ne, sql } from "drizzle-orm";
-import { db } from "../../db/client.js";
+import { db, type DbExecutor, type DbTransaction } from "../../db/client.js";
 import { expenses, ledgerEntities, ledgerTransactions, orderItems, orders, productVariants, products, revenues } from "../../db/schema/index.js";
 import { ApiError } from "../../utils/apiError.js";
+import { BUSINESS_TIMEZONE } from "../../utils/businessDate.js";
 import {
   EXPENSE_CATEGORIES,
   type CreateExpenseInput,
@@ -65,7 +66,7 @@ export async function listExpenses(query: ListExpensesQuery): Promise<ExpenseRec
 
 /** Validates a supplier is eligible to be linked to an expense payment: same brand, and payable (you can't "pay down" a receivable — see ledger_balance_type). */
 async function assertLinkableLedgerEntity(
-  tx: Parameters<Parameters<typeof db.transaction>[0]>[0],
+  tx: DbTransaction,
   ledgerEntityId: string,
   brandId: string,
 ): Promise<typeof ledgerEntities.$inferSelect> {
@@ -84,8 +85,12 @@ async function assertLinkableLedgerEntity(
  * expense only exists linked if the payment was actually recorded against
  * the supplier's balance, and vice versa.
  */
-export async function createExpense(input: CreateExpenseInput, actorUserId: string): Promise<ExpenseRecord> {
-  return db.transaction(async (tx) => {
+export async function createExpense(
+  input: CreateExpenseInput,
+  actorUserId: string,
+  executor: DbExecutor = db,
+): Promise<ExpenseRecord> {
+  return executor.transaction(async (tx) => {
     let ledgerTransactionId: string | null = null;
     let ledgerEntityName: string | null = null;
 
@@ -294,7 +299,21 @@ function recentMonths(count: number): string[] {
  * revenue plus the hand-recorded revenues ledger, for income (wholesale,
  * in-person sales) that never became an Order row.
  */
-export async function getFinanceSummary(brandId: string): Promise<FinanceSummary> {
+export interface FinanceDateRange {
+  /** Inclusive YYYY-MM-DD bounds, both optional. Orders are bucketed by their Cairo calendar day. */
+  from?: string;
+  to?: string;
+}
+
+export async function getFinanceSummary(brandId: string, range: FinanceDateRange = {}): Promise<FinanceSummary> {
+  // orders.order_date is an instant; expense_date/revenue_date are already
+  // calendar days, so only orders need converting before comparing.
+  const orderDay = sql`(${orders.orderDate} at time zone ${BUSINESS_TIMEZONE})::date`;
+  const orderDateFilters = [
+    ...(range.from ? [sql`${orderDay} >= ${range.from}`] : []),
+    ...(range.to ? [sql`${orderDay} <= ${range.to}`] : []),
+  ];
+
   // Cancelled orders are excluded from both revenue and cost: they were
   // never fulfilled, so counting their COGS would invent an expense.
   const [revenueRow] = await db
@@ -307,14 +326,14 @@ export async function getFinanceSummary(brandId: string): Promise<FinanceSummary
     .innerJoin(orders, eq(orders.id, orderItems.orderId))
     .innerJoin(productVariants, eq(productVariants.id, orderItems.variantId))
     .innerJoin(products, eq(products.id, productVariants.productId))
-    .where(and(eq(products.brandId, brandId), ne(orders.status, "cancelled")));
+    .where(and(eq(products.brandId, brandId), ne(orders.status, "cancelled"), ...orderDateFilters));
 
   // Shipping is a per-order column, so it must be summed in its own query —
   // joining through order_items would multiply it by the item count.
   const [shippingRow] = await db
     .select({ shipping: sql<string>`coalesce(sum(${orders.shippingFee}), 0)` })
     .from(orders)
-    .where(and(eq(orders.brandId, brandId), ne(orders.status, "cancelled")));
+    .where(and(eq(orders.brandId, brandId), ne(orders.status, "cancelled"), ...orderDateFilters));
 
   // Hand-recorded revenue — a wholesale invoice, an in-person/DM sale, etc.
   // that never became an Order row. Added on top of order-derived revenue,
@@ -325,7 +344,13 @@ export async function getFinanceSummary(brandId: string): Promise<FinanceSummary
       count: sql<number>`count(*)::int`,
     })
     .from(revenues)
-    .where(eq(revenues.brandId, brandId));
+    .where(
+      and(
+        eq(revenues.brandId, brandId),
+        range.from ? gte(revenues.revenueDate, range.from) : undefined,
+        range.to ? lte(revenues.revenueDate, range.to) : undefined,
+      ),
+    );
 
   const categoryRows = await db
     .select({
@@ -335,7 +360,13 @@ export async function getFinanceSummary(brandId: string): Promise<FinanceSummary
       count: sql<number>`count(*)::int`,
     })
     .from(expenses)
-    .where(eq(expenses.brandId, brandId))
+    .where(
+      and(
+        eq(expenses.brandId, brandId),
+        range.from ? gte(expenses.expenseDate, range.from) : undefined,
+        range.to ? lte(expenses.expenseDate, range.to) : undefined,
+      ),
+    )
     .groupBy(expenses.category, sql`to_char(${expenses.expenseDate}, 'YYYY-MM')`);
 
   const byCategory = emptyCategoryTotals();
