@@ -1,4 +1,3 @@
-import { betaZodTool } from "@anthropic-ai/sdk/helpers/beta/zod";
 import { z } from "zod";
 import { getBrandDashboardSummary } from "../../dashboard/dashboard.service.js";
 import { EXPENSE_CATEGORIES } from "../../expenses/expenses.schema.js";
@@ -7,10 +6,11 @@ import { getCashFlowSummary, listLedgerEntities } from "../../ledger/ledger.serv
 import { REVENUE_CATEGORIES } from "../../revenues/revenues.schema.js";
 import { listRevenues } from "../../revenues/revenues.service.js";
 import { brandCodeField, money, resolveBrand, toolJson, type ToolContext } from "./context.js";
+import { defineTool } from "./defineTool.js";
 
 /**
  * Read-only tools. Each wraps an existing service and returns only the
- * fields an answer needs — everything here is sent to the Anthropic API, so
+ * fields an answer needs — everything here is sent to the model provider, so
  * IDs, receipt URLs, phone numbers and audit columns are left out unless a
  * follow-up tool call needs them.
  */
@@ -29,7 +29,7 @@ const rangeFields = {
 const DEFAULT_LIST_LIMIT = 25;
 const MAX_LIST_LIMIT = 100;
 
-const limitField = z
+const limitField = z.coerce
   .number()
   .int()
   .min(1)
@@ -38,7 +38,7 @@ const limitField = z
   .describe(`Max rows to return, newest first (default ${DEFAULT_LIST_LIMIT}). Totals always cover every match.`);
 
 export function buildReadTools(ctx: ToolContext) {
-  const getFinanceSummaryTool = betaZodTool({
+  const getFinanceSummaryTool = defineTool({
     name: "get_finance_summary",
     description:
       "Profit & loss for one workspace over an optional date range: gross revenue (orders + hand-recorded revenue), " +
@@ -73,7 +73,7 @@ export function buildReadTools(ctx: ToolContext) {
     },
   });
 
-  const listExpensesTool = betaZodTool({
+  const listExpensesTool = defineTool({
     name: "list_expenses",
     description:
       "Hand-recorded operating expenses for one workspace, newest first, with the total over every match. " +
@@ -105,7 +105,7 @@ export function buildReadTools(ctx: ToolContext) {
     },
   });
 
-  const listRevenuesTool = betaZodTool({
+  const listRevenuesTool = defineTool({
     name: "list_revenues",
     description:
       "Hand-recorded revenue for one workspace (sales that never became an Order: wholesale invoices, in-person/DM sales, " +
@@ -136,7 +136,7 @@ export function buildReadTools(ctx: ToolContext) {
     },
   });
 
-  const getCashFlowTool = betaZodTool({
+  const getCashFlowTool = defineTool({
     name: "get_cash_flow",
     description:
       "Current liquidity for one workspace: accounts payable (what we still owe suppliers), accounts receivable " +
@@ -155,7 +155,7 @@ export function buildReadTools(ctx: ToolContext) {
     },
   });
 
-  const findLedgerEntitiesTool = betaZodTool({
+  const findLedgerEntitiesTool = defineTool({
     name: "find_ledger_entities",
     description:
       "Search one workspace's suppliers & debts ledger (suppliers, factories, couriers, clients) by name, with each " +
@@ -190,7 +190,7 @@ export function buildReadTools(ctx: ToolContext) {
     },
   });
 
-  const getInventoryOverviewTool = betaZodTool({
+  const getInventoryOverviewTool = defineTool({
     name: "get_inventory_overview",
     description:
       "Stock snapshot for one workspace: units on hand, stock value at cost and at retail, all-time best-selling " +

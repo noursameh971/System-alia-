@@ -4,6 +4,7 @@ import { db } from "../../db/client.js";
 import { aiActions, aiConversations, aiMessages } from "../../db/schema/index.js";
 import { ApiError } from "../../utils/apiError.js";
 import { isAssistantEnabled } from "./assistant.client.js";
+import { toDisplayMessage, type DisplayMessage } from "./history.js";
 
 export interface AssistantStatus {
   enabled: boolean;
@@ -40,8 +41,14 @@ export interface ConversationAction {
   createdAt: Date;
 }
 
+export interface ConversationMessage extends DisplayMessage {
+  id: string;
+  createdAt: Date;
+}
+
 export interface ConversationDetail extends ConversationSummary {
-  messages: (typeof aiMessages.$inferSelect)[];
+  /** What the admin and the assistant said, in order — tool results are left out; draft cards link back via toolCallIds. */
+  messages: ConversationMessage[];
   actions: ConversationAction[];
 }
 
@@ -80,10 +87,15 @@ export async function getConversation(id: string, userId: string): Promise<Conve
   // need to confirm it exists.
   if (!conversation) throw ApiError.notFound("Conversation not found");
 
-  const [messages, actionRows] = await Promise.all([
+  const [messageRows, actionRows] = await Promise.all([
     db.select().from(aiMessages).where(eq(aiMessages.conversationId, id)).orderBy(asc(aiMessages.createdAt)),
     db.select().from(aiActions).where(eq(aiActions.conversationId, id)).orderBy(asc(aiActions.createdAt)),
   ]);
+
+  const messages = messageRows.flatMap((row) => {
+    const display = toDisplayMessage(row);
+    return display ? [{ id: row.id, createdAt: row.createdAt, ...display }] : [];
+  });
 
   const now = Date.now();
   const actions = actionRows.map((row) => ({

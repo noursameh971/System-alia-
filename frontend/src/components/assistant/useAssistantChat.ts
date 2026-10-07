@@ -7,7 +7,6 @@ import {
   getAssistantConversation,
   streamAssistantTurn,
   type AssistantAction,
-  type AssistantContentBlock,
   type AssistantConversation,
 } from "@/lib/assistant";
 
@@ -30,15 +29,10 @@ export const CONVERSATIONS_KEY = "assistant-conversations";
 let nextId = 0;
 const localId = () => `local-${++nextId}`;
 
-function blocksOf(content: string | AssistantContentBlock[]): AssistantContentBlock[] {
-  return typeof content === "string" ? [{ type: "text", text: content }] : content;
-}
-
 /**
  * Rebuilds the chat view from a stored transcript. One assistant turn spans
- * every assistant message (and the tool results between them) up to the
- * next thing the admin typed; each draft card is placed in the turn whose
- * tool call proposed it.
+ * every assistant message up to the next thing the admin typed; each draft
+ * card is placed in the turn whose tool call proposed it.
  */
 export function conversationToTurns(conversation: AssistantConversation): AssistantTurn[] {
   const actionByToolUse = new Map(conversation.actions.map((action) => [action.toolUseId, action]));
@@ -47,12 +41,9 @@ export function conversationToTurns(conversation: AssistantConversation): Assist
   let current: Extract<AssistantTurn, { role: "assistant" }> | null = null;
 
   for (const message of conversation.messages) {
-    const blocks = blocksOf(message.content);
     if (message.role === "user") {
-      const text = blocks.flatMap((block) => (block.type === "text" && "text" in block ? [block.text] : [])).join("\n\n");
-      // A user message holding only tool results is part of the assistant's turn, not something the admin typed.
-      if (text) {
-        turns.push({ id: message.id, role: "user", text });
+      if (message.text) {
+        turns.push({ id: message.id, role: "user", text: message.text });
         current = null;
       }
       continue;
@@ -61,15 +52,12 @@ export function conversationToTurns(conversation: AssistantConversation): Assist
       current = { id: message.id, role: "assistant", text: "", actions: [], pending: false, activeTool: null, error: null };
       turns.push(current);
     }
-    for (const block of blocks) {
-      if (block.type === "text" && "text" in block && block.text.trim()) {
-        current.text = current.text ? `${current.text}\n\n${block.text.trim()}` : block.text.trim();
-      } else if (block.type === "tool_use" && "id" in block) {
-        const action = actionByToolUse.get(block.id);
-        if (action) {
-          current.actions.push(action);
-          placed.add(action.id);
-        }
+    if (message.text) current.text = current.text ? `${current.text}\n\n${message.text}` : message.text;
+    for (const callId of message.toolCallIds) {
+      const action = actionByToolUse.get(callId);
+      if (action) {
+        current.actions.push(action);
+        placed.add(action.id);
       }
     }
   }

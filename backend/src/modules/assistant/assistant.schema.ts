@@ -5,7 +5,7 @@ export const conversationIdParamSchema = z.object({
 });
 
 export const statusQuerySchema = z.object({
-  /** ?verify=true also round-trips to the Anthropic API to prove the key and model work. */
+  /** ?verify=true also round-trips to the model API to prove the key and model work. */
   verify: z.enum(["true", "false"]).optional(),
 });
 

@@ -21,7 +21,7 @@ const EXPORT_HEADERS = ["Date", "Title", "Category", "Amount", "Currency", "Paym
  * spreadsheet, so export writes them and import accepts either these or the
  * raw enum value — a round-tripped export re-imports unchanged.
  */
-const CATEGORY_LABELS: Record<ExpenseCategory, string> = {
+export const CATEGORY_LABELS: Record<ExpenseCategory, string> = {
   marketing: "Marketing & Ads",
   salaries: "Salaries",
   production: "Production & Fabric",
@@ -32,7 +32,7 @@ const CATEGORY_LABELS: Record<ExpenseCategory, string> = {
   misc: "Misc/Software",
 };
 
-const PAYMENT_LABELS: Record<ExpensePaymentMethod, string> = {
+export const PAYMENT_LABELS: Record<ExpensePaymentMethod, string> = {
   cash: "Cash",
   bank_transfer: "Bank Transfer",
   card: "Card",

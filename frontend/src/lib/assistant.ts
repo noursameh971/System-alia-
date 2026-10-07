@@ -24,17 +24,12 @@ export interface AssistantAction {
   createdAt: string;
 }
 
-/** A Claude API content block as stored in the transcript — only the fields the UI reads. */
-export type AssistantContentBlock =
-  | { type: "text"; text: string }
-  | { type: "tool_use"; id: string; name: string }
-  | { type: "tool_result"; tool_use_id: string }
-  | { type: string };
-
+/** One thing the admin or the assistant said. toolCallIds link it to the draft cards its tool calls proposed. */
 export interface AssistantStoredMessage {
   id: string;
   role: "user" | "assistant";
-  content: string | AssistantContentBlock[];
+  text: string;
+  toolCallIds: string[];
   createdAt: string;
 }
 

@@ -1,6 +1,12 @@
 import "dotenv/config";
 import { z } from "zod";
 
+const optionalSecret = z
+  .string()
+  .trim()
+  .optional()
+  .transform((value) => value || undefined);
+
 const envSchema = z.object({
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
   PORT: z.coerce.number().int().positive().default(4000),
@@ -13,16 +19,21 @@ const envSchema = z.object({
   // unmodified — production just adds this on top. No trailing slash
   // (an Origin header never has one; see app.ts's normalizeOrigin).
   FRONTEND_URL: z.string().url().optional(),
-  // Admin AI assistant (/api/assistant). Optional: with no key the rest of
-  // the API runs normally and the assistant reports itself disabled rather
-  // than failing the whole server at boot. An empty value (a blank line
-  // left in a host's env UI) counts as unset.
-  ANTHROPIC_API_KEY: z
-    .string()
-    .trim()
-    .optional()
-    .transform((value) => value || undefined),
-  ASSISTANT_MODEL: z.string().trim().min(1).default("claude-sonnet-5"),
+  // Admin AI assistant (/api/assistant), talking to any OpenAI-compatible
+  // chat-completions API — Groq by default. The key is optional: without
+  // one the rest of the API runs normally and the assistant reports itself
+  // disabled rather than failing the whole server at boot. An empty value
+  // (a blank line left in a host's env UI) counts as unset.
+  GROQ_API_KEY: optionalSecret,
+  /** Overrides GROQ_API_KEY — for pointing ASSISTANT_BASE_URL at a different provider. */
+  ASSISTANT_API_KEY: optionalSecret,
+  ASSISTANT_BASE_URL: z.string().trim().url().default("https://api.groq.com/openai/v1"),
+  // Must support tool (function) calling. openai/gpt-oss-120b is Groq's
+  // strongest tool-calling model available on this account; the Llama 3
+  // models have been retired there.
+  ASSISTANT_MODEL: z.string().trim().min(1).default("openai/gpt-oss-120b"),
+  /** Sent as reasoning_effort when set — for reasoning models such as gpt-oss. Leave unset for models that reject it. */
+  ASSISTANT_REASONING_EFFORT: z.enum(["low", "medium", "high"]).optional(),
 });
 
 const parsed = envSchema.safeParse(process.env);
@@ -33,4 +44,8 @@ if (!parsed.success) {
   throw new Error("Environment validation failed — check your .env file against .env.example");
 }
 
-export const env = parsed.data;
+export const env = {
+  ...parsed.data,
+  /** The key the assistant actually uses. */
+  ASSISTANT_KEY: parsed.data.ASSISTANT_API_KEY ?? parsed.data.GROQ_API_KEY,
+};

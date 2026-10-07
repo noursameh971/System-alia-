@@ -1,10 +1,10 @@
-import { betaZodTool } from "@anthropic-ai/sdk/helpers/beta/zod";
-import type { BetaToolRunContext } from "@anthropic-ai/sdk/lib/tools/BetaRunnableTool";
 import { z } from "zod";
+import { CATEGORY_LABELS, PAYMENT_LABELS } from "../../expenses/expenses.io.service.js";
 import { createExpenseSchema, EXPENSE_PAYMENT_METHODS } from "../../expenses/expenses.schema.js";
-import { createRevenueSchema } from "../../revenues/revenues.schema.js";
+import { createRevenueSchema, type RevenueCategory } from "../../revenues/revenues.schema.js";
 import { createProposedAction, type ActionKind } from "../actions.service.js";
 import { brandCodeField, resolveBrand, toolJson, ToolInputError, type ToolContext } from "./context.js";
+import { defineTool, type ToolCall } from "./defineTool.js";
 
 /**
  * Write tools — in name only. Each validates a draft against the same Zod
@@ -12,11 +12,6 @@ import { brandCodeField, resolveBrand, toolJson, ToolInputError, type ToolContex
  * proposed action. Nothing touches expenses/revenues until the admin
  * confirms the card (POST /api/assistant/actions/:id/confirm).
  */
-
-function toolUseIdOf(context: BetaToolRunContext | undefined): string | null {
-  const block = context?.toolUseBlock;
-  return block && "id" in block && typeof block.id === "string" ? block.id : null;
-}
 
 /**
  * The admin must have said these; the model may never fill them in. A
@@ -44,26 +39,45 @@ function assumedFieldsSchema(fields: readonly [string, ...string[]]) {
 function assertNothingCriticalAssumed(toolName: ActionKind, assumed: readonly string[]): void {
   const critical = assumed.filter((field) => (MUST_COME_FROM_ADMIN[toolName] as readonly string[]).includes(field));
   if (critical.length > 0) {
+    // Two cases reach here, and the model must tell them apart: it really
+    // guessed (ask the admin), or it was over-cautious about something the
+    // admin's words already give (call again). Models observed doing the
+    // second would otherwise ask the admin for what they just said.
     throw new ToolInputError(
-      `Not drafted: ${critical.join(", ")} must come from the admin, not be assumed. Ask the admin for ` +
-        `${critical.join(" and ")} (together with anything else still missing) in one message, then draft again.`,
+      `Not drafted: you marked ${critical.join(", ")} as assumed, and those must come from the admin. ` +
+        `If the admin's own words state or clearly imply them, they are not assumed — e.g. "for the lawyer" gives ` +
+        `title "Lawyer fees" and category professional_fees; "a sale for client Ahmed" gives source "Ahmed" and ` +
+        `category product_sales — so call the tool again without them in assumedFields. Only if their words really ` +
+        `don't give them, ask the admin (together with anything else missing) in one message.`,
     );
   }
+}
+
+const REVENUE_CATEGORY_LABELS: Record<RevenueCategory, string> = {
+  product_sales: "Product Sales",
+  wholesale: "Wholesale",
+  shipping_income: "Shipping Income",
+  other: "Other Income",
+};
+
+function formatEgp(amount: number): string {
+  return `${amount.toLocaleString("en-US", { maximumFractionDigits: 2 })} EGP`;
 }
 
 async function propose(
   ctx: ToolContext,
   toolName: ActionKind,
-  context: BetaToolRunContext | undefined,
+  call: ToolCall,
   brandId: string,
   payload: Record<string, unknown>,
   assumedFields: string[],
+  shownOnCard: Record<string, string>,
 ): Promise<string> {
   assertNothingCriticalAssumed(toolName, assumedFields);
   const action = await createProposedAction({
     conversationId: ctx.conversationId,
     toolName,
-    toolUseId: toolUseIdOf(context),
+    toolUseId: call.id,
     brandId,
     payload,
     assumedFields: [...new Set(assumedFields)],
@@ -74,12 +88,15 @@ async function propose(
   return toolJson({
     actionId: action.id,
     status: "awaiting_admin_confirmation",
-    note: "Not saved yet. The admin sees a confirmation card and must press Confirm.",
+    // Models have misquoted amounts in their own words (3000 → "300 000");
+    // the card shows these exact values, so the reply should too.
+    shownOnCard,
+    note: "Not saved yet. The admin sees a confirmation card and must press Confirm. Describe the draft using the shownOnCard values exactly as written.",
   });
 }
 
 export function buildProposeTools(ctx: ToolContext) {
-  const proposeExpense = betaZodTool({
+  const proposeExpense = defineTool({
     name: "propose_expense",
     description:
       "Draft an operating expense for the admin to confirm. Does NOT save it. Use when the admin says they spent or " +
@@ -91,6 +108,7 @@ export function buildProposeTools(ctx: ToolContext) {
       .omit({ brandId: true, receiptUrl: true })
       .extend({
         brand: brandCodeField,
+        amount: z.coerce.number().positive("Amount must be greater than 0").max(99_999_999),
         title: z.string().trim().min(1).max(200).describe("Short description, e.g. \"Lawyer fees\"."),
         expenseDate: z.string().describe("YYYY-MM-DD. Today's date when the admin doesn't say."),
         notes: z.string().trim().max(2000).optional(),
@@ -99,18 +117,25 @@ export function buildProposeTools(ctx: ToolContext) {
         paymentMethod: z.enum(EXPENSE_PAYMENT_METHODS).optional().describe("Omit when the admin didn't say."),
         assumedFields: assumedFieldsSchema(["amount", "title", "category", "paymentMethod", "expenseDate"]),
       }),
-    run: async ({ brand: brandCode, assumedFields, ...draft }, context) => {
+    run: async ({ brand: brandCode, assumedFields, ...draft }, call) => {
       const brand = resolveBrand(ctx, brandCode);
       // Re-validated against the service's own schema (YYYY-MM-DD check,
       // amount bounds, defaults) — the source of truth, not the tool's copy.
       const payload = createExpenseSchema.parse({ ...draft, brandId: brand.id });
       // paymentMethod has a schema default: leaving it out is assuming it.
       const assumed = draft.paymentMethod === undefined ? [...assumedFields, "paymentMethod"] : assumedFields;
-      return propose(ctx, "propose_expense", context, brand.id, payload, assumed);
+      return propose(ctx, "propose_expense", call, brand.id, payload, assumed, {
+        amount: formatEgp(payload.amount),
+        title: payload.title,
+        category: CATEGORY_LABELS[payload.category],
+        paymentMethod: PAYMENT_LABELS[payload.paymentMethod],
+        date: payload.expenseDate,
+        workspace: brand.name,
+      });
     },
   });
 
-  const proposeRevenue = betaZodTool({
+  const proposeRevenue = defineTool({
     name: "propose_revenue",
     description:
       "Draft hand-recorded revenue for the admin to confirm. Does NOT save it. Use for a sale or income that is not " +
@@ -119,15 +144,22 @@ export function buildProposeTools(ctx: ToolContext) {
       "from — otherwise ask them first. Does not move stock.",
     inputSchema: createRevenueSchema.omit({ brandId: true }).extend({
       brand: brandCodeField,
+      amount: z.coerce.number().positive("Amount must be greater than 0").max(99_999_999),
       source: z.string().trim().min(1).max(200).describe("Who or what the money came from, e.g. the client's name."),
       revenueDate: z.string().describe("YYYY-MM-DD. Today's date when the admin doesn't say."),
       notes: z.string().trim().max(2000).optional(),
       assumedFields: assumedFieldsSchema(["amount", "source", "category", "revenueDate"]),
     }),
-    run: async ({ brand: brandCode, assumedFields, ...draft }, context) => {
+    run: async ({ brand: brandCode, assumedFields, ...draft }, call) => {
       const brand = resolveBrand(ctx, brandCode);
       const payload = createRevenueSchema.parse({ ...draft, brandId: brand.id });
-      return propose(ctx, "propose_revenue", context, brand.id, payload, assumedFields);
+      return propose(ctx, "propose_revenue", call, brand.id, payload, assumedFields, {
+        amount: formatEgp(payload.amount),
+        source: payload.source,
+        category: REVENUE_CATEGORY_LABELS[payload.category],
+        date: payload.revenueDate,
+        workspace: brand.name,
+      });
     },
   });
 

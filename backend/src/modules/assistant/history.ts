@@ -1,43 +1,64 @@
-import type Anthropic from "@anthropic-ai/sdk";
+import type OpenAI from "openai";
 
 /** Pure helpers for the stored transcript — no DB or env access, so they're unit-testable on their own. */
 
-type MessageParam = Anthropic.Beta.Messages.BetaMessageParam;
-type ContentBlockParam = Anthropic.Beta.Messages.BetaContentBlockParam;
+export type ChatMessage = OpenAI.Chat.Completions.ChatCompletionMessageParam;
+export type StoredRole = "user" | "assistant" | "tool";
 
-function asBlocks(content: MessageParam["content"]): ContentBlockParam[] {
-  return typeof content === "string" ? [{ type: "text", text: content }] : content;
+/** An ai_messages row as read back: role column plus the JSONB content. */
+export interface StoredMessage {
+  role: StoredRole;
+  content: unknown;
 }
 
-/**
- * The API expects user/assistant turns to alternate. A turn stopped at the
- * tool-iteration cap ends on a tool_result (user) message, so the next
- * user message would make two in a row — merge them here, at request time,
- * rather than rewriting stored history.
- */
-export function mergeConsecutiveRoles(messages: MessageParam[]): MessageParam[] {
-  const merged: MessageParam[] = [];
-  for (const message of messages) {
-    const previous = merged.at(-1);
-    if (previous && previous.role === message.role) {
-      merged[merged.length - 1] = { role: previous.role, content: [...asBlocks(previous.content), ...asBlocks(message.content)] };
-    } else {
-      merged.push(message);
-    }
+function textOf(content: unknown): string {
+  if (typeof content === "string") return content;
+  if (Array.isArray(content)) {
+    return content
+      .flatMap((part) => (part && typeof part === "object" && "text" in part && typeof part.text === "string" ? [part.text] : []))
+      .join("\n\n");
   }
-  return merged;
+  return "";
 }
 
 /**
- * Everything the assistant wrote during a turn, across its tool round-trips
- * ("Let me check October." … "You spent 3,000 EGP."), as the admin saw it
- * stream in.
+ * A stored row as a chat-completions message, ready to replay. Rows from
+ * before the move off the Anthropic API hold an array of content blocks
+ * instead of a message object; those come back as their plain text (their
+ * tool calls can't be replayed in the new format, and aren't needed —
+ * the text carries the conversation), or null when there's no text.
  */
-export function turnReplyText(messages: MessageParam[]): string {
+export function toChatMessage(row: StoredMessage): ChatMessage | null {
+  const content = row.content;
+  if (content && typeof content === "object" && !Array.isArray(content) && "role" in content) {
+    return content as ChatMessage;
+  }
+  if (row.role === "tool") return null;
+  const text = textOf(content).trim();
+  return text ? { role: row.role, content: text } : null;
+}
+
+/** Everything the assistant wrote during a turn, across its tool round-trips, as the admin saw it stream in. */
+export function turnReplyText(messages: ChatMessage[]): string {
   return messages
-    .filter((message) => message.role === "assistant")
-    .flatMap((message) => asBlocks(message.content))
-    .flatMap((block) => (block.type === "text" && block.text.trim() ? [block.text.trim()] : []))
+    .flatMap((message) => (message.role === "assistant" ? [textOf(message.content).trim()] : []))
+    .filter(Boolean)
     .join("\n\n");
 }
 
+/** The UI's view of a transcript row: what was said, and which tool calls (hence which draft cards) belong to it. */
+export interface DisplayMessage {
+  role: "user" | "assistant";
+  text: string;
+  toolCallIds: string[];
+}
+
+export function toDisplayMessage(row: StoredMessage): DisplayMessage | null {
+  const message = toChatMessage(row);
+  if (!message || (message.role !== "user" && message.role !== "assistant")) return null;
+  const toolCallIds =
+    message.role === "assistant" && "tool_calls" in message && message.tool_calls
+      ? message.tool_calls.map((call) => call.id)
+      : [];
+  return { role: message.role, text: textOf(message.content).trim(), toolCallIds };
+}

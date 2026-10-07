@@ -1,4 +1,4 @@
-import Anthropic from "@anthropic-ai/sdk";
+import OpenAI from "openai";
 import { and, asc, eq, inArray } from "drizzle-orm";
 import { env } from "../../config/env.js";
 import { db } from "../../db/client.js";
@@ -6,18 +6,26 @@ import { aiActions, aiConversations, aiMessages } from "../../db/schema/index.js
 import { ApiError } from "../../utils/apiError.js";
 import { listBrands } from "../brands/brands.service.js";
 import { discardActions, type ActionRow } from "./actions.service.js";
-import { getAnthropicClient } from "./assistant.client.js";
-import { mergeConsecutiveRoles, turnReplyText } from "./history.js";
-import { buildTurnContext, SYSTEM_PROMPT } from "./prompt.js";
+import { getModelClient } from "./assistant.client.js";
+import { toChatMessage, turnReplyText, type ChatMessage } from "./history.js";
+import { buildTurnContext, replyLanguageFor, SYSTEM_PROMPT } from "./prompt.js";
 import type { BrandRef, ToolContext } from "./tools/context.js";
+import { executeTool, toFunctionTool, type AssistantTool } from "./tools/defineTool.js";
 import { buildProposeTools } from "./tools/proposeTools.js";
 import { buildReadTools } from "./tools/readTools.js";
 
-type MessageParam = Anthropic.Beta.Messages.BetaMessageParam;
-
 /** One chat turn may take several tool round-trips ("compare this month to last" = two summaries + an answer); the cap stops a confused loop from running up cost. */
 const MAX_TOOL_ITERATIONS = 8;
-const MAX_OUTPUT_TOKENS = 16_000;
+/**
+ * Room for the reply plus a reasoning model's hidden reasoning. Kept tight
+ * on purpose: Groq charges the full cap against the rate limit up front
+ * ("Requested" = prompt + this), so a generous cap drains the per-minute
+ * and per-day token budgets several times faster than the replies do. A
+ * reply that does hit it ends with the "cut off — ask me to continue" note.
+ */
+const MAX_COMPLETION_TOKENS = 2_000;
+/** Groq answers a malformed tool call from the model with 400 tool_use_failed; a fresh sample almost always gets it right. */
+const TOOL_CALL_RETRIES = 2;
 
 export interface ChatTurnInput {
   userId: string;
@@ -45,7 +53,7 @@ export type ChatStreamEvent =
   | { type: "start"; conversationId: string }
   /** A chunk of the reply. Joined in order, the chunks are the reply as it's written. */
   | { type: "text"; delta: string }
-  /** Claude is calling a tool — the UI shows what it's checking while it waits. */
+  /** The model is calling a tool — the UI shows what it's checking while it waits. */
   | { type: "tool"; name: string }
   /** A draft was stored — render its confirmation card now. */
   | { type: "action"; action: ActionRow }
@@ -54,7 +62,7 @@ export type ChatStreamEvent =
 
 export interface ChatTurnOptions {
   onEvent?: (event: ChatStreamEvent) => void;
-  /** Aborted when the admin closes the panel or the connection drops — stops the Claude request mid-turn. */
+  /** Aborted when the admin closes the panel or the connection drops — stops the model request mid-turn. */
   signal?: AbortSignal;
 }
 
@@ -66,37 +74,61 @@ export interface ChatTurnOptions {
  */
 const turnsInFlight = new Set<string>();
 
-/** SDK errors → what the admin's browser should see. Subclasses before Anthropic.APIError, which they all extend. */
+/**
+ * The provider rejected a tool call the model produced — malformed, or
+ * not matching the tool's schema (Groq checks both server-side and answers
+ * 400). It's a sampling miss, not a bad request: a fresh sample usually
+ * gets it right. Matched on the message as well as the code because the
+ * schema-validation variant doesn't always carry `tool_use_failed`.
+ */
+function isToolUseFailed(err: unknown): boolean {
+  if (!(err instanceof OpenAI.BadRequestError)) return false;
+  const body = err.error as { code?: unknown; error?: { code?: unknown } } | undefined;
+  return (
+    err.code === "tool_use_failed" ||
+    body?.code === "tool_use_failed" ||
+    body?.error?.code === "tool_use_failed" ||
+    /tool call validation failed|failed to call a function/i.test(err.message)
+  );
+}
+
+/** The provider's own explanation from an error body, when it sent one. */
+function providerReason(err: InstanceType<typeof OpenAI.APIError>): string | null {
+  const body = err.error as { message?: unknown; error?: { message?: unknown } } | undefined;
+  const reason = body?.error?.message ?? body?.message;
+  return typeof reason === "string" && reason ? reason : null;
+}
+
+/** SDK errors → what the admin's browser should see. Subclasses before OpenAI.APIError, which they all extend. */
 function toApiError(err: unknown): unknown {
   // The browser went away mid-turn — nobody is left to tell, and it isn't an API fault worth logging.
-  if (err instanceof Anthropic.APIUserAbortError) {
+  if (err instanceof OpenAI.APIUserAbortError) {
     return new ApiError(499, "Cancelled");
   }
-  if (err instanceof Anthropic.RateLimitError) {
-    return new ApiError(429, "The assistant is getting too many requests right now — try again in a minute");
+  if (err instanceof OpenAI.RateLimitError) {
+    // Groq's message says which limit (per minute or per day) and how long
+    // to wait — "15m30s" is very different advice from "a minute".
+    const reason = providerReason(err);
+    return new ApiError(429, reason ? `The assistant hit the model provider's usage limit: ${reason}` : "The assistant has hit its usage limit — try again shortly");
   }
-  if (err instanceof Anthropic.AuthenticationError || err instanceof Anthropic.PermissionDeniedError) {
-    console.error("Assistant: Anthropic rejected the API key", err.message);
+  if (err instanceof OpenAI.AuthenticationError || err instanceof OpenAI.PermissionDeniedError) {
+    console.error("Assistant: the model API rejected the key", err.message);
     return ApiError.serviceUnavailable("The assistant is misconfigured on the server (API key rejected)");
   }
-  if (err instanceof Anthropic.APIConnectionError) {
+  if (err instanceof OpenAI.APIConnectionError) {
     return ApiError.serviceUnavailable("Couldn't reach the assistant service — try again");
   }
-  if (err instanceof Anthropic.APIError) {
-    console.error(`Assistant: Anthropic API error ${err.status ?? ""}`, err.message);
-    // 529 (overloaded) and 5xx are transient.
+  if (err instanceof OpenAI.APIError) {
+    console.error(`Assistant: model API error ${err.status ?? ""}`, err.message);
     if (err.status && err.status >= 500) {
       return ApiError.serviceUnavailable("The assistant service is busy — try again shortly");
     }
-    // Any other rejection: pass Anthropic's own explanation through. It's
-    // written for the account holder (e.g. "Your credit balance is too low
-    // …"), and only admins can reach this route, so it's both safe and the
-    // fastest way for them to see what to fix.
-    const reason = (err.error as { error?: { message?: unknown } } | undefined)?.error?.message;
-    return new ApiError(
-      502,
-      typeof reason === "string" && reason ? `The assistant service refused the request: ${reason}` : "The assistant couldn't process that request",
-    );
+    // Any other rejection: pass the provider's own explanation through. It's
+    // written for the account holder (e.g. a billing or model-access
+    // problem), and only admins can reach this route, so it's both safe and
+    // the fastest way for them to see what to fix.
+    const reason = providerReason(err);
+    return new ApiError(502, reason ? `The assistant service refused the request: ${reason}` : "The assistant couldn't process that request");
   }
   return err;
 }
@@ -123,9 +155,86 @@ async function loadOrCreateConversation(input: ChatTurnInput, brands: BrandRef[]
   return created!;
 }
 
+interface StepResult {
+  content: string;
+  toolCalls: { id: string; name: string; arguments: string }[];
+  finishReason: string | null;
+  usage: OpenAI.CompletionUsage | null;
+}
+
+/**
+ * One model call, streamed: text deltas go straight to the admin, tool
+ * calls are assembled from their fragments. `separateFromPrevious` puts a
+ * paragraph break before this step's text when an earlier step already
+ * wrote some, matching how turnReplyText joins them.
+ */
+async function streamStep(
+  client: OpenAI,
+  messages: ChatMessage[],
+  tools: OpenAI.Chat.Completions.ChatCompletionFunctionTool[],
+  emit: (event: ChatStreamEvent) => void,
+  signal: AbortSignal | undefined,
+  separateFromPrevious: boolean,
+): Promise<StepResult> {
+  const stream = await client.chat.completions.create(
+    {
+      model: env.ASSISTANT_MODEL,
+      messages,
+      tools,
+      tool_choice: "auto",
+      stream: true,
+      stream_options: { include_usage: true },
+      max_completion_tokens: MAX_COMPLETION_TOKENS,
+      ...(env.ASSISTANT_REASONING_EFFORT ? { reasoning_effort: env.ASSISTANT_REASONING_EFFORT } : {}),
+    },
+    { signal },
+  );
+
+  let content = "";
+  let finishReason: string | null = null;
+  let usage: OpenAI.CompletionUsage | null = null;
+  const calls = new Map<number, { id: string; name: string; arguments: string }>();
+
+  for await (const chunk of stream) {
+    if (chunk.usage) usage = chunk.usage;
+    const choice = chunk.choices[0];
+    if (!choice) continue;
+    // Reasoning models also stream a non-standard `reasoning` field — the
+    // model's private scratch work. It's deliberately never forwarded.
+    if (choice.delta.content) {
+      if (!content && separateFromPrevious) emit({ type: "text", delta: "\n\n" });
+      content += choice.delta.content;
+      emit({ type: "text", delta: choice.delta.content });
+    }
+    for (const fragment of choice.delta.tool_calls ?? []) {
+      let call = calls.get(fragment.index);
+      if (!call) {
+        call = { id: "", name: "", arguments: "" };
+        calls.set(fragment.index, call);
+      }
+      if (fragment.id) call.id = fragment.id;
+      if (fragment.function?.name && !call.name) {
+        call.name = fragment.function.name;
+        emit({ type: "tool", name: call.name });
+      }
+      if (fragment.function?.arguments) call.arguments += fragment.function.arguments;
+    }
+    if (choice.finish_reason) finishReason = choice.finish_reason;
+  }
+  // An aborted stream just stops yielding — the SDK swallows the abort —
+  // so without this a cancelled reply would look finished and be saved.
+  if (signal?.aborted) throw new OpenAI.APIUserAbortError();
+
+  const toolCalls = [...calls.entries()]
+    .sort(([a], [b]) => a - b)
+    // A provider that omits call ids still needs one to pair each result with its call.
+    .map(([index, call]) => ({ ...call, id: call.id || `call_${Date.now().toString(36)}_${index}` }));
+  return { content, toolCalls, finishReason, usage };
+}
+
 export async function runChatTurn(input: ChatTurnInput, options: ChatTurnOptions = {}): Promise<ChatTurnResult> {
   const emit = options.onEvent ?? (() => {});
-  const client = getAnthropicClient();
+  const client = getModelClient();
   const brands = await listBrands();
   const conversation = await loadOrCreateConversation(input, brands);
 
@@ -161,71 +270,77 @@ export async function runChatTurn(input: ChatTurnInput, options: ChatTurnOptions
         .orderBy(asc(aiActions.createdAt)),
     ]);
 
-    const userMessage: MessageParam = { role: "user", content: [{ type: "text", text: input.message }] };
-    const messages = mergeConsecutiveRoles([...history, userMessage]);
-    const initialLength = messages.length;
+    const turnContext = buildTurnContext({
+      brands,
+      activeBrand: ctx.activeBrand,
+      replyLanguage: replyLanguageFor(input.message),
+      actions: priorActions.map((action) => ({
+        id: action.id,
+        toolName: action.toolName,
+        status: action.status === "proposed" && action.expiresAt.getTime() <= Date.now() ? "expired" : action.status,
+      })),
+    });
+    const systemMessage: ChatMessage = { role: "system", content: `${SYSTEM_PROMPT}\n\n# This turn\n${turnContext}` };
+    const userMessage: ChatMessage = { role: "user", content: input.message };
+    const priorMessages = history.flatMap((row) => toChatMessage(row) ?? []);
 
-    const runner = client.beta.messages.toolRunner(
-      {
-        model: env.ASSISTANT_MODEL,
-        max_tokens: MAX_OUTPUT_TOKENS,
-        thinking: { type: "adaptive" },
-        // Chat wants snappy answers; these are short lookups and drafts, not
-        // deep reasoning. Raise if the test set shows multi-step reports
-        // coming out wrong.
-        output_config: { effort: "medium" },
-        max_iterations: MAX_TOOL_ITERATIONS,
-        system: [
-          // Tools render before system, so this breakpoint caches the tool
-          // definitions plus the static prompt across every turn.
-          { type: "text", text: SYSTEM_PROMPT, cache_control: { type: "ephemeral" } },
-          {
-            type: "text",
-            text: buildTurnContext({
-              brands,
-              activeBrand: ctx.activeBrand,
-              actions: priorActions.map((action) => ({
-                id: action.id,
-                toolName: action.toolName,
-                status: action.status === "proposed" && action.expiresAt.getTime() <= Date.now() ? "expired" : action.status,
-              })),
-            }),
-          },
-        ],
-        tools: [...buildReadTools(ctx), ...buildProposeTools(ctx)],
-        messages,
-        // Always streamed, even for the JSON endpoint: text reaches the admin
-        // as it's written, and long turns don't sit on an idle socket.
-        // eager_input_streaming is left off — tool inputs here are a few
-        // short fields, nothing worth showing as it arrives.
-        stream: true,
-      },
-      { signal: options.signal },
-    );
+    const tools: AssistantTool[] = [...buildReadTools(ctx), ...buildProposeTools(ctx)];
+    const toolsByName = new Map(tools.map((tool) => [tool.name, tool]));
+    const functionTools = tools.map(toFunctionTool);
 
-    const responses: Anthropic.Beta.Messages.BetaMessage[] = [];
+    // Everything the model adds this turn: assistant messages and tool results, in order.
+    const newMessages: ChatMessage[] = [];
+    const stepUsage: (OpenAI.CompletionUsage | null)[] = [];
+    let finishReason: string | null = null;
     let wroteText = false;
-    for await (const stream of runner) {
-      stream.on("streamEvent", (event) => {
-        if (event.type !== "content_block_start") return;
-        if (event.content_block.type === "tool_use") {
-          emit({ type: "tool", name: event.content_block.name });
-        } else if (event.content_block.type === "text" && wroteText) {
-          // Same paragraph break turnReplyText puts between text blocks, so
-          // the streamed reply and the final one read the same.
-          emit({ type: "text", delta: "\n\n" });
-        }
-      });
-      stream.on("text", (delta) => {
-        wroteText = true;
-        emit({ type: "text", delta });
-      });
-      responses.push(await stream.finalMessage());
-    }
-    const last = responses.at(-1);
 
-    const newMessages = runner.params.messages.slice(initialLength);
-    const usageQueue = [...responses];
+    for (let iteration = 0; iteration < MAX_TOOL_ITERATIONS; iteration++) {
+      let step: StepResult | undefined;
+      for (let attempt = 0; !step; attempt++) {
+        try {
+          step = await streamStep(
+            client,
+            [systemMessage, ...priorMessages, userMessage, ...newMessages],
+            functionTools,
+            emit,
+            options.signal,
+            wroteText,
+          );
+        } catch (err) {
+          // The provider rejects a malformed tool call before any text is
+          // streamed, so retrying here can't duplicate what the admin saw.
+          if (!isToolUseFailed(err) || attempt >= TOOL_CALL_RETRIES) throw err;
+        }
+      }
+
+      if (step.content) wroteText = true;
+      finishReason = step.finishReason;
+      stepUsage.push(step.usage);
+      newMessages.push({
+        role: "assistant",
+        content: step.content,
+        ...(step.toolCalls.length > 0
+          ? {
+              tool_calls: step.toolCalls.map((call) => ({
+                id: call.id,
+                type: "function" as const,
+                function: { name: call.name, arguments: call.arguments || "{}" },
+              })),
+            }
+          : {}),
+      });
+
+      if (step.toolCalls.length === 0) break;
+
+      // Run in order: a draft may depend on a lookup made earlier in the same step.
+      for (const call of step.toolCalls) {
+        const tool = toolsByName.get(call.name);
+        const outcome = tool
+          ? await executeTool(tool, call.arguments, { id: call.id })
+          : { content: `Error: there is no tool named "${call.name}".`, isError: true };
+        newMessages.push({ role: "tool", tool_call_id: call.id, content: outcome.content });
+      }
+    }
 
     await db.transaction(async (tx) => {
       // History is replayed in created_at order, so each row gets its own
@@ -235,22 +350,18 @@ export async function runChatTurn(input: ChatTurnInput, options: ChatTurnOptions
       const turnStartedAt = Date.now();
       let sequence = 0;
       const nextTimestamp = () => new Date(turnStartedAt + sequence++);
+      const usageQueue = [...stepUsage];
 
-      await tx
-        .insert(aiMessages)
-        .values({ conversationId: conversation.id, role: "user", content: userMessage.content, createdAt: nextTimestamp() });
+      await tx.insert(aiMessages).values({ conversationId: conversation.id, role: "user", content: userMessage, createdAt: nextTimestamp() });
       for (const message of newMessages) {
-        // The runner only adds system-role messages when tools change
-        // mid-run, which this module never does — ai_messages holds the
-        // user/assistant transcript only.
-        if (message.role === "system") continue;
-        const usage = message.role === "assistant" ? usageQueue.shift()?.usage : undefined;
+        if (message.role !== "assistant" && message.role !== "tool") continue;
+        const usage = message.role === "assistant" ? usageQueue.shift() : undefined;
         await tx.insert(aiMessages).values({
           conversationId: conversation.id,
           role: message.role,
-          content: message.content,
-          inputTokens: usage ? usage.input_tokens + (usage.cache_read_input_tokens ?? 0) + (usage.cache_creation_input_tokens ?? 0) : null,
-          outputTokens: usage?.output_tokens ?? null,
+          content: message,
+          inputTokens: usage?.prompt_tokens ?? null,
+          outputTokens: usage?.completion_tokens ?? null,
           createdAt: nextTimestamp(),
         });
       }
@@ -261,11 +372,11 @@ export async function runChatTurn(input: ChatTurnInput, options: ChatTurnOptions
     });
 
     let reply = turnReplyText(newMessages);
-    if (last?.stop_reason === "refusal") {
+    if (finishReason === "content_filter") {
       reply = reply || "I can't help with that request.";
     } else if (newMessages.at(-1)?.role !== "assistant") {
       reply = "I stopped before finishing — that took more steps than I'm allowed in one reply. Ask again, or narrow the question.";
-    } else if (last?.stop_reason === "max_tokens") {
+    } else if (finishReason === "length") {
       reply = `${reply}\n\n(My reply was cut off — ask me to continue.)`.trim();
     }
 
@@ -277,15 +388,12 @@ export async function runChatTurn(input: ChatTurnInput, options: ChatTurnOptions
     return {
       conversationId: conversation.id,
       reply,
-      stopReason: last?.stop_reason ?? null,
+      stopReason: finishReason,
       actions,
       usage: {
-        inputTokens: responses.reduce(
-          (sum, r) => sum + r.usage.input_tokens + (r.usage.cache_read_input_tokens ?? 0) + (r.usage.cache_creation_input_tokens ?? 0),
-          0,
-        ),
-        outputTokens: responses.reduce((sum, r) => sum + r.usage.output_tokens, 0),
-        cacheReadInputTokens: responses.reduce((sum, r) => sum + (r.usage.cache_read_input_tokens ?? 0), 0),
+        inputTokens: stepUsage.reduce((sum, usage) => sum + (usage?.prompt_tokens ?? 0), 0),
+        outputTokens: stepUsage.reduce((sum, usage) => sum + (usage?.completion_tokens ?? 0), 0),
+        cacheReadInputTokens: stepUsage.reduce((sum, usage) => sum + (usage?.prompt_tokens_details?.cached_tokens ?? 0), 0),
       },
     };
   } catch (err) {

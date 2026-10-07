@@ -1,6 +1,5 @@
 import { index, integer, jsonb, pgTable, text, timestamp, uuid, varchar } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
-import type Anthropic from "@anthropic-ai/sdk";
 import { brands } from "./brands.js";
 import { users } from "./users.js";
 import { aiActionStatusEnum } from "./enums.js";
@@ -32,9 +31,9 @@ export const aiMessages = pgTable(
     conversationId: uuid("conversation_id")
       .notNull()
       .references(() => aiConversations.id, { onDelete: "cascade" }),
-    role: varchar("role", { length: 16 }).$type<"user" | "assistant">().notNull(),
-    /** Content blocks exactly as exchanged with the Claude API — replayed verbatim on the next turn. */
-    content: jsonb("content").$type<Anthropic.Beta.Messages.BetaMessageParam["content"]>().notNull(),
+    role: varchar("role", { length: 16 }).$type<"user" | "assistant" | "tool">().notNull(),
+    /** The full chat-completions message (see history.ts), replayed verbatim on the next turn. Older rows hold Anthropic content blocks. */
+    content: jsonb("content").$type<unknown>().notNull(),
     inputTokens: integer("input_tokens"),
     outputTokens: integer("output_tokens"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),

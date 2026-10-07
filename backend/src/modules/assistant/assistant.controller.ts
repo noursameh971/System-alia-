@@ -2,7 +2,7 @@ import type { Request, Response } from "express";
 import { ApiError } from "../../utils/apiError.js";
 import { sendSuccess } from "../../utils/apiResponse.js";
 import { confirmAction, rejectAction } from "./actions.service.js";
-import { checkAnthropicConnection } from "./assistant.client.js";
+import { checkModelConnection } from "./assistant.client.js";
 import { deleteConversation, getAssistantStatus, getConversation, listConversations } from "./assistant.service.js";
 import {
   actionIdParamSchema,
@@ -25,7 +25,7 @@ export async function getStatusHandler(req: Request, res: Response): Promise<voi
 
   const status = getAssistantStatus();
   if (parsed.data.verify === "true" && status.enabled) {
-    sendSuccess(res, 200, { ...status, connection: await checkAnthropicConnection() });
+    sendSuccess(res, 200, { ...status, connection: await checkModelConnection() });
     return;
   }
   sendSuccess(res, 200, status);
