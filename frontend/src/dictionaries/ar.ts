@@ -960,4 +960,18 @@ export const ar: Record<string, string> = {
   "Stopped.": "تم الإيقاف.",
   "Couldn't reach the assistant — check your connection.": "تعذّر الوصول إلى المساعد — تحقّق من اتصالك.",
   "The reply was interrupted.": "انقطع الرد.",
+
+  // Assistant voice input (components/assistant/useSpeechInput.ts)
+  "Voice language": "لغة الصوت",
+  "click to switch": "اضغط للتبديل",
+  "Speak your message": "تحدّث برسالتك",
+  "Stop listening": "إيقاف الاستماع",
+  "Voice input isn't available in this browser — try Chrome, Edge or Safari.": "الإدخال الصوتي غير متاح في هذا المتصفح — جرّب Chrome أو Edge أو Safari.",
+  "Listening in Arabic… tap the mic when you're done": "أستمع بالعربية… اضغط على الميكروفون عند الانتهاء",
+  "Listening in English… tap the mic when you're done": "أستمع بالإنجليزية… اضغط على الميكروفون عند الانتهاء",
+  "Microphone access is blocked — allow it for this site in your browser's settings.": "الوصول إلى الميكروفون محظور — اسمح به لهذا الموقع من إعدادات المتصفح.",
+  "No microphone was found.": "لم يتم العثور على ميكروفون.",
+  "Voice input needs an internet connection.": "الإدخال الصوتي يحتاج إلى اتصال بالإنترنت.",
+  "Didn't catch anything — tap the mic and try again.": "لم ألتقط أي كلام — اضغط على الميكروفون وحاول مرة أخرى.",
+  "Your browser can't recognize this language — try switching languages.": "متصفحك لا يتعرّف على هذه اللغة — جرّب تبديل اللغة.",
 };

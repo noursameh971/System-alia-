@@ -3,11 +3,12 @@
 import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 import useSWR from "swr";
 import { toast } from "sonner";
-import { ArrowUp, History, Loader2, Plus, Sparkles, Square, Trash2 } from "lucide-react";
+import { ArrowUp, History, Loader2, Mic, Plus, Sparkles, Square, Trash2 } from "lucide-react";
 import { useLocale } from "@/context/LocaleContext";
 import { ApiError } from "@/lib/apiClient";
 import { deleteAssistantConversation, getAssistantStatus, listAssistantConversations } from "@/lib/assistant";
 import { formatRelativeTime } from "@/lib/formatRelativeTime";
+import type { SpeechLanguage } from "@/lib/speechRecognition";
 import type { Brand } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -16,6 +17,7 @@ import { SheetDescription, SheetTitle } from "@/components/ui/sheet";
 import { ActionCard } from "./ActionCard";
 import { MessageText } from "./MessageText";
 import { CONVERSATIONS_KEY, type AssistantChat } from "./useAssistantChat";
+import { useSpeechInput } from "./useSpeechInput";
 
 /** What the admin sees while a tool runs — English source strings for t(). */
 const TOOL_ACTIVITY: Record<string, string> = {
@@ -28,6 +30,37 @@ const TOOL_ACTIVITY: Record<string, string> = {
   propose_expense: "Drafting the expense…",
   propose_revenue: "Drafting the revenue…",
 };
+
+const VOICE_LANGUAGE_KEY = "alia-noori:assistantVoiceLanguage";
+
+/**
+ * The browser recognizes one language per session and can't detect which
+ * one is being spoken, so the voice language is an explicit choice: the
+ * last one used, else the app's language. The EN / ع chip switches it.
+ */
+function initialVoiceLanguage(locale: string): SpeechLanguage {
+  try {
+    const saved = window.localStorage.getItem(VOICE_LANGUAGE_KEY);
+    if (saved === "ar-EG" || saved === "en-US") return saved;
+  } catch {
+    // Storage blocked (private mode etc.) — fall through to the app language.
+  }
+  return locale === "ar" ? "ar-EG" : "en-US";
+}
+
+function saveVoiceLanguage(language: SpeechLanguage): void {
+  try {
+    window.localStorage.setItem(VOICE_LANGUAGE_KEY, language);
+  } catch {
+    // Not remembered next time; nothing else depends on it.
+  }
+}
+
+/** Spoken words go after whatever was already typed, separated by a space. */
+function appendTranscript(typed: string, spoken: string): string {
+  if (!spoken) return typed;
+  return typed.trim() ? `${typed.trimEnd()} ${spoken}` : spoken;
+}
 
 const SUGGESTIONS = [
   "How much did we spend this month?",
@@ -47,18 +80,28 @@ export function AssistantPanel({
   brands: Brand[];
   open: boolean;
 }) {
-  const { t } = useLocale();
+  const { t, locale } = useLocale();
   const [draft, setDraft] = useState("");
+  const [voiceLanguage, setVoiceLanguage] = useState<SpeechLanguage>(() => initialVoiceLanguage(locale));
+  /** What was in the box when listening started — the live transcript is shown after it. */
+  const typedBeforeSpeech = useRef("");
+  const speech = useSpeechInput({
+    onTranscript: (spoken) => setDraft(appendTranscript(typedBeforeSpeech.current, spoken)),
+    onError: (message) => toast.error(t(message)),
+  });
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const status = useSWR("assistant-status", getAssistantStatus, { revalidateOnFocus: false });
   const conversations = useSWR(open ? CONVERSATIONS_KEY : null, listAssistantConversations);
   const disabled = status.data ? !status.data.enabled : false;
 
-  // Focus the input whenever the panel opens (Ctrl/Cmd+K is "open and start typing").
+  // Focus the input whenever the panel opens (Ctrl/Cmd+K is "open and start
+  // typing"), and turn the microphone off whenever it closes.
+  const abortSpeech = speech.abort;
   useEffect(() => {
     if (open) requestAnimationFrame(() => inputRef.current?.focus());
-  }, [open]);
+    else abortSpeech();
+  }, [open, abortSpeech]);
 
   // Keep the newest message in view as the reply streams in.
   const lastTurn = chat.turns.at(-1);
@@ -78,6 +121,8 @@ export function AssistantPanel({
 
   function submit(text = draft) {
     if (!text.trim() || chat.busy || disabled) return;
+    // What's in the box is what gets sent; nothing still being recognized may land in it afterwards.
+    speech.abort();
     setDraft("");
     void chat.send(text, activeBrand?.id ?? null);
   }
@@ -90,6 +135,34 @@ export function AssistantPanel({
       submit();
     }
   }
+
+  function toggleListening() {
+    if (speech.listening) {
+      speech.stop();
+      inputRef.current?.focus();
+      return;
+    }
+    typedBeforeSpeech.current = draft;
+    speech.start(voiceLanguage);
+  }
+
+  function switchVoiceLanguage() {
+    const next: SpeechLanguage = voiceLanguage === "ar-EG" ? "en-US" : "ar-EG";
+    setVoiceLanguage(next);
+    saveVoiceLanguage(next);
+    // Mid-sentence switch: keep what's been heard so far and carry on in the new language.
+    if (speech.listening) {
+      typedBeforeSpeech.current = draft;
+      speech.start(next);
+    }
+  }
+
+  const voiceLanguageName = voiceLanguage === "ar-EG" ? t("Arabic") : t("English");
+  const micTitle = !speech.supported
+    ? t("Voice input isn't available in this browser — try Chrome, Edge or Safari.")
+    : speech.listening
+      ? t("Stop listening")
+      : `${t("Speak your message")} (${voiceLanguageName})`;
 
   async function removeConversation(id: string) {
     try {
@@ -239,11 +312,41 @@ export function AssistantPanel({
             rows={1}
             value={draft}
             disabled={disabled}
-            onChange={(event) => setDraft(event.target.value)}
+            onChange={(event) => {
+              // Typing takes over from the microphone.
+              if (speech.listening) speech.abort();
+              setDraft(event.target.value);
+            }}
             onKeyDown={onKeyDown}
             placeholder={t("Ask or record something… e.g. I spent 2000 EGP for the lawyer")}
             className="max-h-40 min-h-[1.5rem] flex-1 resize-none bg-transparent px-1 text-sm text-slate-900 outline-none placeholder:text-slate-400 dark:text-slate-100"
           />
+          <button
+            type="button"
+            onClick={switchVoiceLanguage}
+            disabled={disabled || !speech.supported}
+            aria-label={`${t("Voice language")}: ${voiceLanguageName}`}
+            title={`${t("Voice language")}: ${voiceLanguageName} — ${t("click to switch")}`}
+            className="flex h-8 min-w-8 shrink-0 items-center justify-center rounded-md px-1.5 text-[11px] font-semibold text-slate-500 hover:bg-slate-100 hover:text-slate-800 disabled:pointer-events-none disabled:opacity-40 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-100"
+          >
+            {voiceLanguage === "ar-EG" ? "ع" : "EN"}
+          </button>
+          <Button
+            type="button"
+            size="icon"
+            variant={speech.listening ? "default" : "ghost"}
+            onClick={toggleListening}
+            disabled={disabled || !speech.supported}
+            aria-pressed={speech.listening}
+            aria-label={micTitle}
+            title={micTitle}
+            className={cn(
+              speech.listening &&
+                "animate-pulse bg-red-600 text-white hover:bg-red-700 dark:bg-red-500 dark:text-white dark:hover:bg-red-600",
+            )}
+          >
+            <Mic className="size-4" />
+          </Button>
           {chat.busy ? (
             <Button type="button" size="icon" variant="secondary" onClick={chat.stop} aria-label={t("Stop")} title={t("Stop")}>
               <Square className="size-3.5" />
@@ -254,9 +357,17 @@ export function AssistantPanel({
             </Button>
           )}
         </div>
-        <p className="mt-1.5 text-center text-[11px] text-slate-400">
-          {t("Enter to send · Shift+Enter for a new line · Ctrl/⌘+K to open or close")}
-        </p>
+        {speech.listening ? (
+          <p role="status" className="mt-1.5 text-center text-[11px] font-medium text-red-600 dark:text-red-400">
+            {voiceLanguage === "ar-EG"
+              ? t("Listening in Arabic… tap the mic when you're done")
+              : t("Listening in English… tap the mic when you're done")}
+          </p>
+        ) : (
+          <p className="mt-1.5 text-center text-[11px] text-slate-400">
+            {t("Enter to send · Shift+Enter for a new line · Ctrl/⌘+K to open or close")}
+          </p>
+        )}
       </form>
     </div>
   );
