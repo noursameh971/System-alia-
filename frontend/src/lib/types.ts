@@ -615,7 +615,7 @@ export interface UploadBrandLogoResult {
 
 // ------------------------------------------------------------------ Finance
 
-export const EXPENSE_CATEGORIES = ["marketing", "salaries", "production", "packaging", "rent", "misc"] as const;
+export const EXPENSE_CATEGORIES = ["marketing", "salaries", "production", "packaging", "rent", "professional_fees", "logistics", "misc"] as const;
 export type ExpenseCategory = (typeof EXPENSE_CATEGORIES)[number];
 
 export const EXPENSE_PAYMENT_METHODS = ["cash", "bank_transfer", "card", "instapay", "other"] as const;

@@ -53,7 +53,7 @@ export function importExpensesWorkbook(brandId: string, file: File): Promise<Imp
 }
 
 /**
- * Display metadata for the six fashion-brand expense buckets. Labels are the
+ * Display metadata for the fashion-brand expense buckets. Labels are the
  * English source strings the dictionary is keyed by, so callers pass them
  * straight to t(). Colors are shared by the category badge and the stacked
  * chart so a bucket reads as the same color in both.
@@ -86,6 +86,16 @@ export const EXPENSE_CATEGORY_META: Record<
     label: "Rent & Utilities",
     badgeClass: "bg-rose-100 text-rose-700 dark:bg-rose-950 dark:text-rose-300",
     hex: "#f43f5e",
+  },
+  professional_fees: {
+    label: "Legal & Professional Fees",
+    badgeClass: "bg-cyan-100 text-cyan-800 dark:bg-cyan-950 dark:text-cyan-300",
+    hex: "#0891b2",
+  },
+  logistics: {
+    label: "Logistics & Transport",
+    badgeClass: "bg-yellow-100 text-yellow-800 dark:bg-yellow-950 dark:text-yellow-300",
+    hex: "#a16207",
   },
   misc: {
     label: "Misc/Software",

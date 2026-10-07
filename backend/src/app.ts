@@ -4,6 +4,7 @@ import express, { type Express } from "express";
 import helmet from "helmet";
 import { env } from "./config/env.js";
 import { errorHandler } from "./middleware/errorHandler.js";
+import { assistantRouter } from "./modules/assistant/assistant.routes.js";
 import { authRouter } from "./modules/auth/auth.routes.js";
 import { brandsRouter } from "./modules/brands/brands.routes.js";
 import { categoriesRouter } from "./modules/categories/categories.routes.js";
@@ -107,6 +108,7 @@ export function createApp(): Express {
   app.use("/api/ledger", ledgerRouter);
   app.use("/api/uploads", uploadsRouter);
   app.use("/api/factory", factoryRouter);
+  app.use("/api/assistant", assistantRouter);
 
   // Must be registered last — Express only routes here on thrown/forwarded errors.
   app.use(errorHandler);

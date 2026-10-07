@@ -184,6 +184,8 @@ export const ar: Record<string, string> = {
   "Production & Fabric": "الإنتاج والأقمشة",
   "Packaging & Shipping": "التغليف والشحن",
   "Rent & Utilities": "الإيجار والمرافق",
+  "Legal & Professional Fees": "الرسوم القانونية والمهنية",
+  "Logistics & Transport": "اللوجستيات والنقل",
   "Misc/Software": "متنوعة/برمجيات",
 
   // Expense payment methods

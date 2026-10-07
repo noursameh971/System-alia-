@@ -27,6 +27,8 @@ const CATEGORY_LABELS: Record<ExpenseCategory, string> = {
   production: "Production & Fabric",
   packaging: "Packaging & Shipping",
   rent: "Rent & Utilities",
+  professional_fees: "Legal & Professional Fees",
+  logistics: "Logistics & Transport",
   misc: "Misc/Software",
 };
 

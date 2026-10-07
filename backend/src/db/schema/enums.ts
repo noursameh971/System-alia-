@@ -30,6 +30,8 @@ export const expenseCategoryEnum = pgEnum("expense_category", [
   "production",
   "packaging",
   "rent",
+  "professional_fees",
+  "logistics",
   "misc",
 ]);
 
@@ -108,6 +110,15 @@ export const finishedGoodsMovementTypeEnum = pgEnum("finished_goods_movement_typ
   "production_receipt",
   "shipment_out",
   "adjustment",
+]);
+
+// Admin AI assistant — see database/migrations/0024_add_ai_assistant.sql.
+export const aiActionStatusEnum = pgEnum("ai_action_status", [
+  "proposed",
+  "executed",
+  "rejected",
+  "failed",
+  "expired",
 ]);
 
 export const qualityResultEnum = pgEnum("quality_result", ["pass", "fail", "rework"]);

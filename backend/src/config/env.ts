@@ -13,6 +13,16 @@ const envSchema = z.object({
   // unmodified — production just adds this on top. No trailing slash
   // (an Origin header never has one; see app.ts's normalizeOrigin).
   FRONTEND_URL: z.string().url().optional(),
+  // Admin AI assistant (/api/assistant). Optional: with no key the rest of
+  // the API runs normally and the assistant reports itself disabled rather
+  // than failing the whole server at boot. An empty value (a blank line
+  // left in a host's env UI) counts as unset.
+  ANTHROPIC_API_KEY: z
+    .string()
+    .trim()
+    .optional()
+    .transform((value) => value || undefined),
+  ASSISTANT_MODEL: z.string().trim().min(1).default("claude-sonnet-5"),
 });
 
 const parsed = envSchema.safeParse(process.env);
