@@ -1,0 +1,208 @@
+"use client";
+
+import { useCallback, useRef, useState } from "react";
+import { useSWRConfig } from "swr";
+import { ApiError } from "@/lib/apiClient";
+import {
+  getAssistantConversation,
+  streamAssistantTurn,
+  type AssistantAction,
+  type AssistantContentBlock,
+  type AssistantConversation,
+} from "@/lib/assistant";
+
+export type AssistantTurn =
+  | { id: string; role: "user"; text: string }
+  | {
+      id: string;
+      role: "assistant";
+      text: string;
+      actions: AssistantAction[];
+      /** Still streaming in. */
+      pending: boolean;
+      /** The tool the assistant is running right now, while pending. */
+      activeTool: string | null;
+      error: string | null;
+    };
+
+export const CONVERSATIONS_KEY = "assistant-conversations";
+
+let nextId = 0;
+const localId = () => `local-${++nextId}`;
+
+function blocksOf(content: string | AssistantContentBlock[]): AssistantContentBlock[] {
+  return typeof content === "string" ? [{ type: "text", text: content }] : content;
+}
+
+/**
+ * Rebuilds the chat view from a stored transcript. One assistant turn spans
+ * every assistant message (and the tool results between them) up to the
+ * next thing the admin typed; each draft card is placed in the turn whose
+ * tool call proposed it.
+ */
+export function conversationToTurns(conversation: AssistantConversation): AssistantTurn[] {
+  const actionByToolUse = new Map(conversation.actions.map((action) => [action.toolUseId, action]));
+  const placed = new Set<string>();
+  const turns: AssistantTurn[] = [];
+  let current: Extract<AssistantTurn, { role: "assistant" }> | null = null;
+
+  for (const message of conversation.messages) {
+    const blocks = blocksOf(message.content);
+    if (message.role === "user") {
+      const text = blocks.flatMap((block) => (block.type === "text" && "text" in block ? [block.text] : [])).join("\n\n");
+      // A user message holding only tool results is part of the assistant's turn, not something the admin typed.
+      if (text) {
+        turns.push({ id: message.id, role: "user", text });
+        current = null;
+      }
+      continue;
+    }
+    if (!current) {
+      current = { id: message.id, role: "assistant", text: "", actions: [], pending: false, activeTool: null, error: null };
+      turns.push(current);
+    }
+    for (const block of blocks) {
+      if (block.type === "text" && "text" in block && block.text.trim()) {
+        current.text = current.text ? `${current.text}\n\n${block.text.trim()}` : block.text.trim();
+      } else if (block.type === "tool_use" && "id" in block) {
+        const action = actionByToolUse.get(block.id);
+        if (action) {
+          current.actions.push(action);
+          placed.add(action.id);
+        }
+      }
+    }
+  }
+
+  // Drafts that can't be matched to a tool call (none expected) still get shown, at the end.
+  const orphans = conversation.actions.filter((action) => !placed.has(action.id));
+  if (orphans.length > 0) {
+    turns.push({ id: localId(), role: "assistant", text: "", actions: orphans, pending: false, activeTool: null, error: null });
+  }
+  return turns;
+}
+
+export function useAssistantChat() {
+  const { mutate } = useSWRConfig();
+  const [conversationId, setConversationId] = useState<string | null>(null);
+  const [turns, setTurns] = useState<AssistantTurn[]>([]);
+  const [busy, setBusy] = useState(false);
+  const [loadingConversation, setLoadingConversation] = useState(false);
+  const abortRef = useRef<AbortController | null>(null);
+
+  const updateAssistantTurn = useCallback(
+    (id: string, update: (turn: Extract<AssistantTurn, { role: "assistant" }>) => Partial<Extract<AssistantTurn, { role: "assistant" }>>) => {
+      setTurns((previous) =>
+        previous.map((turn) => (turn.id === id && turn.role === "assistant" ? { ...turn, ...update(turn) } : turn)),
+      );
+    },
+    [],
+  );
+
+  const send = useCallback(
+    async (message: string, brandId: string | null) => {
+      const text = message.trim();
+      if (!text || busy) return;
+
+      const replyId = localId();
+      setTurns((previous) => [
+        ...previous,
+        { id: localId(), role: "user", text },
+        { id: replyId, role: "assistant", text: "", actions: [], pending: true, activeTool: null, error: null },
+      ]);
+      setBusy(true);
+      const abort = new AbortController();
+      abortRef.current = abort;
+
+      try {
+        await streamAssistantTurn(
+          { conversationId: conversationId ?? undefined, brandId, message: text },
+          (event) => {
+            switch (event.type) {
+              case "start":
+                setConversationId(event.conversationId);
+                break;
+              case "text":
+                updateAssistantTurn(replyId, (turn) => ({ text: turn.text + event.delta, activeTool: null }));
+                break;
+              case "tool":
+                updateAssistantTurn(replyId, () => ({ activeTool: event.name }));
+                break;
+              case "action":
+                updateAssistantTurn(replyId, (turn) => ({ actions: [...turn.actions, event.action] }));
+                break;
+              case "done":
+                // The final reply is authoritative (it carries the server's
+                // wording for cut-off or capped turns).
+                updateAssistantTurn(replyId, () => ({
+                  text: event.result.reply,
+                  actions: event.result.actions,
+                  pending: false,
+                  activeTool: null,
+                }));
+                break;
+              case "error":
+                updateAssistantTurn(replyId, () => ({ pending: false, activeTool: null, error: event.message }));
+                break;
+            }
+          },
+          abort.signal,
+        );
+      } catch (err) {
+        if (abort.signal.aborted) {
+          updateAssistantTurn(replyId, () => ({ pending: false, activeTool: null, error: "Stopped." }));
+        } else {
+          updateAssistantTurn(replyId, () => ({
+            pending: false,
+            activeTool: null,
+            error: err instanceof ApiError ? err.message : "Couldn't reach the assistant — check your connection.",
+          }));
+        }
+      } finally {
+        // A stream that ended without done/error (connection dropped) must not spin forever.
+        updateAssistantTurn(replyId, (turn) =>
+          turn.pending ? { pending: false, activeTool: null, error: turn.error ?? "The reply was interrupted." } : {},
+        );
+        setBusy(false);
+        abortRef.current = null;
+        void mutate(CONVERSATIONS_KEY);
+      }
+    },
+    [busy, conversationId, mutate, updateAssistantTurn],
+  );
+
+  const stop = useCallback(() => abortRef.current?.abort(), []);
+
+  const startNewChat = useCallback(() => {
+    abortRef.current?.abort();
+    setConversationId(null);
+    setTurns([]);
+  }, []);
+
+  const openConversation = useCallback(async (id: string) => {
+    abortRef.current?.abort();
+    setLoadingConversation(true);
+    try {
+      const conversation = await getAssistantConversation(id);
+      setConversationId(conversation.id);
+      setTurns(conversationToTurns(conversation));
+    } finally {
+      setLoadingConversation(false);
+    }
+  }, []);
+
+  /** A card changed status (confirmed, cancelled, expired…) — keep every copy of it in sync. */
+  const replaceAction = useCallback((action: AssistantAction) => {
+    setTurns((previous) =>
+      previous.map((turn) =>
+        turn.role === "assistant" && turn.actions.some((candidate) => candidate.id === action.id)
+          ? { ...turn, actions: turn.actions.map((candidate) => (candidate.id === action.id ? action : candidate)) }
+          : turn,
+      ),
+    );
+  }, []);
+
+  return { conversationId, turns, busy, loadingConversation, send, stop, startNewChat, openConversation, replaceAction };
+}
+
+export type AssistantChat = ReturnType<typeof useAssistantChat>;

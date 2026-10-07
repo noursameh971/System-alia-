@@ -219,9 +219,17 @@ export async function runChatTurn(input: ChatTurnInput, options: ChatTurnOptions
     const usageQueue = [...responses];
 
     await db.transaction(async (tx) => {
-      // Inserted one by one, in order: created_at must preserve the
-      // sequence the history is replayed in.
-      await tx.insert(aiMessages).values({ conversationId: conversation.id, role: "user", content: userMessage.content });
+      // History is replayed in created_at order, so each row gets its own
+      // explicit, strictly increasing timestamp. The column default can't
+      // be relied on here: now() is the transaction's start time, so every
+      // row in this transaction would tie and come back in arbitrary order.
+      const turnStartedAt = Date.now();
+      let sequence = 0;
+      const nextTimestamp = () => new Date(turnStartedAt + sequence++);
+
+      await tx
+        .insert(aiMessages)
+        .values({ conversationId: conversation.id, role: "user", content: userMessage.content, createdAt: nextTimestamp() });
       for (const message of newMessages) {
         // The runner only adds system-role messages when tools change
         // mid-run, which this module never does — ai_messages holds the
@@ -234,6 +242,7 @@ export async function runChatTurn(input: ChatTurnInput, options: ChatTurnOptions
           content: message.content,
           inputTokens: usage ? usage.input_tokens + (usage.cache_read_input_tokens ?? 0) + (usage.cache_creation_input_tokens ?? 0) : null,
           outputTokens: usage?.output_tokens ?? null,
+          createdAt: nextTimestamp(),
         });
       }
       await tx

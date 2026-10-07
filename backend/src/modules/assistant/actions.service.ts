@@ -147,7 +147,13 @@ export async function confirmAction(actionId: string, userId: string, overrides:
     if (!parsedOverrides.success) {
       throw ApiError.badRequest("Invalid changes to this action", parsedOverrides.error.flatten());
     }
-    const parsedPayload = kind.schema.safeParse({ ...action.payload, ...parsedOverrides.data, brandId: action.brandId });
+    // Only the keys the admin actually sent. Zod 4 still applies a field's
+    // .default() inside .partial(), so the parsed overrides of a lone
+    // {amount} edit also carry paymentMethod: "cash" — spreading that would
+    // silently overwrite the draft's real payment method.
+    const sent = new Set(Object.keys(overrides ?? {}));
+    const edits = Object.fromEntries(Object.entries(parsedOverrides.data).filter(([key]) => sent.has(key)));
+    const parsedPayload = kind.schema.safeParse({ ...action.payload, ...edits, brandId: action.brandId });
     if (!parsedPayload.success) {
       throw ApiError.badRequest("This action is no longer valid", parsedPayload.error.flatten());
     }

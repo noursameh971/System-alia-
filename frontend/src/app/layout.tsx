@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { cookies } from "next/headers";
 import { Geist, Geist_Mono, Noto_Sans_Arabic } from "next/font/google";
+import { AdminAssistant } from "@/components/assistant/AdminAssistant";
 import { LocaleProvider } from "@/context/LocaleContext";
 import { LocaleToaster } from "@/components/ui/LocaleToaster";
 import { LOCALE_COOKIE, type Locale } from "@/lib/locale";
@@ -52,6 +53,7 @@ export default async function RootLayout({
       <body className="min-h-full flex flex-col bg-slate-50 dark:bg-slate-950">
         <LocaleProvider initialLocale={initialLocale}>
           {children}
+          <AdminAssistant />
           <LocaleToaster />
         </LocaleProvider>
       </body>
