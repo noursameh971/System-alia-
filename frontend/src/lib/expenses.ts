@@ -55,52 +55,59 @@ export function importExpensesWorkbook(brandId: string, file: File): Promise<Imp
 /**
  * Display metadata for the fashion-brand expense buckets. Labels are the
  * English source strings the dictionary is keyed by, so callers pass them
- * straight to t(). Colors are shared by the category badge and the stacked
- * chart so a bucket reads as the same color in both.
+ * straight to t().
+ *
+ * `color` is a CSS variable (defined in globals.css, with separate light
+ * and dark steps) rather than a hex, so the stacked breakdown chart follows
+ * the color scheme. The eight values are a validated categorical palette
+ * in a fixed order: every pair of neighboring segments in the stack stays
+ * distinguishable under red-green colorblindness (the common forms) and
+ * normal vision, in both modes. Adding a ninth category means re-running that validation, not
+ * picking a new color by eye. Badge tints follow the same hue families.
  */
 export const EXPENSE_CATEGORY_META: Record<
   ExpenseCategory,
-  { label: string; badgeClass: string; hex: string }
+  { label: string; badgeClass: string; color: string }
 > = {
   marketing: {
     label: "Marketing & Ads",
-    badgeClass: "bg-violet-100 text-violet-700 dark:bg-violet-950 dark:text-violet-300",
-    hex: "#8b5cf6",
+    badgeClass: "bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300",
+    color: "var(--chart-expense-marketing)",
   },
   salaries: {
     label: "Salaries",
-    badgeClass: "bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300",
-    hex: "#3b82f6",
+    badgeClass: "bg-orange-100 text-orange-800 dark:bg-orange-950 dark:text-orange-300",
+    color: "var(--chart-expense-salaries)",
   },
   production: {
     label: "Production & Fabric",
-    badgeClass: "bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300",
-    hex: "#10b981",
+    badgeClass: "bg-cyan-100 text-cyan-700 dark:bg-cyan-950 dark:text-cyan-300",
+    color: "var(--chart-expense-production)",
   },
   packaging: {
-    label: "Packaging & Shipping",
-    badgeClass: "bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300",
-    hex: "#f59e0b",
+    label: "Fulfillment & Packing",
+    badgeClass: "bg-yellow-100 text-yellow-800 dark:bg-yellow-950 dark:text-yellow-300",
+    color: "var(--chart-expense-packaging)",
   },
   rent: {
     label: "Rent & Utilities",
-    badgeClass: "bg-rose-100 text-rose-700 dark:bg-rose-950 dark:text-rose-300",
-    hex: "#f43f5e",
+    badgeClass: "bg-pink-100 text-pink-700 dark:bg-pink-950 dark:text-pink-300",
+    color: "var(--chart-expense-rent)",
   },
   professional_fees: {
     label: "Legal & Professional Fees",
-    badgeClass: "bg-cyan-100 text-cyan-800 dark:bg-cyan-950 dark:text-cyan-300",
-    hex: "#0891b2",
+    badgeClass: "bg-green-100 text-green-800 dark:bg-green-950 dark:text-green-300",
+    color: "var(--chart-expense-professional-fees)",
   },
   logistics: {
     label: "Logistics & Transport",
-    badgeClass: "bg-yellow-100 text-yellow-800 dark:bg-yellow-950 dark:text-yellow-300",
-    hex: "#a16207",
+    badgeClass: "bg-violet-100 text-violet-700 dark:bg-violet-950 dark:text-violet-300",
+    color: "var(--chart-expense-logistics)",
   },
   misc: {
     label: "Misc/Software",
-    badgeClass: "bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300",
-    hex: "#94a3b8",
+    badgeClass: "bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-300",
+    color: "var(--chart-expense-misc)",
   },
 };
 

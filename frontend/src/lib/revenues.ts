@@ -34,8 +34,8 @@ export function deleteRevenue(id: string): Promise<{ deleted: boolean }> {
 /**
  * Display metadata for the four revenue buckets. Labels are the English
  * source strings the dictionary is keyed by, so callers pass them straight
- * to t(). Colors are distinct from EXPENSE_CATEGORY_META's palette so a
- * revenue badge never reads as an expense badge at a glance.
+ * to t(). The category label always appears in the badge, so its text,
+ * not the tint, is what tells a revenue bucket from an expense one.
  */
 export const REVENUE_CATEGORY_META: Record<RevenueCategory, { label: string; badgeClass: string; hex: string }> = {
   product_sales: {

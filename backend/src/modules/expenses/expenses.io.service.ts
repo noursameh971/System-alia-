@@ -25,7 +25,7 @@ const CATEGORY_LABELS: Record<ExpenseCategory, string> = {
   marketing: "Marketing & Ads",
   salaries: "Salaries",
   production: "Production & Fabric",
-  packaging: "Packaging & Shipping",
+  packaging: "Fulfillment & Packing",
   rent: "Rent & Utilities",
   professional_fees: "Legal & Professional Fees",
   logistics: "Logistics & Transport",
@@ -49,6 +49,9 @@ for (const category of EXPENSE_CATEGORIES) {
   CATEGORY_LOOKUP.set(normalize(category), category);
   CATEGORY_LOOKUP.set(normalize(CATEGORY_LABELS[category]), category);
 }
+// Labels that were renamed — kept so a spreadsheet exported before the
+// rename still re-imports into the same bucket.
+CATEGORY_LOOKUP.set(normalize("Packaging & Shipping"), "packaging");
 
 const PAYMENT_LOOKUP = new Map<string, ExpensePaymentMethod>();
 for (const method of EXPENSE_PAYMENT_METHODS) {

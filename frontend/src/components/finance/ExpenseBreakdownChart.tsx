@@ -62,7 +62,7 @@ export function ExpenseBreakdownChart({ data }: { data: MonthlyExpensePoint[] })
               dataKey={category}
               stackId="expenses"
               name={t(EXPENSE_CATEGORY_META[category].label)}
-              fill={EXPENSE_CATEGORY_META[category].hex}
+              fill={EXPENSE_CATEGORY_META[category].color}
               // Only the topmost series in the stack gets rounded corners,
               // otherwise every segment rounds and the stack looks segmented.
               radius={index === EXPENSE_CATEGORIES.length - 1 ? [6, 6, 0, 0] : undefined}

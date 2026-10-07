@@ -19,6 +19,34 @@
   }
 }
 
+/* Expense category series colors (EXPENSE_CATEGORY_META in lib/expenses.ts).
+   A validated 8-slot categorical palette in fixed order — light steps
+   checked against the white chart card, dark steps against slate-900.
+   Change them only by re-running that validation. */
+:root {
+  --chart-expense-marketing: #2a78d6;
+  --chart-expense-salaries: #eb6834;
+  --chart-expense-production: #1baf7a;
+  --chart-expense-packaging: #eda100;
+  --chart-expense-rent: #e87ba4;
+  --chart-expense-professional-fees: #008300;
+  --chart-expense-logistics: #4a3aa7;
+  --chart-expense-misc: #e34948;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --chart-expense-marketing: #3987e5;
+    --chart-expense-salaries: #d95926;
+    --chart-expense-production: #199e70;
+    --chart-expense-packaging: #c98500;
+    --chart-expense-rent: #d55181;
+    --chart-expense-professional-fees: #008300;
+    --chart-expense-logistics: #9085e9;
+    --chart-expense-misc: #e66767;
+  }
+}
+
 body {
   background: var(--background);
   color: var(--foreground);

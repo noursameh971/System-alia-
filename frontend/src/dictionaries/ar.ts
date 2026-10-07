@@ -182,7 +182,7 @@ export const ar: Record<string, string> = {
   "Marketing & Ads": "التسويق والإعلانات",
   Salaries: "الرواتب",
   "Production & Fabric": "الإنتاج والأقمشة",
-  "Packaging & Shipping": "التغليف والشحن",
+  "Fulfillment & Packing": "التجهيز والتغليف",
   "Rent & Utilities": "الإيجار والمرافق",
   "Legal & Professional Fees": "الرسوم القانونية والمهنية",
   "Logistics & Transport": "اللوجستيات والنقل",
