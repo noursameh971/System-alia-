@@ -4,6 +4,7 @@ import { db } from "../../db/client.js";
 import { aiActions, aiConversations, aiMessages } from "../../db/schema/index.js";
 import { ApiError } from "../../utils/apiError.js";
 import { isAssistantEnabled } from "./assistant.client.js";
+import { attachmentsByMessage, type AttachmentView } from "./attachments.service.js";
 import { toDisplayMessage, type DisplayMessage } from "./history.js";
 
 export interface AssistantStatus {
@@ -32,6 +33,10 @@ export interface ConversationAction {
   brandId: string;
   payload: Record<string, unknown>;
   assumedFields: string[];
+  /** The receipt the draft was made from, if any (its URL is also payload.receiptUrl). */
+  attachmentId: string | null;
+  /** Card-only facts, e.g. the linked supplier's name. */
+  display: Record<string, string>;
   /** "proposed" past its expires_at reads as "expired", whether or not a sweep has updated the row yet. */
   status: AiActionStatus;
   resultTable: string | null;
@@ -44,6 +49,8 @@ export interface ConversationAction {
 export interface ConversationMessage extends DisplayMessage {
   id: string;
   createdAt: Date;
+  /** Files the admin sent with this message (user messages only). */
+  attachments: AttachmentView[];
 }
 
 export interface ConversationDetail extends ConversationSummary {
@@ -92,9 +99,10 @@ export async function getConversation(id: string, userId: string): Promise<Conve
     db.select().from(aiActions).where(eq(aiActions.conversationId, id)).orderBy(asc(aiActions.createdAt)),
   ]);
 
+  const attachments = await attachmentsByMessage(messageRows.filter((row) => row.role === "user").map((row) => row.id));
   const messages = messageRows.flatMap((row) => {
     const display = toDisplayMessage(row);
-    return display ? [{ id: row.id, createdAt: row.createdAt, ...display }] : [];
+    return display ? [{ id: row.id, createdAt: row.createdAt, ...display, attachments: attachments.get(row.id) ?? [] }] : [];
   });
 
   const now = Date.now();
@@ -105,6 +113,8 @@ export async function getConversation(id: string, userId: string): Promise<Conve
     brandId: row.brandId,
     payload: row.payload,
     assumedFields: row.assumedFields,
+    attachmentId: row.attachmentId,
+    display: row.display,
     status: row.status === "proposed" && row.expiresAt.getTime() <= now ? ("expired" as const) : row.status,
     resultTable: row.resultTable,
     resultId: row.resultId,
@@ -118,7 +128,8 @@ export async function getConversation(id: string, userId: string): Promise<Conve
 
 export async function deleteConversation(id: string, userId: string): Promise<void> {
   // Cascades to ai_messages and ai_actions. Records an executed action
-  // already wrote (expenses, revenues) are ordinary rows and stay.
+  // already wrote (expenses, revenues, bills) are ordinary rows and stay,
+  // and so do attached files: one may be the receipt behind such a record.
   const deleted = await db
     .delete(aiConversations)
     .where(and(eq(aiConversations.id, id), eq(aiConversations.userId, userId)))

@@ -705,6 +705,8 @@ export interface Revenue {
   currency: string;
   /** YYYY-MM-DD — a calendar day, not an instant. */
   revenueDate: string;
+  /** Set when recorded from a receipt attached in the assistant (e.g. a client's InstaPay transfer). */
+  receiptUrl: string | null;
   notes: string | null;
   createdAt: string;
 }

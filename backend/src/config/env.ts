@@ -32,6 +32,10 @@ const envSchema = z.object({
   // strongest tool-calling model available on this account; the Llama 3
   // models have been retired there.
   ASSISTANT_MODEL: z.string().trim().min(1).default("openai/gpt-oss-120b"),
+  // Reads attached receipts and invoices (images, and the text of PDFs) —
+  // must accept image input. Same provider and key as ASSISTANT_MODEL; the
+  // chat model only ever sees what this one read, as text.
+  ASSISTANT_VISION_MODEL: z.string().trim().min(1).default("qwen/qwen3.8-27b"),
   /** Sent as reasoning_effort when set — for reasoning models such as gpt-oss. Leave unset for models that reject it. */
   ASSISTANT_REASONING_EFFORT: z.enum(["low", "medium", "high"]).optional(),
 });

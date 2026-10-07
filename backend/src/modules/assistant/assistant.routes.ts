@@ -1,13 +1,15 @@
 import { Router } from "express";
 import { requireAuth, requireRole } from "../../middleware/auth.js";
+import { rawBody } from "../../middleware/rawBody.js";
 import { validateBody } from "../../middleware/validate.js";
 import { asyncHandler } from "../../utils/asyncHandler.js";
-import { chatRateLimit } from "./assistant.rateLimit.js";
+import { attachmentRateLimit, chatRateLimit } from "./assistant.rateLimit.js";
 import { chatBodySchema, confirmActionBodySchema } from "./assistant.schema.js";
 import {
   chatHandler,
   chatStreamHandler,
   confirmActionHandler,
+  createAttachmentHandler,
   deleteConversationHandler,
   getConversationHandler,
   getStatusHandler,
@@ -31,7 +33,12 @@ assistantRouter.get("/conversations", asyncHandler(listConversationsHandler));
 assistantRouter.get("/conversations/:id", asyncHandler(getConversationHandler));
 assistantRouter.delete("/conversations/:id", asyncHandler(deleteConversationHandler));
 
-// One chat turn: Claude reads data through typed tools and may draft
+// A receipt/invoice for the next message: the raw file bytes (Content-Type
+// says which kind; X-File-Name carries the display name). Stored and read
+// by the vision model straight away; the response is what it read.
+assistantRouter.post("/attachments", attachmentRateLimit, rawBody("8mb"), asyncHandler(createAttachmentHandler));
+
+// One chat turn: the model reads data through typed tools and may draft
 // expenses/revenue, which come back as actions for the UI to show as
 // confirmation cards. Nothing is written to the books here.
 assistantRouter.post("/chat", chatRateLimit, validateBody(chatBodySchema), asyncHandler(chatHandler));

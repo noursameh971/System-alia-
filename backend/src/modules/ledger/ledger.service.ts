@@ -1,11 +1,12 @@
 import { and, desc, eq, inArray, sql } from "drizzle-orm";
-import { db } from "../../db/client.js";
+import { db, type DbExecutor } from "../../db/client.js";
 import { ledgerEntities, ledgerTransactions } from "../../db/schema/index.js";
 import { ApiError } from "../../utils/apiError.js";
 import { getFinanceSummary } from "../expenses/expenses.service.js";
 import type {
   CreateChargeInput,
   CreateOpeningBalanceInput,
+  CreateSupplierBillInput,
   LedgerBalanceType,
   LedgerEntityCategory,
   RecordPaymentInput,
@@ -244,11 +245,47 @@ export async function createCharge(
     transactionDate: input.transactionDate ?? sql`current_date`,
     dueDate: input.dueDate ?? null,
     notes: input.notes?.trim() || null,
+    receiptUrl: input.receiptUrl?.trim() || null,
     createdBy: actorUserId,
   });
 
   const [withBalance] = await listEntitiesByIds([entityId]);
   return withBalance!;
+}
+
+/**
+ * The assistant's "supplier bill" — the same charge as createCharge, but
+ * addressed by brand + entity (there's no Supplier Detail URL to scope it)
+ * and run on the caller's executor, so confirming the draft and writing
+ * the charge commit together. Only payables: a bill is something we owe.
+ */
+export async function createSupplierBill(
+  input: CreateSupplierBillInput,
+  actorUserId: string,
+  executor: DbExecutor = db,
+): Promise<LedgerTransactionRecord> {
+  const [entity] = await executor.select().from(ledgerEntities).where(eq(ledgerEntities.id, input.ledgerEntityId)).limit(1);
+  if (!entity) throw ApiError.badRequest("That supplier no longer exists in the ledger");
+  if (entity.brandId !== input.brandId) throw ApiError.badRequest("That supplier belongs to a different brand");
+  if (entity.balanceType !== "payable") {
+    throw ApiError.badRequest(`"${entity.name}" is a receivable (they owe us), so a bill from them can't be added to what we owe`);
+  }
+
+  const [created] = await executor
+    .insert(ledgerTransactions)
+    .values({
+      entityId: entity.id,
+      brandId: entity.brandId,
+      kind: "charge",
+      amount: input.amount.toFixed(2),
+      transactionDate: input.transactionDate,
+      dueDate: input.dueDate ?? null,
+      notes: input.notes?.trim() || null,
+      receiptUrl: input.receiptUrl?.trim() || null,
+      createdBy: actorUserId,
+    })
+    .returning();
+  return toTransactionRecord(created!);
 }
 
 /** "Edit Supplier Info" on the Supplier Detail page. balanceType isn't accepted here — see updateLedgerEntitySchema's comment. */

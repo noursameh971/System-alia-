@@ -1,5 +1,6 @@
 import { z } from "zod";
 import type { ActionRow } from "../actions.service.js";
+import type { AttachmentRow } from "../attachments.service.js";
 
 export interface BrandRef {
   id: string;
@@ -19,6 +20,8 @@ export interface ToolContext {
   proposedActionIds: string[];
   /** Streaming: called the moment a draft is stored, so its card can appear before the reply finishes. */
   onActionProposed?: (action: ActionRow) => void;
+  /** Receipts the admin attached in this conversation (this turn's included), by id — what a propose tool's attachmentId may name. */
+  attachments: Map<string, AttachmentRow>;
 }
 
 /**
@@ -61,4 +64,9 @@ export function toolJson(value: unknown): string {
 /** Money in tool results is rounded to piasters — float noise like 2000.0000000002 would otherwise reach the model and, from there, the admin. */
 export function money(value: number): number {
   return Math.round(value * 100) / 100;
+}
+
+/** "3,500 EGP" — how amounts are written to the model and on cards. */
+export function formatEgp(amount: number): string {
+  return `${amount.toLocaleString("en-US", { maximumFractionDigits: 2 })} EGP`;
 }

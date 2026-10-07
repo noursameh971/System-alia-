@@ -5,13 +5,15 @@ import { aiActions, aiConversations } from "../../db/schema/index.js";
 import { ApiError } from "../../utils/apiError.js";
 import { createExpenseSchema } from "../expenses/expenses.schema.js";
 import { createExpense } from "../expenses/expenses.service.js";
+import { createSupplierBillSchema } from "../ledger/ledger.schema.js";
+import { createSupplierBill } from "../ledger/ledger.service.js";
 import { createRevenueSchema } from "../revenues/revenues.schema.js";
 import { createRevenue } from "../revenues/revenues.service.js";
 
 /**
  * The propose → confirm queue. The model can only *draft* a write (a
  * proposed ai_actions row holding an already-validated service input);
- * nothing reaches expenses/revenues until the admin confirms the card,
+ * nothing reaches expenses/revenues/the ledger until the admin confirms the card,
  * which runs the same service the Finance page's own forms use.
  *
  * Every write the assistant can make is listed here, and only here — a
@@ -39,6 +41,17 @@ const ACTION_KINDS = {
     execute: (payload: z.infer<typeof createRevenueSchema>, actorUserId: string, tx: DbTransaction) =>
       createRevenue(payload, actorUserId, tx),
   },
+  propose_supplier_bill: {
+    resultTable: "ledger_transactions",
+    schema: createSupplierBillSchema,
+    // Not the supplier: the card was checked against that supplier's name.
+    overridesSchema: createSupplierBillSchema
+      .pick({ amount: true, transactionDate: true, dueDate: true, notes: true })
+      .partial()
+      .strict(),
+    execute: (payload: z.infer<typeof createSupplierBillSchema>, actorUserId: string, tx: DbTransaction) =>
+      createSupplierBill(payload, actorUserId, tx),
+  },
 } as const;
 
 export type ActionKind = keyof typeof ACTION_KINDS;
@@ -63,6 +76,8 @@ export async function createProposedAction(input: {
   brandId: string;
   payload: Record<string, unknown>;
   assumedFields: string[];
+  attachmentId?: string | null;
+  display?: Record<string, string>;
   proposedBy: string;
 }): Promise<ActionRow> {
   const [row] = await db
@@ -74,6 +89,8 @@ export async function createProposedAction(input: {
       brandId: input.brandId,
       payload: input.payload,
       assumedFields: input.assumedFields,
+      attachmentId: input.attachmentId ?? null,
+      display: input.display ?? {},
       proposedBy: input.proposedBy,
     })
     .returning();

@@ -24,6 +24,7 @@ export const revenues = pgTable(
     currency: char("currency", { length: 3 }).notNull().default("EGP"),
     /** A calendar day, not an instant — same reasoning as expenses.expense_date. */
     revenueDate: date("revenue_date").notNull(),
+    receiptUrl: text("receipt_url"),
     notes: text("notes"),
     createdBy: uuid("created_by")
       .notNull()

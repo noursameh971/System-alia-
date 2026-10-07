@@ -38,6 +38,29 @@ export function toChatMessage(row: StoredMessage): ChatMessage | null {
   return text ? { role: row.role, content: text } : null;
 }
 
+/**
+ * Attached receipts reach the chat model as text blocks appended to the
+ * admin's message (see attachments.service.ts) and are stored that way, so
+ * a replayed conversation carries them. The admin never sees the blocks —
+ * the panel shows the file itself — so they're cut from the displayed text.
+ */
+const ATTACHMENT_BLOCK = /\s*<attachment id="[0-9a-f-]{36}">[\s\S]*?<\/attachment>/g;
+
+export function attachmentBlock(attachmentId: string, body: string): string {
+  // The body includes OCR output: a closing tag inside it would end the
+  // block early and let the rest pass as the admin's own words.
+  return `<attachment id="${attachmentId}">\n${body.replace(/<\/?attachment\b/gi, "(attachment")}\n</attachment>`;
+}
+
+/** The admin's message with its attachment blocks joined on — what the model gets. */
+export function userMessageText(typed: string, blocks: string[]): string {
+  return [typed.trim(), ...blocks].filter(Boolean).join("\n\n");
+}
+
+export function stripAttachmentBlocks(text: string): string {
+  return text.replace(ATTACHMENT_BLOCK, "").trim();
+}
+
 /** Everything the assistant wrote during a turn, across its tool round-trips, as the admin saw it stream in. */
 export function turnReplyText(messages: ChatMessage[]): string {
   return messages
@@ -60,5 +83,6 @@ export function toDisplayMessage(row: StoredMessage): DisplayMessage | null {
     message.role === "assistant" && "tool_calls" in message && message.tool_calls
       ? message.tool_calls.map((call) => call.id)
       : [];
-  return { role: message.role, text: textOf(message.content).trim(), toolCallIds };
+  const text = textOf(message.content).trim();
+  return { role: message.role, text: message.role === "user" ? stripAttachmentBlocks(text) : text, toolCallIds };
 }

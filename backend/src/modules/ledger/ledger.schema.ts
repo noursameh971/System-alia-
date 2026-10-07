@@ -56,7 +56,22 @@ export const createChargeSchema = z.object({
   transactionDate: dateOnly.optional(),
   dueDate: dateOnly.optional(),
   notes: z.string().trim().max(2000).optional().or(z.literal("")),
+  /** URL of a file already uploaded via POST /api/uploads/receipts (or attached in the assistant) — never raw bytes. */
+  receiptUrl: z.string().trim().max(2000).optional().or(z.literal("")),
 });
+
+/**
+ * A supplier's bill/invoice drafted by the assistant from an attached
+ * receipt: createChargeSchema plus the entity and brand it belongs to (the
+ * Supplier Detail page gets those from the URL). See createSupplierBill.
+ */
+export const createSupplierBillSchema = createChargeSchema.extend({
+  brandId: z.string().uuid(),
+  ledgerEntityId: z.string().uuid(),
+  transactionDate: dateOnly,
+});
+
+export type CreateSupplierBillInput = z.infer<typeof createSupplierBillSchema>;
 
 export type CreateChargeInput = z.infer<typeof createChargeSchema>;
 

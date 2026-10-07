@@ -3,6 +3,7 @@ import { ApiError } from "../../utils/apiError.js";
 import { sendSuccess } from "../../utils/apiResponse.js";
 import { confirmAction, rejectAction } from "./actions.service.js";
 import { checkModelConnection } from "./assistant.client.js";
+import { createAttachment } from "./attachments.service.js";
 import { deleteConversation, getAssistantStatus, getConversation, listConversations } from "./assistant.service.js";
 import {
   actionIdParamSchema,
@@ -48,6 +49,18 @@ function parseActionId(req: Request): string {
   const parsed = actionIdParamSchema.safeParse(req.params);
   if (!parsed.success) throw ApiError.notFound("Action not found");
   return parsed.data.id;
+}
+
+export async function createAttachmentHandler(req: Request, res: Response): Promise<void> {
+  if (!Buffer.isBuffer(req.body) || req.body.length === 0) throw ApiError.badRequest("Request body must be the raw file bytes");
+  const fileName = req.headers["x-file-name"];
+  const attachment = await createAttachment({
+    userId: req.user!.id,
+    bytes: req.body,
+    contentType: req.headers["content-type"] ?? "",
+    fileName: typeof fileName === "string" ? fileName : undefined,
+  });
+  sendSuccess(res, 201, attachment);
 }
 
 export async function chatHandler(req: Request, res: Response): Promise<void> {

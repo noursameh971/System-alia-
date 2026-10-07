@@ -5,7 +5,39 @@ import { API_BASE_URL } from "./env";
 /** Admin AI assistant — client for /api/assistant (admin-only on the server). */
 
 export type AssistantActionStatus = "proposed" | "executed" | "rejected" | "failed" | "expired";
-export type AssistantToolName = "propose_expense" | "propose_revenue";
+export type AssistantToolName = "propose_expense" | "propose_revenue" | "propose_supplier_bill";
+
+/** What the receipt reader read from an attached file — the server's ReceiptExtraction. */
+export interface ReceiptExtraction {
+  kind: "transfer" | "invoice" | "receipt" | "other";
+  transferDirection: "sent" | "received" | null;
+  amount: number | null;
+  currency: string | null;
+  date: string | null;
+  dueDate: string | null;
+  counterparty: string | null;
+  paymentMethod: string | null;
+  paymentStatus: "paid" | "unpaid" | "unknown";
+  reference: string | null;
+  summary: string | null;
+  items: { description: string; amount: number | null }[];
+  suggestedCategory: string | null;
+  legibility: "clear" | "partial" | "poor";
+  uncertainties: string | null;
+}
+
+/** A receipt or invoice attached in the panel. url is a /uploads/receipts path (see resolveImageUrl). */
+export interface AssistantAttachment {
+  id: string;
+  url: string;
+  fileName: string | null;
+  contentType: string;
+  sizeBytes: number;
+  extractionStatus: "done" | "failed";
+  extraction: ReceiptExtraction | null;
+  extractionError: string | null;
+  createdAt: string;
+}
 
 export interface AssistantAction {
   id: string;
@@ -16,6 +48,10 @@ export interface AssistantAction {
   payload: Record<string, unknown>;
   /** Fields the assistant defaulted (e.g. date, payment method) rather than heard from the admin. */
   assumedFields: string[];
+  /** The attached receipt this draft was made from; its file is payload.receiptUrl. */
+  attachmentId: string | null;
+  /** Card-only facts the server resolved, e.g. the linked supplier's name. */
+  display: Record<string, string>;
   status: AssistantActionStatus;
   resultTable: string | null;
   resultId: string | null;
@@ -31,6 +67,8 @@ export interface AssistantStoredMessage {
   text: string;
   toolCallIds: string[];
   createdAt: string;
+  /** Files the admin sent with this message. */
+  attachments: AssistantAttachment[];
 }
 
 export interface AssistantConversationSummary {
@@ -77,6 +115,29 @@ export function deleteAssistantConversation(id: string): Promise<{ deleted: bool
   return apiFetch(`/api/assistant/conversations/${encodeURIComponent(id)}`, { method: "DELETE" });
 }
 
+/**
+ * Uploads one receipt for the next message. The server stores it and reads
+ * it with the vision model before answering, so this resolves with what
+ * was read (or why it couldn't be) — typically in a second or two.
+ */
+export async function uploadAssistantAttachment(file: File, signal?: AbortSignal): Promise<AssistantAttachment> {
+  const res = await fetch(`${API_BASE_URL}/api/assistant/attachments`, {
+    method: "POST",
+    headers: {
+      "Content-Type": file.type || "application/octet-stream",
+      "X-File-Name": encodeURIComponent(file.name),
+      ...getAuthHeaders(),
+    },
+    body: file,
+    signal,
+  });
+  const body = (await res.json().catch(() => null)) as { success?: boolean; data?: AssistantAttachment; error?: { message?: string; details?: unknown } } | null;
+  if (!res.ok || !body?.success || !body.data) {
+    throw new ApiError(body?.error?.message ?? `Upload failed with status ${res.status}`, res.status, body?.error?.details);
+  }
+  return body.data;
+}
+
 export function confirmAssistantAction(
   id: string,
   overrides: Record<string, unknown>,
@@ -99,7 +160,7 @@ export function rejectAssistantAction(id: string): Promise<AssistantAction> {
  * 429…) throw ApiError like any other call.
  */
 export async function streamAssistantTurn(
-  body: { conversationId?: string; brandId: string | null; message: string },
+  body: { conversationId?: string; brandId: string | null; message: string; attachmentIds?: string[]; locale?: "en" | "ar" },
   onEvent: (event: AssistantStreamEvent) => void,
   signal?: AbortSignal,
 ): Promise<void> {

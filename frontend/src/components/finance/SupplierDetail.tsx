@@ -4,11 +4,12 @@ import { useState } from "react";
 import Link from "next/link";
 import useSWR from "swr";
 import { toast } from "sonner";
-import { ArrowLeft, CircleDollarSign, Download, Pencil, Plus, Trash2 } from "lucide-react";
+import { ArrowLeft, CircleDollarSign, Download, Paperclip, Pencil, Plus, Trash2 } from "lucide-react";
 import { useWorkspace } from "@/context/WorkspaceContext";
 import { useLocale } from "@/context/LocaleContext";
 import { ApiError } from "@/lib/apiClient";
 import { formatPrice } from "@/lib/formatPrice";
+import { resolveImageUrl } from "@/lib/images";
 import {
   deleteLedgerTransaction,
   exportLedgerEntityStatement,
@@ -214,6 +215,19 @@ export function SupplierDetail({ entityId }: { entityId: string }) {
                     </TableCell>
                     <TableCell className="py-3 text-end">
                       <div className="flex items-center justify-end gap-1">
+                        {tx.receiptUrl ? (
+                          <Button variant="ghost" size="icon" asChild>
+                            <a
+                              href={resolveImageUrl(tx.receiptUrl)!}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              aria-label={t("View receipt")}
+                              title={t("View receipt")}
+                            >
+                              <Paperclip className="size-4" />
+                            </a>
+                          </Button>
+                        ) : null}
                         <Button
                           variant="ghost"
                           size="icon"

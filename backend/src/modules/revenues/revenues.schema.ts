@@ -16,6 +16,8 @@ export const createRevenueSchema = z.object({
   category: z.enum(REVENUE_CATEGORIES),
   amount: z.number().positive("Amount must be greater than 0").max(99_999_999),
   revenueDate: dateOnly,
+  /** URL of a file already uploaded via POST /api/uploads/receipts (or attached in the assistant) — never raw bytes. */
+  receiptUrl: z.string().trim().max(2000).optional().or(z.literal("")),
   notes: z.string().trim().max(2000).optional().or(z.literal("")),
 });
 

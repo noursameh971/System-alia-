@@ -1,4 +1,4 @@
-import { index, integer, jsonb, pgTable, text, timestamp, uuid, varchar } from "drizzle-orm/pg-core";
+import { char, index, integer, jsonb, pgTable, text, timestamp, uuid, varchar } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { brands } from "./brands.js";
 import { users } from "./users.js";
@@ -57,6 +57,10 @@ export const aiActions = pgTable(
     payload: jsonb("payload").$type<Record<string, unknown>>().notNull(),
     /** Payload fields the model defaulted rather than took from the admin — highlighted on the card. See 0025. */
     assumedFields: text("assumed_fields").array().notNull().default(sql`'{}'::text[]`),
+    /** The receipt this draft was made from, if any. See 0027. */
+    attachmentId: uuid("attachment_id").references(() => aiAttachments.id, { onDelete: "set null" }),
+    /** Card-only facts beyond the payload — e.g. the linked supplier's name. The shownOnCard values the model was given. */
+    display: jsonb("display").$type<Record<string, string>>().notNull().default(sql`'{}'::jsonb`),
     status: aiActionStatusEnum("status").notNull().default("proposed"),
     resultTable: varchar("result_table", { length: 64 }),
     resultId: uuid("result_id"),
@@ -73,4 +77,28 @@ export const aiActions = pgTable(
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [index("ix_ai_actions_conversation").on(table.conversationId, table.createdAt)],
+);
+
+/** A receipt or invoice attached in the assistant panel — see database/migrations/0027_add_ai_attachments.sql. */
+export const aiAttachments = pgTable(
+  "ai_attachments",
+  {
+    id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+    uploadedBy: uuid("uploaded_by")
+      .notNull()
+      .references(() => users.id, { onDelete: "restrict" }),
+    conversationId: uuid("conversation_id").references(() => aiConversations.id, { onDelete: "set null" }),
+    messageId: uuid("message_id").references(() => aiMessages.id, { onDelete: "set null" }),
+    fileUrl: text("file_url").notNull(),
+    fileName: varchar("file_name", { length: 255 }),
+    contentType: varchar("content_type", { length: 100 }).notNull(),
+    sizeBytes: integer("size_bytes").notNull(),
+    sha256: char("sha256", { length: 64 }).notNull(),
+    /** receiptReader.ts's ReceiptExtraction, or null when reading failed. */
+    extraction: jsonb("extraction").$type<Record<string, unknown>>(),
+    extractionStatus: varchar("extraction_status", { length: 16 }).$type<"done" | "failed">().notNull(),
+    extractionError: text("extraction_error"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [index("ix_ai_attachments_sha256").on(table.sha256), index("ix_ai_attachments_conversation").on(table.conversationId)],
 );

@@ -7,11 +7,12 @@ import {
   getAssistantConversation,
   streamAssistantTurn,
   type AssistantAction,
+  type AssistantAttachment,
   type AssistantConversation,
 } from "@/lib/assistant";
 
 export type AssistantTurn =
-  | { id: string; role: "user"; text: string }
+  | { id: string; role: "user"; text: string; attachments: AssistantAttachment[] }
   | {
       id: string;
       role: "assistant";
@@ -42,8 +43,9 @@ export function conversationToTurns(conversation: AssistantConversation): Assist
 
   for (const message of conversation.messages) {
     if (message.role === "user") {
-      if (message.text) {
-        turns.push({ id: message.id, role: "user", text: message.text });
+      const attachments = message.attachments ?? [];
+      if (message.text || attachments.length > 0) {
+        turns.push({ id: message.id, role: "user", text: message.text, attachments });
         current = null;
       }
       continue;
@@ -88,14 +90,15 @@ export function useAssistantChat() {
   );
 
   const send = useCallback(
-    async (message: string, brandId: string | null) => {
+    async (message: string, brandId: string | null, options: { attachments?: AssistantAttachment[]; locale?: "en" | "ar" } = {}) => {
       const text = message.trim();
-      if (!text || busy) return;
+      const attachments = options.attachments ?? [];
+      if ((!text && attachments.length === 0) || busy) return;
 
       const replyId = localId();
       setTurns((previous) => [
         ...previous,
-        { id: localId(), role: "user", text },
+        { id: localId(), role: "user", text, attachments },
         { id: replyId, role: "assistant", text: "", actions: [], pending: true, activeTool: null, error: null },
       ]);
       setBusy(true);
@@ -104,7 +107,13 @@ export function useAssistantChat() {
 
       try {
         await streamAssistantTurn(
-          { conversationId: conversationId ?? undefined, brandId, message: text },
+          {
+            conversationId: conversationId ?? undefined,
+            brandId,
+            message: text,
+            attachmentIds: attachments.map((attachment) => attachment.id),
+            locale: options.locale,
+          },
           (event) => {
             switch (event.type) {
               case "start":

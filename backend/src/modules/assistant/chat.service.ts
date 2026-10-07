@@ -7,7 +7,8 @@ import { ApiError } from "../../utils/apiError.js";
 import { listBrands } from "../brands/brands.service.js";
 import { discardActions, type ActionRow } from "./actions.service.js";
 import { getModelClient } from "./assistant.client.js";
-import { toChatMessage, turnReplyText, type ChatMessage } from "./history.js";
+import { describeAttachment, linkAttachmentsToMessage, loadTurnAttachments, type AttachmentRow } from "./attachments.service.js";
+import { toChatMessage, turnReplyText, userMessageText, type ChatMessage } from "./history.js";
 import { buildTurnContext, replyLanguageFor, SYSTEM_PROMPT } from "./prompt.js";
 import type { BrandRef, ToolContext } from "./tools/context.js";
 import { executeTool, toFunctionTool, type AssistantTool } from "./tools/defineTool.js";
@@ -32,7 +33,12 @@ export interface ChatTurnInput {
   conversationId?: string;
   /** The workspace the chat is open in. undefined = keep the conversation's; null = cross-brand page. */
   brandId?: string | null;
+  /** May be empty when attachments are sent on their own. */
   message: string;
+  /** Uploaded via POST /attachments; they must be this admin's, and not already sent in another conversation. */
+  attachmentIds?: string[];
+  /** The panel's language — used for the reply when the message has no words to tell from. */
+  locale?: "en" | "ar";
 }
 
 export interface ChatTurnResult {
@@ -133,7 +139,16 @@ function toApiError(err: unknown): unknown {
   return err;
 }
 
-async function loadOrCreateConversation(input: ChatTurnInput, brands: BrandRef[]) {
+/** A new conversation's title: what the admin typed, or what they attached. */
+function conversationTitle(message: string, attachments: AttachmentRow[]): string | null {
+  if (message.trim()) return message.trim().slice(0, 80);
+  const first = attachments[0];
+  if (!first) return null;
+  const counterparty = (first.extraction as { counterparty?: unknown } | null)?.counterparty;
+  return `Receipt: ${typeof counterparty === "string" ? counterparty : (first.fileName ?? "attachment")}`.slice(0, 80);
+}
+
+async function loadOrCreateConversation(input: ChatTurnInput, brands: BrandRef[], title: string | null) {
   if (input.brandId && !brands.some((brand) => brand.id === input.brandId)) {
     throw ApiError.badRequest("That workspace doesn't exist or is inactive");
   }
@@ -150,7 +165,7 @@ async function loadOrCreateConversation(input: ChatTurnInput, brands: BrandRef[]
 
   const [created] = await db
     .insert(aiConversations)
-    .values({ userId: input.userId, brandId: input.brandId ?? null, title: input.message.slice(0, 80) })
+    .values({ userId: input.userId, brandId: input.brandId ?? null, title })
     .returning();
   return created!;
 }
@@ -236,7 +251,12 @@ export async function runChatTurn(input: ChatTurnInput, options: ChatTurnOptions
   const emit = options.onEvent ?? (() => {});
   const client = getModelClient();
   const brands = await listBrands();
-  const conversation = await loadOrCreateConversation(input, brands);
+  const attachmentIds = [...new Set(input.attachmentIds ?? [])];
+  // Checked before a new conversation is created, so a bad attachment id
+  // doesn't leave an empty chat behind. (A conversation id that isn't this
+  // admin's matches no attachments, and then 404s just below.)
+  const { sending, usable } = await loadTurnAttachments(input.userId, input.conversationId ?? null, attachmentIds);
+  const conversation = await loadOrCreateConversation(input, brands, conversationTitle(input.message, sending));
 
   if (turnsInFlight.has(conversation.id)) {
     throw ApiError.conflict("The assistant is still answering your previous message in this conversation");
@@ -250,6 +270,7 @@ export async function runChatTurn(input: ChatTurnInput, options: ChatTurnOptions
     activeBrand: brands.find((brand) => brand.id === (input.brandId === undefined ? conversation.brandId : input.brandId)) ?? null,
     proposedActionIds: [],
     onActionProposed: (action) => emit({ type: "action", action }),
+    attachments: usable,
   };
 
   try {
@@ -273,7 +294,7 @@ export async function runChatTurn(input: ChatTurnInput, options: ChatTurnOptions
     const turnContext = buildTurnContext({
       brands,
       activeBrand: ctx.activeBrand,
-      replyLanguage: replyLanguageFor(input.message),
+      replyLanguage: replyLanguageFor(input.message, input.locale === "ar" ? "Arabic" : "English"),
       actions: priorActions.map((action) => ({
         id: action.id,
         toolName: action.toolName,
@@ -281,7 +302,10 @@ export async function runChatTurn(input: ChatTurnInput, options: ChatTurnOptions
       })),
     });
     const systemMessage: ChatMessage = { role: "system", content: `${SYSTEM_PROMPT}\n\n# This turn\n${turnContext}` };
-    const userMessage: ChatMessage = { role: "user", content: input.message };
+    // Each attachment reaches the model as what was read from it (see
+    // attachments.service.ts), stored with the message so replays match.
+    const attachmentBlocks = await Promise.all(sending.map((attachment) => describeAttachment(attachment, ctx.activeBrand)));
+    const userMessage: ChatMessage = { role: "user", content: userMessageText(input.message, attachmentBlocks) };
     const priorMessages = history.flatMap((row) => toChatMessage(row) ?? []);
 
     const tools: AssistantTool[] = [...buildReadTools(ctx), ...buildProposeTools(ctx)];
@@ -352,7 +376,11 @@ export async function runChatTurn(input: ChatTurnInput, options: ChatTurnOptions
       const nextTimestamp = () => new Date(turnStartedAt + sequence++);
       const usageQueue = [...stepUsage];
 
-      await tx.insert(aiMessages).values({ conversationId: conversation.id, role: "user", content: userMessage, createdAt: nextTimestamp() });
+      const [savedUserMessage] = await tx
+        .insert(aiMessages)
+        .values({ conversationId: conversation.id, role: "user", content: userMessage, createdAt: nextTimestamp() })
+        .returning({ id: aiMessages.id });
+      await linkAttachmentsToMessage(tx, attachmentIds, conversation.id, savedUserMessage!.id);
       for (const message of newMessages) {
         if (message.role !== "assistant" && message.role !== "tool") continue;
         const usage = message.role === "assistant" ? usageQueue.shift() : undefined;

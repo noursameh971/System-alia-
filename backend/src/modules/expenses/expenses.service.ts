@@ -107,6 +107,8 @@ export async function createExpense(
           amount: input.amount.toFixed(2),
           transactionDate: input.expenseDate,
           notes: `Expense: ${input.title}`,
+          // The same proof of payment, visible from the supplier's history too.
+          receiptUrl: input.receiptUrl?.trim() || null,
           createdBy: actorUserId,
         })
         .returning({ id: ledgerTransactions.id });

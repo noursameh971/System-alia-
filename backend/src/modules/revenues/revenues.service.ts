@@ -12,6 +12,7 @@ export interface RevenueRecord {
   amount: number;
   currency: string;
   revenueDate: string;
+  receiptUrl: string | null;
   notes: string | null;
   createdAt: string;
 }
@@ -25,6 +26,7 @@ function toRecord(row: typeof revenues.$inferSelect): RevenueRecord {
     amount: Number(row.amount),
     currency: row.currency,
     revenueDate: row.revenueDate,
+    receiptUrl: row.receiptUrl,
     notes: row.notes,
     createdAt: row.createdAt.toISOString(),
   };
@@ -58,6 +60,7 @@ export async function createRevenue(
       category: input.category,
       amount: input.amount.toFixed(2),
       revenueDate: input.revenueDate,
+      receiptUrl: input.receiptUrl?.trim() || null,
       notes: input.notes?.trim() || null,
       createdBy: actorUserId,
     })
@@ -74,6 +77,7 @@ export async function updateRevenue(id: string, input: UpdateRevenueInput): Prom
       ...(input.category !== undefined ? { category: input.category } : {}),
       ...(input.amount !== undefined ? { amount: input.amount.toFixed(2) } : {}),
       ...(input.revenueDate !== undefined ? { revenueDate: input.revenueDate } : {}),
+      ...(input.receiptUrl !== undefined ? { receiptUrl: input.receiptUrl.trim() || null } : {}),
       ...(input.notes !== undefined ? { notes: input.notes.trim() || null } : {}),
       updatedAt: sql`now()`,
     })

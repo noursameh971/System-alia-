@@ -4,6 +4,7 @@ import { useState } from "react";
 import { MoreVertical } from "lucide-react";
 import { useLocale } from "@/context/LocaleContext";
 import { formatPrice } from "@/lib/formatPrice";
+import { resolveImageUrl } from "@/lib/images";
 import type { Revenue } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/EmptyState";
@@ -103,6 +104,11 @@ export function RevenueTable({
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end">
                       <DropdownMenuItem onSelect={() => onEdit(revenue)}>{t("Edit")}</DropdownMenuItem>
+                      {revenue.receiptUrl ? (
+                        <DropdownMenuItem onSelect={() => window.open(resolveImageUrl(revenue.receiptUrl)!, "_blank", "noopener")}>
+                          {t("View receipt")}
+                        </DropdownMenuItem>
+                      ) : null}
                       <DropdownMenuItem variant="destructive" onSelect={() => onDelete(revenue)}>
                         {t("Delete")}
                       </DropdownMenuItem>
