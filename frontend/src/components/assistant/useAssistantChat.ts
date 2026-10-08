@@ -9,6 +9,7 @@ import {
   type AssistantAction,
   type AssistantAttachment,
   type AssistantConversation,
+  type AssistantToolStep,
 } from "@/lib/assistant";
 
 export type AssistantTurn =
@@ -22,6 +23,10 @@ export type AssistantTurn =
       pending: boolean;
       /** The tool the assistant is running right now, while pending. */
       activeTool: string | null;
+      /** What that tool is looking at ("statement: Cairo"), once its arguments are known. */
+      activeDetail: string | null;
+      /** Every tool the answer used, in order — shown under it. */
+      steps: AssistantToolStep[];
       error: string | null;
     };
 
@@ -51,10 +56,11 @@ export function conversationToTurns(conversation: AssistantConversation): Assist
       continue;
     }
     if (!current) {
-      current = { id: message.id, role: "assistant", text: "", actions: [], pending: false, activeTool: null, error: null };
+      current = { id: message.id, role: "assistant", text: "", actions: [], pending: false, activeTool: null, activeDetail: null, steps: [], error: null };
       turns.push(current);
     }
     if (message.text) current.text = current.text ? `${current.text}\n\n${message.text}` : message.text;
+    current.steps.push(...(message.toolSteps ?? []));
     for (const callId of message.toolCallIds) {
       const action = actionByToolUse.get(callId);
       if (action) {
@@ -67,7 +73,7 @@ export function conversationToTurns(conversation: AssistantConversation): Assist
   // Drafts that can't be matched to a tool call (none expected) still get shown, at the end.
   const orphans = conversation.actions.filter((action) => !placed.has(action.id));
   if (orphans.length > 0) {
-    turns.push({ id: localId(), role: "assistant", text: "", actions: orphans, pending: false, activeTool: null, error: null });
+    turns.push({ id: localId(), role: "assistant", text: "", actions: orphans, pending: false, activeTool: null, activeDetail: null, steps: [], error: null });
   }
   return turns;
 }
@@ -99,7 +105,7 @@ export function useAssistantChat() {
       setTurns((previous) => [
         ...previous,
         { id: localId(), role: "user", text, attachments },
-        { id: replyId, role: "assistant", text: "", actions: [], pending: true, activeTool: null, error: null },
+        { id: replyId, role: "assistant", text: "", actions: [], pending: true, activeTool: null, activeDetail: null, steps: [], error: null },
       ]);
       setBusy(true);
       const abort = new AbortController();
@@ -120,10 +126,20 @@ export function useAssistantChat() {
                 setConversationId(event.conversationId);
                 break;
               case "text":
-                updateAssistantTurn(replyId, (turn) => ({ text: turn.text + event.delta, activeTool: null }));
+                updateAssistantTurn(replyId, (turn) => ({ text: turn.text + event.delta, activeTool: null, activeDetail: null }));
                 break;
               case "tool":
-                updateAssistantTurn(replyId, () => ({ activeTool: event.name }));
+                // Sent twice per call: as the model starts writing it (no
+                // detail), then as it runs (detail, "" when there's none to show).
+                updateAssistantTurn(replyId, (turn) =>
+                  event.detail === undefined
+                    ? { activeTool: event.name, activeDetail: null }
+                    : {
+                        activeTool: event.name,
+                        activeDetail: event.detail || null,
+                        steps: [...turn.steps, { name: event.name, ...(event.detail ? { detail: event.detail } : {}) }],
+                      },
+                );
                 break;
               case "action":
                 updateAssistantTurn(replyId, (turn) => ({ actions: [...turn.actions, event.action] }));
@@ -136,6 +152,7 @@ export function useAssistantChat() {
                   actions: event.result.actions,
                   pending: false,
                   activeTool: null,
+                  activeDetail: null,
                 }));
                 break;
               case "error":

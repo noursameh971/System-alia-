@@ -69,20 +69,61 @@ export function turnReplyText(messages: ChatMessage[]): string {
     .join("\n\n");
 }
 
+/** What the UI shows for a tool call: its view and search phrase, if it has them ("trend", "statement: Cairo"). */
+export function describeCall(rawArguments: string): string | undefined {
+  try {
+    const args = JSON.parse(rawArguments || "{}") as Record<string, unknown>;
+    const parts = [args.view, args.query ?? args.search ?? args.name ?? args.orderNumber].filter(
+      (part): part is string => typeof part === "string" && part.length > 0,
+    );
+    return parts.length > 0 ? parts.join(": ").slice(0, 80) : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 /** The UI's view of a transcript row: what was said, and which tool calls (hence which draft cards) belong to it. */
 export interface DisplayMessage {
   role: "user" | "assistant";
   text: string;
   toolCallIds: string[];
+  /** The investigation steps behind an answer, in order — shown under it as "Checked: …". */
+  toolSteps: { name: string; detail?: string }[];
 }
 
 export function toDisplayMessage(row: StoredMessage): DisplayMessage | null {
   const message = toChatMessage(row);
   if (!message || (message.role !== "user" && message.role !== "assistant")) return null;
-  const toolCallIds =
-    message.role === "assistant" && "tool_calls" in message && message.tool_calls
-      ? message.tool_calls.map((call) => call.id)
-      : [];
+  const calls = message.role === "assistant" && "tool_calls" in message && message.tool_calls ? message.tool_calls : [];
+  const toolCallIds = calls.map((call) => call.id);
+  const toolSteps = calls.flatMap((call) =>
+    call.type === "function" ? [{ name: call.function.name, ...(describeCall(call.function.arguments) ? { detail: describeCall(call.function.arguments) } : {}) }] : [],
+  );
   const text = textOf(message.content).trim();
-  return { role: message.role, text: message.role === "user" ? stripAttachmentBlocks(text) : text, toolCallIds };
+  return { role: message.role, text: message.role === "user" ? stripAttachmentBlocks(text) : text, toolCallIds, toolSteps };
+}
+
+export const OMITTED_TOOL_RESULT =
+  "(Earlier tool result omitted to save space. Its figures are not available: call the tool again if you need them, and never state a figure you can't see.)";
+
+/**
+ * The transcript as replayed to the model: the last `keepTurns` admin turns
+ * in full, older tool results replaced by a stub, and anything before the
+ * last `maxTurns` turns dropped. Every message is resent on every agent
+ * step, so a long chat would otherwise crowd out the provider's per-minute
+ * token budget with tool output nobody needs any more. The conversation
+ * itself (what was asked and answered) is kept; only bulky data goes.
+ *
+ * A cut always lands on an admin message, so a tool result is never
+ * separated from the assistant message that called it.
+ */
+export function compactHistory(messages: ChatMessage[], options: { keepTurns?: number; maxTurns?: number } = {}): ChatMessage[] {
+  const keepTurns = options.keepTurns ?? 2;
+  const maxTurns = options.maxTurns ?? 12;
+  const userIndexes = messages.flatMap((message, index) => (message.role === "user" ? [index] : []));
+  const start = userIndexes.length > maxTurns ? userIndexes[userIndexes.length - maxTurns]! : 0;
+  const fullFrom = userIndexes.length > keepTurns ? userIndexes[userIndexes.length - keepTurns]! : 0;
+  return messages.slice(start).map((message, offset) =>
+    message.role === "tool" && start + offset < fullFrom ? { ...message, content: OMITTED_TOOL_RESULT } : message,
+  );
 }

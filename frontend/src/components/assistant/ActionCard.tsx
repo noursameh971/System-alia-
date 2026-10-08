@@ -4,7 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { useSWRConfig } from "swr";
 import { toast } from "sonner";
-import { ArrowDownCircle, ArrowUpCircle, Check, Link2, ReceiptText, X, type LucideIcon } from "lucide-react";
+import { AlertTriangle, ArrowDownCircle, ArrowUpCircle, Check, Link2, ReceiptText, X, type LucideIcon } from "lucide-react";
 import { useLocale } from "@/context/LocaleContext";
 import { ApiError } from "@/lib/apiClient";
 import { confirmAssistantAction, rejectAssistantAction, type AssistantAction, type AssistantActionStatus } from "@/lib/assistant";
@@ -91,6 +91,8 @@ export function ActionCard({
   const receiptUrl = typeof action.payload.receiptUrl === "string" && action.payload.receiptUrl ? action.payload.receiptUrl : null;
   const supplier = action.display?.supplier;
   const supplierId = typeof action.payload.ledgerEntityId === "string" ? action.payload.ledgerEntityId : null;
+  // From the server's checks against the books (verify.ts): one per line. Written in English by the server.
+  const warnings = (action.display?.warnings ?? "").split("\n").filter(Boolean);
   const status = STATUS_STYLE[action.status];
 
   function displayValue(field: FieldSpec, raw: string): string {
@@ -277,6 +279,19 @@ export function ActionCard({
           <Link2 className="size-3.5 shrink-0" aria-hidden />
           {t("Adds to what we owe this supplier — not an expense until you pay it")}
         </p>
+      ) : null}
+      {warnings.length > 0 && editable ? (
+        <ul
+          aria-label={t("Check before confirming")}
+          className="mt-2 space-y-1 rounded-md border border-amber-200 bg-amber-50 px-2.5 py-2 text-xs text-amber-900 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-200"
+        >
+          {warnings.map((warning) => (
+            <li key={warning} className="flex gap-1.5">
+              <AlertTriangle className="mt-0.5 size-3.5 shrink-0" aria-hidden />
+              <span>{warning}</span>
+            </li>
+          ))}
+        </ul>
       ) : null}
       {action.status === "failed" && action.error ? <p className="mt-2 text-xs text-red-600 dark:text-red-400">{action.error}</p> : null}
 

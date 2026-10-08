@@ -25,15 +25,30 @@ import { useSpeechInput } from "./useSpeechInput";
 
 /** What the admin sees while a tool runs — English source strings for t(). */
 const TOOL_ACTIVITY: Record<string, string> = {
-  get_finance_summary: "Checking the books…",
-  list_expenses: "Looking up expenses…",
-  list_revenues: "Looking up revenue…",
-  get_cash_flow: "Checking balances…",
-  find_ledger_entities: "Searching suppliers…",
-  get_inventory_overview: "Checking stock…",
+  search_knowledge: "Searching the knowledge base…",
+  business_snapshot: "Reviewing the whole business…",
+  finance: "Checking the books…",
+  ledger: "Checking supplier balances…",
+  inventory: "Checking stock…",
+  orders: "Looking at orders…",
+  factory: "Checking the factory…",
   propose_expense: "Drafting the expense…",
   propose_revenue: "Drafting the revenue…",
   propose_supplier_bill: "Drafting the supplier bill…",
+};
+
+/** The same tools as nouns, for the "Checked: …" line under an answer. */
+const TOOL_SOURCE: Record<string, string> = {
+  search_knowledge: "Knowledge base",
+  business_snapshot: "Business overview",
+  finance: "Finance",
+  ledger: "Ledger",
+  inventory: "Inventory",
+  orders: "Orders",
+  factory: "Factory",
+  propose_expense: "Draft",
+  propose_revenue: "Draft",
+  propose_supplier_bill: "Draft",
 };
 
 const VOICE_LANGUAGE_KEY = "alia-noori:assistantVoiceLanguage";
@@ -79,10 +94,10 @@ function attachmentStatus(item: PendingAttachment): { text: string; translate: b
 }
 
 const SUGGESTIONS = [
-  "How much did we spend this month?",
+  "How are we doing this month compared to last?",
+  "What do we owe suppliers, and is anything overdue?",
+  "What's running low, and is it selling?",
   "I spent 2000 EGP for the lawyer",
-  "Record a sale for client Ahmed worth 5000 EGP",
-  "What's running low on stock?",
 ];
 
 export function AssistantPanel({
@@ -355,10 +370,32 @@ export function AssistantPanel({
               <div key={turn.id} className="space-y-2 text-sm text-slate-800 dark:text-slate-200">
                 {turn.text ? <MessageText text={turn.text} /> : null}
                 {turn.pending ? (
-                  <p className="flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
-                    <Loader2 className="size-3.5 animate-spin" aria-hidden />
-                    {t(turn.activeTool ? (TOOL_ACTIVITY[turn.activeTool] ?? "Working…") : turn.text ? "Writing…" : "Thinking…")}
+                  <p role="status" className="flex min-w-0 items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
+                    <Loader2 className="size-3.5 shrink-0 animate-spin" aria-hidden />
+                    <span className="shrink-0">
+                      {t(turn.activeTool ? (TOOL_ACTIVITY[turn.activeTool] ?? "Working…") : turn.text ? "Writing…" : "Thinking…")}
+                    </span>
+                    {turn.activeTool && turn.activeDetail ? (
+                      <span dir="auto" className="truncate text-slate-400 dark:text-slate-500">
+                        {turn.activeDetail}
+                      </span>
+                    ) : null}
+                    {turn.steps.length > 1 ? <span className="shrink-0 text-slate-400">· {turn.steps.length}</span> : null}
                   </p>
+                ) : turn.steps.length > 0 ? (
+                  <details className="group text-[11px] text-slate-400 dark:text-slate-500">
+                    <summary className="cursor-pointer list-none select-none hover:text-slate-600 dark:hover:text-slate-300">
+                      {t("Checked")}: {[...new Set(turn.steps.map((step) => t(TOOL_SOURCE[step.name] ?? step.name)))].join(" · ")}
+                    </summary>
+                    <ol className="mt-1 list-decimal space-y-0.5 ps-5">
+                      {turn.steps.map((step, index) => (
+                        <li key={index} dir="auto">
+                          {t(TOOL_SOURCE[step.name] ?? step.name)}
+                          {step.detail ? <span className="text-slate-400"> — {step.detail}</span> : null}
+                        </li>
+                      ))}
+                    </ol>
+                  </details>
                 ) : null}
                 {turn.actions.map((action) => (
                   <ActionCard key={action.id} action={action} brands={brands} onChange={chat.replaceAction} />

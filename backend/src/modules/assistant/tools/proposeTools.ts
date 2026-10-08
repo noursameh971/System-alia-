@@ -7,6 +7,7 @@ import { createRevenueSchema, type RevenueCategory } from "../../revenues/revenu
 import { createProposedAction, type ActionKind } from "../actions.service.js";
 import type { AttachmentRow } from "../attachments.service.js";
 import type { ReceiptExtraction } from "../receiptReader.js";
+import { verifyExpense, verifyRevenue, verifySupplierBill } from "../verify.js";
 import { brandCodeField, formatEgp, resolveBrand, toolJson, ToolInputError, type BrandRef, type ToolContext } from "./context.js";
 import { defineTool, type ToolCall } from "./defineTool.js";
 
@@ -30,16 +31,15 @@ const MUST_COME_FROM_ADMIN = {
   propose_supplier_bill: ["amount"],
 } as const satisfies Record<ActionKind, readonly string[]>;
 
+/** The rules for what counts as assumed are in the system prompt ("Ask before you draft"); repeating them in three schemas would cost tokens on every step. */
 function assumedFieldsSchema(fields: readonly [string, ...string[]]) {
+  // Optional: a model that leaves it out shouldn't have the whole call
+  // rejected by the provider's schema check (observed with gpt-oss-20b). The
+  // server still marks an omitted payment method as assumed on its own.
   return z
     .array(z.enum(fields))
-    .describe(
-      "Every field you filled in yourself instead of taking from the admin's words or an attached receipt (e.g. " +
-        "expenseDate when neither gives a date). A value clearly derived from what they said counts as stated, not " +
-        "assumed: \"10k\" is amount 10000; \"for the lawyer\" gives the title and category professional_fees. A value " +
-        "the receipt reader read from an attached receipt also counts as stated — the admin checks it against the " +
-        "image on the card. The card highlights assumed fields. Be honest: an empty list means nothing was assumed.",
-    );
+    .default([])
+    .describe("Fields you filled in yourself, not from the admin's words or an attached receipt. Empty = nothing assumed.");
 }
 
 function assertNothingCriticalAssumed(toolName: ActionKind, assumed: readonly string[]): void {
@@ -66,11 +66,7 @@ const REVENUE_CATEGORY_LABELS: Record<RevenueCategory, string> = {
   other: "Other Income",
 };
 
-const attachmentIdField = z
-  .string()
-  .trim()
-  .optional()
-  .describe("The id of an attached receipt this entry is drafted from (given in the admin's message). Its file is saved as the entry's receipt.");
+const attachmentIdField = z.string().trim().optional().describe("The attached receipt this is drafted from; saved as its receipt.");
 
 function resolveAttachment(ctx: ToolContext, attachmentId: string | undefined): AttachmentRow | null {
   if (!attachmentId) return null;
@@ -90,7 +86,7 @@ function resolveAttachment(ctx: ToolContext, attachmentId: string | undefined): 
 async function resolvePayable(brand: BrandRef, ledgerEntityId: string): Promise<LedgerEntityWithBalance> {
   const entity = (await listLedgerEntities(brand.id)).find((candidate) => candidate.id === ledgerEntityId);
   if (!entity) {
-    throw new ToolInputError(`No ledger entity ${ledgerEntityId} in workspace ${brand.code} — look it up with find_ledger_entities.`);
+    throw new ToolInputError(`No ledger entity ${ledgerEntityId} in workspace ${brand.code} — look it up with the ledger tool (view=balances).`);
   }
   if (entity.balanceType !== "payable") {
     throw new ToolInputError(
@@ -110,6 +106,8 @@ async function propose(
     assumedFields: string[];
     attachment: AttachmentRow | null;
     shownOnCard: Record<string, string>;
+    /** From verify.ts — shown on the card and returned to the model to mention. */
+    warnings: string[];
   },
 ): Promise<string> {
   assertNothingCriticalAssumed(toolName, draft.assumedFields);
@@ -121,7 +119,8 @@ async function propose(
     payload: draft.payload,
     assumedFields: [...new Set(draft.assumedFields)],
     attachmentId: draft.attachment?.id ?? null,
-    display: draft.shownOnCard,
+    // One string, a warning per line: display is a flat string map.
+    display: draft.warnings.length > 0 ? { ...draft.shownOnCard, warnings: draft.warnings.join("\n") } : draft.shownOnCard,
     proposedBy: ctx.userId,
   });
   ctx.proposedActionIds.push(action.id);
@@ -132,7 +131,10 @@ async function propose(
     // Models have misquoted amounts in their own words (3000 → "300 000");
     // the card shows these exact values, so the reply should too.
     shownOnCard: draft.shownOnCard,
-    note: "Not saved yet. The admin sees a confirmation card and must press Confirm. Describe the draft using the shownOnCard values exactly as written.",
+    ...(draft.warnings.length > 0 ? { checks: draft.warnings } : { checks: "no problems found" }),
+    note:
+      "Not saved yet. The admin sees a confirmation card and must press Confirm. Describe the draft using the shownOnCard values exactly as written" +
+      (draft.warnings.length > 0 ? ", and tell the admin about each of the checks (they're also on the card)." : "."),
   });
 }
 
@@ -140,22 +142,19 @@ export function buildProposeTools(ctx: ToolContext) {
   const proposeExpense = defineTool({
     name: "propose_expense",
     description:
-      "Draft an operating expense for the admin to confirm. Does NOT save it. Use when the admin says they spent or " +
-      "paid money for the business, or attaches a receipt or transfer screenshot of a payment. Only call once the amount " +
-      "and what it was for are known (from the admin or the receipt), and the category is clear from that — otherwise " +
-      "ask first. Not for COGS or per-order customer shipping — those are derived from orders. If the expense pays a " +
-      "payable supplier in the ledger, pass its ledgerEntityId: the payment then also reduces their balance.",
+      "Draft an operating expense (money we paid) for the admin to confirm — not saved until they do. Never for COGS " +
+      "or per-order shipping. Paying a payable ledger supplier? Pass its ledgerEntityId so their balance drops too.",
     inputSchema: createExpenseSchema
       .omit({ brandId: true, receiptUrl: true })
       .extend({
         brand: brandCodeField,
         amount: z.coerce.number().positive("Amount must be greater than 0").max(99_999_999),
-        title: z.string().trim().min(1).max(200).describe("Short description, e.g. \"Lawyer fees\"."),
-        expenseDate: z.string().describe("YYYY-MM-DD. The receipt's date if one is attached, else today's when the admin doesn't say."),
+        title: z.string().trim().min(1).max(200).describe("e.g. \"Lawyer fees\""),
+        expenseDate: z.string().describe("YYYY-MM-DD"),
         notes: z.string().trim().max(2000).optional(),
         // No default here (the service schema defaults to cash): the run
         // function needs to see that it was left out, to mark it assumed.
-        paymentMethod: z.enum(EXPENSE_PAYMENT_METHODS).optional().describe("Omit when neither the admin nor the receipt says."),
+        paymentMethod: z.enum(EXPENSE_PAYMENT_METHODS).optional().describe("Omit if not stated"),
         attachmentId: attachmentIdField,
         assumedFields: assumedFieldsSchema(["amount", "title", "category", "paymentMethod", "expenseDate"]),
       }),
@@ -178,11 +177,20 @@ export function buildProposeTools(ctx: ToolContext) {
           : draft.paymentMethod === undefined
             ? assumedFields.filter((field) => field !== "paymentMethod")
             : assumedFields;
+      const warnings = await verifyExpense({
+        brandId: brand.id,
+        amount: payload.amount,
+        expenseDate: payload.expenseDate,
+        category: payload.category,
+        title: payload.title,
+        supplier,
+      });
       return propose(ctx, "propose_expense", call, {
         brandId: brand.id,
         payload,
         assumedFields: assumed,
         attachment,
+        warnings,
         shownOnCard: {
           amount: formatEgp(payload.amount),
           title: payload.title,
@@ -205,15 +213,13 @@ export function buildProposeTools(ctx: ToolContext) {
   const proposeRevenue = defineTool({
     name: "propose_revenue",
     description:
-      "Draft hand-recorded revenue for the admin to confirm. Does NOT save it. Use for a sale or income that is not " +
-      "an Order in the system — e.g. \"record a sale for client X worth 5000\", or a screenshot of a transfer the " +
-      "business received: source is the client, category product_sales (wholesale for bulk/B2B sales). Only call once " +
-      "the amount and who it came from are known — otherwise ask first. Does not move stock.",
+      "Draft recorded revenue (a sale or income that isn't an Order, e.g. a client's transfer) for the admin to " +
+      "confirm — not saved until they do. Doesn't move stock.",
     inputSchema: createRevenueSchema.omit({ brandId: true, receiptUrl: true }).extend({
       brand: brandCodeField,
       amount: z.coerce.number().positive("Amount must be greater than 0").max(99_999_999),
-      source: z.string().trim().min(1).max(200).describe("Who or what the money came from, e.g. the client's name."),
-      revenueDate: z.string().describe("YYYY-MM-DD. The receipt's date if one is attached, else today's when the admin doesn't say."),
+      source: z.string().trim().min(1).max(200).describe("Who it came from"),
+      revenueDate: z.string().describe("YYYY-MM-DD"),
       notes: z.string().trim().max(2000).optional(),
       attachmentId: attachmentIdField,
       assumedFields: assumedFieldsSchema(["amount", "source", "category", "revenueDate"]),
@@ -222,11 +228,13 @@ export function buildProposeTools(ctx: ToolContext) {
       const brand = resolveBrand(ctx, brandCode);
       const attachment = resolveAttachment(ctx, attachmentId);
       const payload = createRevenueSchema.parse({ ...draft, brandId: brand.id, receiptUrl: attachment?.fileUrl });
+      const warnings = await verifyRevenue({ brandId: brand.id, amount: payload.amount, revenueDate: payload.revenueDate, source: payload.source });
       return propose(ctx, "propose_revenue", call, {
         brandId: brand.id,
         payload,
         assumedFields,
         attachment,
+        warnings,
         shownOnCard: {
           amount: formatEgp(payload.amount),
           source: payload.source,
@@ -242,18 +250,15 @@ export function buildProposeTools(ctx: ToolContext) {
   const proposeSupplierBill = defineTool({
     name: "propose_supplier_bill",
     description:
-      "Draft a bill (invoice) from a payable supplier in the ledger, for the admin to confirm. Does NOT save it. It " +
-      "ADDS to what we owe them; it is not a payment and not an operating expense. Use for an invoice that hasn't been " +
-      "paid yet (e.g. marked آجل / on credit, or the admin says they'll pay later). A paid invoice or a payment " +
-      "screenshot is propose_expense with the supplier's ledgerEntityId instead. The supplier must already be in the " +
-      "ledger — if it isn't, tell the admin to add it on the Suppliers page first.",
+      "Draft an UNPAID bill/invoice from a payable ledger supplier (e.g. آجل, on credit) for the admin to confirm. It " +
+      "adds to what we owe them — not a payment, not an expense. A paid invoice is propose_expense with ledgerEntityId.",
     inputSchema: z.object({
       brand: brandCodeField,
-      ledgerEntityId: z.string().trim().describe("From find_ledger_entities or the attachment's ledger matches."),
+      ledgerEntityId: z.string().trim().describe("From the ledger tool, search_knowledge or an attachment's matches"),
       amount: z.coerce.number().positive("Amount must be greater than 0").max(99_999_999),
-      transactionDate: z.string().describe("YYYY-MM-DD: the invoice date. Today's when neither the admin nor the invoice gives one."),
-      dueDate: z.string().optional().describe("YYYY-MM-DD, only if the invoice or the admin gives one."),
-      notes: z.string().trim().max(2000).optional().describe("What the bill is for, e.g. \"Invoice 1187 — printed boxes\"."),
+      transactionDate: z.string().describe("Invoice date, YYYY-MM-DD"),
+      dueDate: z.string().optional().describe("YYYY-MM-DD, only if given"),
+      notes: z.string().trim().max(2000).optional().describe("e.g. \"Invoice 1187 — printed boxes\""),
       attachmentId: attachmentIdField,
       assumedFields: assumedFieldsSchema(["amount", "transactionDate", "dueDate"]),
     }),
@@ -262,11 +267,19 @@ export function buildProposeTools(ctx: ToolContext) {
       const attachment = resolveAttachment(ctx, attachmentId);
       const supplier = await resolvePayable(brand, draft.ledgerEntityId);
       const payload = createSupplierBillSchema.parse({ ...draft, brandId: brand.id, receiptUrl: attachment?.fileUrl });
+      const warnings = await verifySupplierBill({
+        ledgerEntityId: supplier.id,
+        supplierName: supplier.name,
+        amount: payload.amount,
+        transactionDate: payload.transactionDate,
+        dueDate: payload.dueDate,
+      });
       return propose(ctx, "propose_supplier_bill", call, {
         brandId: brand.id,
         payload,
         assumedFields,
         attachment,
+        warnings,
         shownOnCard: {
           supplier: supplier.name,
           amount: formatEgp(payload.amount),

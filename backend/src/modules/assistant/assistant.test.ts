@@ -3,7 +3,22 @@ import assert from "node:assert/strict";
 import { z } from "zod";
 import { businessDate } from "../../utils/businessDate.js";
 import { sniffContentType } from "../uploads/uploads.image.service.js";
-import { attachmentBlock, stripAttachmentBlocks, toChatMessage, toDisplayMessage, turnReplyText, userMessageText } from "./history.js";
+import { chunkText } from "../knowledge/chunker.js";
+import { fuseRankings, keywordTerms, looksLikeIdentifier } from "../knowledge/search.service.js";
+import {
+  attachmentBlock,
+  compactHistory,
+  OMITTED_TOOL_RESULT,
+  stripAttachmentBlocks,
+  toChatMessage,
+  toDisplayMessage,
+  turnReplyText,
+  userMessageText,
+  type ChatMessage,
+} from "./history.js";
+import { monthRanges } from "./tools/readTools.js";
+import { calibrationFor, fitToBudget, learnCalibration, overBudgetBy } from "./tokenBudget.js";
+import { dateWarnings } from "./verify.js";
 import { matchLedgerEntities, normalizeName } from "./ledgerMatch.js";
 import { parseExtraction, ReceiptReadError } from "./receiptReader.js";
 import { buildTurnContext, replyLanguageFor } from "./prompt.js";
@@ -19,6 +34,7 @@ const ctx = (activeBrand: ToolContext["activeBrand"]): ToolContext => ({
   activeBrand,
   proposedActionIds: [],
   attachments: new Map(),
+  knowledgeRefs: 0,
 });
 
 test("resolveBrand defaults to the active workspace and matches codes case-insensitively", () => {
@@ -57,14 +73,26 @@ test("stored rows replay as chat messages; legacy Anthropic rows degrade to thei
   assert.equal(toChatMessage({ role: "assistant", content: [{ type: "tool_use", id: "t1", name: "x", input: {} }] }), null);
 });
 
-test("toDisplayMessage hides tool results and exposes the ids of the calls a message made", () => {
+test("toDisplayMessage hides tool results and exposes the calls a message made, with their steps", () => {
   assert.equal(toDisplayMessage({ role: "tool", content: { role: "tool", tool_call_id: "c1", content: "{}" } }), null);
   assert.deepEqual(
     toDisplayMessage({
       role: "assistant",
-      content: { role: "assistant", content: "Drafted.", tool_calls: [{ id: "c9", type: "function", function: { name: "propose_expense", arguments: "{}" } }] },
+      content: {
+        role: "assistant",
+        content: "Drafted.",
+        tool_calls: [
+          { id: "c8", type: "function", function: { name: "ledger", arguments: '{"view":"statement","name":"Cairo"}' } },
+          { id: "c9", type: "function", function: { name: "propose_expense", arguments: "{}" } },
+        ],
+      },
     }),
-    { role: "assistant", text: "Drafted.", toolCallIds: ["c9"] },
+    {
+      role: "assistant",
+      text: "Drafted.",
+      toolCallIds: ["c8", "c9"],
+      toolSteps: [{ name: "ledger", detail: "statement: Cairo" }, { name: "propose_expense" }],
+    },
   );
 });
 
@@ -205,4 +233,130 @@ test("sniffContentType trusts the bytes, not the label", () => {
   assert.equal(sniffContentType(Buffer.from("RIFF\0\0\0\0WEBPVP8 ", "latin1")), "image/webp");
   assert.equal(sniffContentType(Buffer.from("%PDF-1.7\n")), "application/pdf");
   assert.equal(sniffContentType(Buffer.from("<html><script>alert(1)</script>")), null);
+});
+
+test("chunkText keeps chunks small, splits at paragraph/sentence boundaries, and overlaps", () => {
+  const paragraph = (n: number) => `Clause ${n}. ${"The supplier delivers fabric every week. ".repeat(6)}`.trim();
+  const text = [paragraph(1), paragraph(2), paragraph(3), paragraph(4)].join("\n\n");
+  const chunks = chunkText(text, { maxChars: 500, overlapChars: 60 });
+  assert.ok(chunks.length >= 3);
+  assert.ok(chunks.every((chunk) => chunk.length <= 500), "no chunk over the limit");
+  assert.ok(chunks[0]!.startsWith("Clause 1."));
+  // The overlap: the start of each later chunk repeats the end of the previous one.
+  assert.ok(chunks[1]!.includes("every week."));
+  const runOn = chunkText("word ".repeat(400), { maxChars: 300 });
+  assert.ok(runOn.every((chunk) => chunk.length <= 300) && runOn.length >= 6, "a text with no sentence breaks is cut between words");
+  assert.deepEqual(chunkText("   \n\n  "), []);
+});
+
+test("fuseRankings rewards agreement between the two rankings and respects weights", () => {
+  const c = (id: string, similarity?: number) => ({ chunk_id: id, document_id: `d${id}`, content: id, similarity });
+  const fused = fuseRankings(
+    [
+      { candidates: [c("a", 0.7), c("b", 0.6), c("c", 0.5)], weight: 1 },
+      { candidates: [c("c"), c("d")], weight: 1 },
+    ],
+    10,
+  );
+  assert.equal(fused[0]!.chunk_id, "c", "in both lists beats first in one");
+  assert.equal(fused.find((hit) => hit.chunk_id === "d")!.similarity, null, "keyword-only hits have no similarity");
+  assert.equal(fused.find((hit) => hit.chunk_id === "c")!.similarity, 0.5);
+  const weighted = fuseRankings([{ candidates: [c("a")], weight: 1 }, { candidates: [c("b")], weight: 0.5 }], 10);
+  assert.equal(weighted[0]!.chunk_id, "a");
+});
+
+test("keyword search drops filler words; identifiers are recognised", () => {
+  assert.equal(keywordTerms("who supplies our zippers and buttons?"), "supplies zippers buttons");
+  assert.equal(keywordTerms("مين بيورد الأقمشة؟"), "بيورد الأقمشة");
+  assert.equal(keywordTerms("what is the"), null);
+  assert.equal(looksLikeIdentifier("ALH-ABY-LIN-M"), true);
+  assert.equal(looksLikeIdentifier("Cairo Fabriks"), true);
+  assert.equal(looksLikeIdentifier("invoice 1187203 from the printer please"), true);
+  assert.equal(looksLikeIdentifier("what are our payment terms with them"), false);
+});
+
+test("compactHistory keeps recent turns whole, stubs older tool results, and cuts on an admin message", () => {
+  const turn = (n: number): ChatMessage[] => [
+    { role: "user", content: `question ${n}` },
+    { role: "assistant", content: "", tool_calls: [{ id: `t${n}`, type: "function", function: { name: "finance", arguments: "{}" } }] },
+    { role: "tool", tool_call_id: `t${n}`, content: `big result ${n}` },
+    { role: "assistant", content: `answer ${n}` },
+  ];
+  const history = [1, 2, 3, 4, 5].flatMap(turn);
+  const compacted = compactHistory(history, { keepTurns: 2, maxTurns: 4 });
+  assert.equal((compacted[0] as { content: string }).content, "question 2", "turn 1 dropped; starts on an admin message");
+  const tools = compacted.filter((message) => message.role === "tool") as { content: string }[];
+  assert.deepEqual(
+    tools.map((message) => message.content),
+    [OMITTED_TOOL_RESULT, OMITTED_TOOL_RESULT, "big result 4", "big result 5"],
+  );
+  assert.equal(compacted.filter((message) => message.role === "assistant" && message.content === "answer 3").length, 1, "answers are kept");
+  assert.deepEqual(compactHistory([]), []);
+});
+
+test("dateWarnings flags future and very old dates only", () => {
+  assert.deepEqual(dateWarnings("2026-10-07", "2026-10-07"), []);
+  assert.match(dateWarnings("2026-10-09", "2026-10-07")[0]!, /future/);
+  assert.match(dateWarnings("2026-05-01", "2026-10-07")[0]!, /159 days ago/);
+  assert.deepEqual(dateWarnings("2026-08-01", "2026-10-07"), []);
+});
+
+test("monthRanges covers whole months, oldest first, with the current one marked partial", () => {
+  const months = monthRanges(3, "2026-10-07");
+  assert.deepEqual(
+    months.map((month) => [month.month, month.from, month.to, month.partial]),
+    [
+      ["2026-08", "2026-08-01", "2026-08-31", false],
+      ["2026-09", "2026-09-01", "2026-09-30", false],
+      ["2026-10", "2026-10-01", "2026-10-07", true],
+    ],
+  );
+  assert.equal(monthRanges(2, "2026-03-31")[0]!.to, "2026-02-28");
+  assert.equal(monthRanges(13, "2026-01-15")[0]!.month, "2025-01");
+});
+
+test("the turn context carries pre-retrieved knowledge with its refs", () => {
+  const context = buildTurnContext({
+    brands: [alh],
+    activeBrand: alh,
+    actions: [],
+    knowledge: [{ ref: "K1", title: "Cairo Fabrics supply contract", text: "Invoices are paid within 30 days." }],
+    now: new Date("2026-10-07T10:00:00Z"),
+  });
+  assert.match(context, /\[K1\] Cairo Fabrics supply contract — Invoices are paid within 30 days\./);
+  assert.doesNotMatch(buildTurnContext({ brands: [alh], activeBrand: alh, actions: [] }), /knowledge base/);
+});
+
+test("fitToBudget shrinks the reply room, then stubs this turn's older tool results — never the latest step's", () => {
+  const big = "x".repeat(6000);
+  const step = (id: string): ChatMessage[] => [
+    { role: "assistant", content: "", tool_calls: [{ id, type: "function", function: { name: "finance", arguments: "{}" } }] },
+    { role: "tool", tool_call_id: id, content: big },
+  ];
+  const messages: ChatMessage[] = [{ role: "system", content: "rules" }, { role: "user", content: "q" }, ...step("a"), ...step("b"), ...step("c")];
+  const roomy = fitToBudget(messages, "", { tokensPerMinute: 100_000, maxCompletion: 2000, turnStart: 2 });
+  assert.equal(roomy.maxCompletionTokens, 2000);
+  assert.equal(roomy.compacted, 0);
+
+  const tight = fitToBudget(messages, "", { tokensPerMinute: 5000, maxCompletion: 2000, turnStart: 2 });
+  assert.ok(tight.compacted >= 1 && tight.compacted <= 2, `compacted ${tight.compacted}`);
+  const tools = tight.messages.filter((message) => message.role === "tool") as { content: string }[];
+  assert.equal(tools.at(-1)!.content, big, "the latest step's result is kept whole");
+  assert.ok(tight.maxCompletionTokens >= 700);
+  assert.equal((messages[3] as { content: string }).content, big, "the caller's messages aren't mutated");
+  // Shortened, not erased: the head stays, with an instruction not to invent the rest.
+  const shortened = tools.find((message) => message.content !== big)!;
+  assert.ok(shortened.content.startsWith("xxxx") && /Never state a figure/.test(shortened.content), shortened.content.slice(-120));
+});
+
+test("the token budget learns each model's real token rate and reads the provider's overage", () => {
+  assert.equal(overBudgetBy("Request too large for model `x` on tokens per minute (TPM): Limit 8000, Requested 8231, please reduce"), 231);
+  assert.equal(overBudgetBy("Limit 8000, Requested 7000"), null);
+  assert.equal(overBudgetBy("something else"), null);
+  assert.ok(calibrationFor("never-seen") > 1, "an unseen model starts pessimistic");
+  learnCalibration("model-a", 4000, 5700);
+  const first = calibrationFor("model-a");
+  assert.ok(first >= 5700 / 4000, "never below what was observed");
+  learnCalibration("model-a", 4000, 4000);
+  assert.ok(calibrationFor("model-a") >= 1 && calibrationFor("model-a") <= first, "a lower observation pulls it down, not below the latest");
 });

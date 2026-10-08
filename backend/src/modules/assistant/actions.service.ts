@@ -8,6 +8,7 @@ import { createExpense } from "../expenses/expenses.service.js";
 import { createSupplierBillSchema } from "../ledger/ledger.schema.js";
 import { createSupplierBill } from "../ledger/ledger.service.js";
 import { createRevenueSchema } from "../revenues/revenues.schema.js";
+import { scheduleRecordSync } from "../knowledge/records.js";
 import { createRevenue } from "../revenues/revenues.service.js";
 
 /**
@@ -221,6 +222,8 @@ export async function confirmAction(actionId: string, userId: string, overrides:
   if (outcome.kind === "failed") {
     throw ApiError.conflict(`Couldn't save this: ${outcome.message}`, { status: "failed" });
   }
+  // The new row should be findable by search_knowledge right away, not at the next periodic sync.
+  scheduleRecordSync();
   return outcome.result;
 }
 

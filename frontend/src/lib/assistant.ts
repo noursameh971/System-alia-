@@ -69,6 +69,14 @@ export interface AssistantStoredMessage {
   createdAt: string;
   /** Files the admin sent with this message. */
   attachments: AssistantAttachment[];
+  /** The tools an assistant message called, in order — what it checked to answer. */
+  toolSteps: AssistantToolStep[];
+}
+
+export interface AssistantToolStep {
+  name: string;
+  /** e.g. "statement: Cairo", "trend" — the view and search phrase, when the call had them. */
+  detail?: string;
 }
 
 export interface AssistantConversationSummary {
@@ -94,7 +102,7 @@ export interface AssistantTurnResult {
 export type AssistantStreamEvent =
   | { type: "start"; conversationId: string }
   | { type: "text"; delta: string }
-  | { type: "tool"; name: string }
+  | { type: "tool"; name: string; detail?: string }
   | { type: "action"; action: AssistantAction }
   | { type: "done"; result: AssistantTurnResult }
   | { type: "error"; message: string; status: number };
@@ -194,4 +202,70 @@ export async function streamAssistantTurn(
       }
     }
   }
+}
+
+// ---------- Knowledge base (company documents the assistant searches) ----------
+
+export interface KnowledgeDocument {
+  id: string;
+  title: string;
+  /** null = company-wide (searched from every workspace). */
+  brandId: string | null;
+  ledgerEntityId: string | null;
+  ledgerEntityName: string | null;
+  fileUrl: string | null;
+  contentType: string | null;
+  status: "ready" | "failed";
+  error: string | null;
+  chunkCount: number;
+  createdAt: string;
+}
+
+export interface KnowledgeStatus {
+  enabled: boolean;
+  documents: number;
+  /** Indexed business records per type, e.g. { expense: 70, product: 82 }. */
+  records: Record<string, number>;
+  chunks: number;
+}
+
+export const KNOWLEDGE_FILE_TYPES = "application/pdf,text/plain,text/markdown,text/csv,.md,.csv,.txt,image/jpeg,image/png,image/webp";
+
+export function getKnowledgeStatus(): Promise<KnowledgeStatus> {
+  return apiFetch("/api/assistant/knowledge/status");
+}
+
+export function listKnowledgeDocuments(): Promise<KnowledgeDocument[]> {
+  return apiFetch("/api/assistant/knowledge/documents");
+}
+
+export function deleteKnowledgeDocument(id: string): Promise<{ deleted: boolean }> {
+  return apiFetch(`/api/assistant/knowledge/documents/${encodeURIComponent(id)}`, { method: "DELETE" });
+}
+
+export function reindexKnowledge(): Promise<{ indexed: number; removed: number; unchanged: number; ms: number }> {
+  return apiFetch("/api/assistant/knowledge/reindex", { method: "POST" });
+}
+
+/**
+ * Uploads a document as raw bytes; title / workspace / supplier ride as
+ * headers. Resolves once it's read, chunked and indexed (a scan or photo is
+ * transcribed first, which can take several seconds).
+ */
+export async function uploadKnowledgeDocument(
+  file: File,
+  tags: { title?: string; brandId?: string | null; ledgerEntityId?: string | null } = {},
+): Promise<KnowledgeDocument> {
+  const headers = new Headers(getAuthHeaders());
+  headers.set("Content-Type", file.type || "application/octet-stream");
+  headers.set("X-File-Name", encodeURIComponent(file.name));
+  if (tags.title?.trim()) headers.set("X-Title", encodeURIComponent(tags.title.trim()));
+  if (tags.brandId) headers.set("X-Brand-Id", tags.brandId);
+  if (tags.ledgerEntityId) headers.set("X-Ledger-Entity-Id", tags.ledgerEntityId);
+  const res = await fetch(`${API_BASE_URL}/api/assistant/knowledge/documents`, { method: "POST", headers, body: file });
+  const body = (await res.json().catch(() => null)) as { success?: boolean; data?: KnowledgeDocument; error?: { message?: string; details?: unknown } } | null;
+  if (!res.ok || !body?.success || !body.data) {
+    throw new ApiError(body?.error?.message ?? `Upload failed with status ${res.status}`, res.status, body?.error?.details);
+  }
+  return body.data;
 }

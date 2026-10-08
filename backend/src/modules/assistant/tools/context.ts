@@ -22,6 +22,8 @@ export interface ToolContext {
   onActionProposed?: (action: ActionRow) => void;
   /** Receipts the admin attached in this conversation (this turn's included), by id — what a propose tool's attachmentId may name. */
   attachments: Map<string, AttachmentRow>;
+  /** Knowledge citations handed out this turn ([K1], [K2]…) — numbered across searches so two searches never both have a K1. */
+  knowledgeRefs: number;
 }
 
 /**

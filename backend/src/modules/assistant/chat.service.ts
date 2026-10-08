@@ -8,15 +8,26 @@ import { listBrands } from "../brands/brands.service.js";
 import { discardActions, type ActionRow } from "./actions.service.js";
 import { getModelClient } from "./assistant.client.js";
 import { describeAttachment, linkAttachmentsToMessage, loadTurnAttachments, type AttachmentRow } from "./attachments.service.js";
-import { toChatMessage, turnReplyText, userMessageText, type ChatMessage } from "./history.js";
+import { compactHistory, describeCall, toChatMessage, turnReplyText, userMessageText, type ChatMessage } from "./history.js";
+import { retrieveForMessage } from "./retrieval.js";
+import { calibrationFor, estimateTokens, fitToBudget, learnCalibration, overBudgetBy } from "./tokenBudget.js";
 import { buildTurnContext, replyLanguageFor, SYSTEM_PROMPT } from "./prompt.js";
 import type { BrandRef, ToolContext } from "./tools/context.js";
 import { executeTool, toFunctionTool, type AssistantTool } from "./tools/defineTool.js";
 import { buildProposeTools } from "./tools/proposeTools.js";
 import { buildReadTools } from "./tools/readTools.js";
 
-/** One chat turn may take several tool round-trips ("compare this month to last" = two summaries + an answer); the cap stops a confused loop from running up cost. */
-const MAX_TOOL_ITERATIONS = 8;
+/**
+ * Model calls per turn. An investigation chains steps — find the supplier,
+ * read their statement, check stock, draft, answer — and reads in one step
+ * run in parallel, so 10 is room for real multi-hop work while still
+ * stopping a confused loop before it runs up cost.
+ */
+const MAX_TOOL_ITERATIONS = 10;
+/** A tool result longer than this is cut (with a note) — one huge listing would otherwise eat the per-minute token budget. */
+const MAX_TOOL_RESULT_CHARS = 6_000;
+/** Drafts run one at a time, after the step's reads: one may depend on another, and each writes a row. */
+const SEQUENTIAL_TOOLS = new Set(["propose_expense", "propose_revenue", "propose_supplier_bill"]);
 /**
  * Room for the reply plus a reasoning model's hidden reasoning. Kept tight
  * on purpose: Groq charges the full cap against the rate limit up front
@@ -59,8 +70,12 @@ export type ChatStreamEvent =
   | { type: "start"; conversationId: string }
   /** A chunk of the reply. Joined in order, the chunks are the reply as it's written. */
   | { type: "text"; delta: string }
-  /** The model is calling a tool — the UI shows what it's checking while it waits. */
-  | { type: "tool"; name: string }
+  /**
+   * The model is calling a tool — the UI shows what it's checking. Sent as
+   * the model starts writing the call (no detail), then again as it runs,
+   * with `detail` set (the view / search phrase, or "" if it has none).
+   */
+  | { type: "tool"; name: string; detail?: string }
   /** A draft was stored — render its confirmation card now. */
   | { type: "action"; action: ActionRow }
   | { type: "done"; result: ChatTurnResult }
@@ -116,6 +131,13 @@ function toApiError(err: unknown): unknown {
     // to wait — "15m30s" is very different advice from "a minute".
     const reason = providerReason(err);
     return new ApiError(429, reason ? `The assistant hit the model provider's usage limit: ${reason}` : "The assistant has hit its usage limit — try again shortly");
+  }
+  if (err instanceof OpenAI.APIError && (err.status === 413 || /context.length|too large|maximum context/i.test(err.message))) {
+    // Groq answers 413 when a single request is bigger than the per-minute
+    // token budget allows — a long chat plus large tool results — and the
+    // loop's own shrink-and-retry couldn't get under it.
+    console.error("Assistant: request too large even after shrinking:", providerReason(err) ?? err.message);
+    return new ApiError(413, "This conversation has grown too long for the model's limits — start a new chat (the drafts and history here are kept).");
   }
   if (err instanceof OpenAI.AuthenticationError || err instanceof OpenAI.PermissionDeniedError) {
     console.error("Assistant: the model API rejected the key", err.message);
@@ -190,6 +212,7 @@ async function streamStep(
   emit: (event: ChatStreamEvent) => void,
   signal: AbortSignal | undefined,
   separateFromPrevious: boolean,
+  maxCompletionTokens: number,
 ): Promise<StepResult> {
   const stream = await client.chat.completions.create(
     {
@@ -199,7 +222,7 @@ async function streamStep(
       tool_choice: "auto",
       stream: true,
       stream_options: { include_usage: true },
-      max_completion_tokens: MAX_COMPLETION_TOKENS,
+      max_completion_tokens: maxCompletionTokens,
       ...(env.ASSISTANT_REASONING_EFFORT ? { reasoning_effort: env.ASSISTANT_REASONING_EFFORT } : {}),
     },
     { signal },
@@ -271,6 +294,7 @@ export async function runChatTurn(input: ChatTurnInput, options: ChatTurnOptions
     proposedActionIds: [],
     onActionProposed: (action) => emit({ type: "action", action }),
     attachments: usable,
+    knowledgeRefs: 0,
   };
 
   try {
@@ -291,9 +315,15 @@ export async function runChatTurn(input: ChatTurnInput, options: ChatTurnOptions
         .orderBy(asc(aiActions.createdAt)),
     ]);
 
+    // Classic RAG, before the model runs: the knowledge base's best matches
+    // for the admin's message ride along in the turn context, so a question
+    // about a contract or a past entry can be answered without spending a
+    // whole agent step on a search. Only confident matches are included.
+    const knowledge = await retrieveForMessage(input.message, ctx);
     const turnContext = buildTurnContext({
       brands,
       activeBrand: ctx.activeBrand,
+      knowledge,
       replyLanguage: replyLanguageFor(input.message, input.locale === "ar" ? "Arabic" : "English"),
       actions: priorActions.map((action) => ({
         id: action.id,
@@ -306,11 +336,12 @@ export async function runChatTurn(input: ChatTurnInput, options: ChatTurnOptions
     // attachments.service.ts), stored with the message so replays match.
     const attachmentBlocks = await Promise.all(sending.map((attachment) => describeAttachment(attachment, ctx.activeBrand)));
     const userMessage: ChatMessage = { role: "user", content: userMessageText(input.message, attachmentBlocks) };
-    const priorMessages = history.flatMap((row) => toChatMessage(row) ?? []);
+    const priorMessages = compactHistory(history.flatMap((row) => toChatMessage(row) ?? []));
 
     const tools: AssistantTool[] = [...buildReadTools(ctx), ...buildProposeTools(ctx)];
     const toolsByName = new Map(tools.map((tool) => [tool.name, tool]));
     const functionTools = tools.map(toFunctionTool);
+    const toolsJson = JSON.stringify(functionTools);
 
     // Everything the model adds this turn: assistant messages and tool results, in order.
     const newMessages: ChatMessage[] = [];
@@ -319,23 +350,50 @@ export async function runChatTurn(input: ChatTurnInput, options: ChatTurnOptions
     let wroteText = false;
 
     for (let iteration = 0; iteration < MAX_TOOL_ITERATIONS; iteration++) {
+      // Sized to the provider's per-minute budget (see tokenBudget.ts).
+      const leading = [systemMessage, ...priorMessages, userMessage];
+      const fit = (tokensPerMinute: number) =>
+        fitToBudget([...leading, ...newMessages], toolsJson, {
+          tokensPerMinute,
+          maxCompletion: MAX_COMPLETION_TOKENS,
+          turnStart: leading.length,
+          calibration: calibrationFor(env.ASSISTANT_MODEL),
+        });
+      let budget = env.ASSISTANT_TOKENS_PER_MINUTE;
+      let fitted = fit(budget);
+      if (fitted.compacted > 0) {
+        // Worth knowing in the logs: a turn squeezed this hard is near the provider's limits.
+        console.warn(`Assistant: step ${iteration + 1} shortened ${fitted.compacted} earlier tool result(s) to fit ${budget} tokens/min (${env.ASSISTANT_MODEL})`);
+      }
       let step: StepResult | undefined;
+      let rejection: string | null = null;
+      let shrinks = 0;
       for (let attempt = 0; !step; attempt++) {
+        // After a rejected call, the retry carries the provider's reason, so
+        // the model fixes the call rather than resampling the same mistake.
+        // Only for this request — it isn't saved to the transcript.
+        const messages: ChatMessage[] = rejection
+          ? [...fitted.messages, { role: "system", content: `Your previous tool call was rejected before it ran: ${rejection} Call the tool again with valid arguments (every required field present, values of the right type).` }]
+          : fitted.messages;
         try {
-          step = await streamStep(
-            client,
-            [systemMessage, ...priorMessages, userMessage, ...newMessages],
-            functionTools,
-            emit,
-            options.signal,
-            wroteText,
-          );
+          step = await streamStep(client, messages, functionTools, emit, options.signal, wroteText, fitted.maxCompletionTokens);
         } catch (err) {
+          // Too big for the per-minute budget: the provider says by how much,
+          // so shed exactly that (plus a margin) and send again.
+          const over = err instanceof OpenAI.APIError && err.status === 413 ? overBudgetBy(providerReason(err) ?? err.message) : null;
+          if (over !== null && shrinks < 2) {
+            shrinks++;
+            budget -= over + 250;
+            fitted = fit(budget);
+            continue;
+          }
           // The provider rejects a malformed tool call before any text is
           // streamed, so retrying here can't duplicate what the admin saw.
           if (!isToolUseFailed(err) || attempt >= TOOL_CALL_RETRIES) throw err;
+          rejection = providerReason(err as InstanceType<typeof OpenAI.APIError>) ?? (err as Error).message;
         }
       }
+      if (step.usage?.prompt_tokens) learnCalibration(env.ASSISTANT_MODEL, estimateTokens(fitted.messages, toolsJson), step.usage.prompt_tokens);
 
       if (step.content) wroteText = true;
       finishReason = step.finishReason;
@@ -356,13 +414,26 @@ export async function runChatTurn(input: ChatTurnInput, options: ChatTurnOptions
 
       if (step.toolCalls.length === 0) break;
 
-      // Run in order: a draft may depend on a lookup made earlier in the same step.
-      for (const call of step.toolCalls) {
+      // Reads run in parallel; drafts run after them, one at a time. Results
+      // go back in call order, whichever finished first.
+      const run = async (call: StepResult["toolCalls"][number]) => {
         const tool = toolsByName.get(call.name);
-        const outcome = tool
-          ? await executeTool(tool, call.arguments, { id: call.id })
-          : { content: `Error: there is no tool named "${call.name}".`, isError: true };
-        newMessages.push({ role: "tool", tool_call_id: call.id, content: outcome.content });
+        if (!tool) return `Error: there is no tool named "${call.name}". Available: ${[...toolsByName.keys()].join(", ")}.`;
+        // detail is always set here ("" when there's nothing to show): it's how the UI tells "running" from "being written".
+        emit({ type: "tool", name: call.name, detail: describeCall(call.arguments) ?? "" });
+        const outcome = await executeTool(tool, call.arguments, { id: call.id });
+        return outcome.content.length > MAX_TOOL_RESULT_CHARS
+          ? `${outcome.content.slice(0, MAX_TOOL_RESULT_CHARS)}… [result cut at ${MAX_TOOL_RESULT_CHARS} characters — narrow the query (dates, search words, view) for the rest]`
+          : outcome.content;
+      };
+      const results = new Map<string, string>();
+      const reads = step.toolCalls.filter((call) => !SEQUENTIAL_TOOLS.has(call.name));
+      await Promise.all(reads.map(async (call) => results.set(call.id, await run(call))));
+      for (const call of step.toolCalls.filter((candidate) => SEQUENTIAL_TOOLS.has(candidate.name))) {
+        results.set(call.id, await run(call));
+      }
+      for (const call of step.toolCalls) {
+        newMessages.push({ role: "tool", tool_call_id: call.id, content: results.get(call.id)! });
       }
     }
 

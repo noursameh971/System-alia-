@@ -36,6 +36,18 @@ const envSchema = z.object({
   // must accept image input. Same provider and key as ASSISTANT_MODEL; the
   // chat model only ever sees what this one read, as text.
   ASSISTANT_VISION_MODEL: z.string().trim().min(1).default("qwen/qwen3.8-27b"),
+  // The assistant's knowledge base (modules/knowledge). Embeddings run
+  // locally; the model is downloaded once into the cache directory
+  // (relative to the backend's working directory).
+  KNOWLEDGE_EMBEDDING_MODEL: z.string().trim().min(1).default("onnx-community/embeddinggemma-300m-ONNX"),
+  KNOWLEDGE_MODEL_CACHE: z.string().trim().min(1).default(".cache/models"),
+  /** "false" turns the knowledge base off (no model download, no indexing) — e.g. on a server too small for it. */
+  KNOWLEDGE_ENABLED: z.enum(["true", "false"]).default("true").transform((value) => value === "true"),
+  // The provider's tokens-per-minute limit for ASSISTANT_MODEL. Each agent
+  // step is sized to fit under it (prompt + reply room), because Groq
+  // refuses any single request bigger than the limit. 8000 is Groq's free
+  // tier; raise it on a paid tier for longer replies and less compaction.
+  ASSISTANT_TOKENS_PER_MINUTE: z.coerce.number().int().min(2000).default(8000),
   /** Sent as reasoning_effort when set — for reasoning models such as gpt-oss. Leave unset for models that reject it. */
   ASSISTANT_REASONING_EFFORT: z.enum(["low", "medium", "high"]).optional(),
 });

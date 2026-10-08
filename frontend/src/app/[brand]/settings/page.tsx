@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { AlertTriangle, Boxes, SlidersHorizontal, Users } from "lucide-react";
+import { AlertTriangle, Boxes, BookOpen, SlidersHorizontal, Users } from "lucide-react";
 import { useWorkspace } from "@/context/WorkspaceContext";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { useLocale } from "@/context/LocaleContext";
@@ -12,6 +12,7 @@ import { UserManagementTab } from "@/components/settings/UserManagementTab";
 import { GeneralLanguageTab } from "@/components/settings/GeneralLanguageTab";
 import { InventoryRulesTab } from "@/components/settings/InventoryRulesTab";
 import { DangerZoneTab } from "@/components/settings/DangerZoneTab";
+import { KnowledgeBaseTab } from "@/components/settings/KnowledgeBaseTab";
 
 const SECTIONS = [
   {
@@ -31,6 +32,12 @@ const SECTIONS = [
     label: "Inventory Rules",
     description: "Stock alerts",
     icon: Boxes,
+  },
+  {
+    key: "knowledge",
+    label: "Knowledge base",
+    description: "Documents the assistant searches",
+    icon: BookOpen,
   },
   {
     key: "danger",
@@ -122,6 +129,7 @@ export default function BrandSettingsPage() {
           {section === "general" ? <GeneralLanguageTab /> : null}
           {section === "users" ? <UserManagementTab /> : null}
           {section === "inventory" ? <InventoryRulesTab /> : null}
+          {section === "knowledge" ? <KnowledgeBaseTab /> : null}
           {section === "danger" ? <DangerZoneTab /> : null}
         </div>
       </div>

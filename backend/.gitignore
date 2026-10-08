@@ -8,3 +8,5 @@ dist/
 # receipt-upload feature module), which silently kept that module's
 # source files out of every commit.
 /uploads/
+# Downloaded embedding model for the assistant's knowledge base (knowledge/embedder.ts).
+/.cache/

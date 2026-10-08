@@ -200,7 +200,7 @@ async function ledgerLines(extraction: ReceiptExtraction, brand: BrandRef | null
   if (!brand) return ["No active workspace, so the ledger wasn't searched — ask which brand this is for."];
   const matches = matchLedgerEntities(name, await listLedgerEntities(brand.id));
   if (matches.length === 0) {
-    return [`No supplier in the ${brand.code} ledger matches "${name}". It may be listed under another spelling or language — find_ledger_entities can search by part of a name.`];
+    return [`No supplier in the ${brand.code} ledger matches "${name}". It may be listed under another spelling or language — search_knowledge matches by meaning across both.`];
   }
   return [
     `Ledger entities in ${brand.code} that may be "${name}":`,

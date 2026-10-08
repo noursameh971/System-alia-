@@ -14,3 +14,4 @@ export * from "./revenues.js";
 export * from "./ledger.js";
 export * from "./factory.js";
 export * from "./assistant.js";
+export * from "./knowledge.js";

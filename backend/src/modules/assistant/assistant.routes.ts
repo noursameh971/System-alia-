@@ -3,6 +3,7 @@ import { requireAuth, requireRole } from "../../middleware/auth.js";
 import { rawBody } from "../../middleware/rawBody.js";
 import { validateBody } from "../../middleware/validate.js";
 import { asyncHandler } from "../../utils/asyncHandler.js";
+import { knowledgeRouter } from "../knowledge/knowledge.routes.js";
 import { attachmentRateLimit, chatRateLimit } from "./assistant.rateLimit.js";
 import { chatBodySchema, confirmActionBodySchema } from "./assistant.schema.js";
 import {
@@ -28,6 +29,9 @@ export const assistantRouter = Router();
 assistantRouter.use(requireAuth, requireRole("admin"));
 
 assistantRouter.get("/status", asyncHandler(getStatusHandler));
+
+// The knowledge base the assistant searches: company documents + mirrored records.
+assistantRouter.use("/knowledge", knowledgeRouter);
 
 assistantRouter.get("/conversations", asyncHandler(listConversationsHandler));
 assistantRouter.get("/conversations/:id", asyncHandler(getConversationHandler));
