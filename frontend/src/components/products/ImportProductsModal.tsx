@@ -16,6 +16,27 @@ import { ApiError } from "@/lib/apiClient";
 import { importProductsWorkbook } from "@/lib/products";
 import type { ImportProductsResult } from "@/lib/types";
 
+// Browsers report .xlsx inconsistently (Windows sometimes gives "" or the legacy
+// Excel type), so the extension is the real check; the MIME list only widens
+// the file picker's filter.
+const ACCEPTED_EXTENSIONS = [".xlsx", ".xls"];
+const ACCEPT_ATTRIBUTE = [
+  ...ACCEPTED_EXTENSIONS,
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  "application/vnd.ms-excel",
+].join(",");
+const MAX_FILE_BYTES = 15 * 1024 * 1024; // matches the backend's rawBody("15mb")
+
+function validateFile(file: File): string | null {
+  const name = file.name.toLowerCase();
+  if (!ACCEPTED_EXTENSIONS.some((ext) => name.endsWith(ext))) {
+    return `"${file.name}" isn't an Excel file — please choose an .xlsx file`;
+  }
+  if (file.size === 0) return `"${file.name}" is empty`;
+  if (file.size > MAX_FILE_BYTES) return `"${file.name}" is larger than 15 MB`;
+  return null;
+}
+
 interface ImportProductsModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -35,8 +56,15 @@ export function ImportProductsModal({ open, onOpenChange, brandId, onSuccess }: 
   }
 
   function handleFileChange(event: ChangeEvent<HTMLInputElement>) {
-    setFile(event.target.files?.[0] ?? null);
+    const picked = event.target.files?.[0] ?? null;
     setResult(null);
+    const problem = picked ? validateFile(picked) : null;
+    if (problem) {
+      toast.error(problem);
+      setFile(null);
+    } else {
+      setFile(picked);
+    }
     event.target.value = "";
   }
 
@@ -57,7 +85,7 @@ export function ImportProductsModal({ open, onOpenChange, brandId, onSuccess }: 
         toast.warning(`Imported with ${outcome.errors.length} row error${outcome.errors.length === 1 ? "" : "s"} — see details below`);
       }
     } catch (err) {
-      toast.error(err instanceof ApiError ? err.message : "Failed to import the file");
+      toast.error(err instanceof ApiError ? err.message : "Couldn't upload the file — check your connection and try again");
     } finally {
       setSubmitting(false);
     }
@@ -88,13 +116,15 @@ export function ImportProductsModal({ open, onOpenChange, brandId, onSuccess }: 
               <p className="truncate text-sm font-medium text-slate-900 dark:text-slate-100">
                 {file ? file.name : "No file selected"}
               </p>
-              <p className="text-xs text-slate-500 dark:text-slate-400">.xlsx only</p>
+              <p className="text-xs text-slate-500 dark:text-slate-400">
+                Excel (.xlsx). Headers in English or Arabic, e.g. SKU / كود, Price / السعر, Stock / الكمية
+              </p>
             </div>
             <Button type="button" variant="outline" size="sm" onClick={() => fileInputRef.current?.click()} disabled={submitting}>
               <Upload className="size-3.5" />
               Choose file
             </Button>
-            <input ref={fileInputRef} type="file" accept=".xlsx" className="hidden" onChange={handleFileChange} />
+            <input ref={fileInputRef} type="file" accept={ACCEPT_ATTRIBUTE} className="hidden" onChange={handleFileChange} />
           </div>
 
           {result ? (
