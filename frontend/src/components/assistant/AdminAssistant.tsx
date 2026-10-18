@@ -7,6 +7,7 @@ import { Sparkles } from "lucide-react";
 import { useLocale } from "@/context/LocaleContext";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { listBrands } from "@/lib/brands";
+import { ASSISTANT_ENABLED } from "@/lib/features";
 import { Sheet, SheetContent } from "@/components/ui/sheet";
 import { AssistantPanel } from "./AssistantPanel";
 import { useAssistantChat } from "./useAssistantChat";
@@ -15,10 +16,13 @@ import { useAssistantChat } from "./useAssistantChat";
  * The admin assistant's entry point, mounted once in the root layout so it's
  * on every page: a floating button plus Ctrl/⌘+K. Renders nothing for any
  * other role — the server refuses them regardless (assistant.routes.ts).
+ *
+ * Also renders nothing while ASSISTANT_ENABLED is off (lib/features.ts): the
+ * Ctrl/⌘+K listener lives in AssistantLauncher, so it isn't registered either.
  */
 export function AdminAssistant() {
   const { role, isLoading } = useCurrentUser();
-  if (isLoading || role !== "admin") return null;
+  if (!ASSISTANT_ENABLED || isLoading || role !== "admin") return null;
   return <AssistantLauncher />;
 }
 

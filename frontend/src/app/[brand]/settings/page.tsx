@@ -6,6 +6,7 @@ import { AlertTriangle, Boxes, BookOpen, SlidersHorizontal, Users } from "lucide
 import { useWorkspace } from "@/context/WorkspaceContext";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { useLocale } from "@/context/LocaleContext";
+import { ASSISTANT_ENABLED } from "@/lib/features";
 import { workspaceHomePath } from "@/lib/routing";
 import { Spinner } from "@/components/ui/Spinner";
 import { UserManagementTab } from "@/components/settings/UserManagementTab";
@@ -49,6 +50,9 @@ const SECTIONS = [
 
 type SectionKey = (typeof SECTIONS)[number]["key"];
 
+/** The Knowledge base tab only configures the assistant, so it's hidden along with it (lib/features.ts). */
+const VISIBLE_SECTIONS = SECTIONS.filter((s) => s.key !== "knowledge" || ASSISTANT_ENABLED);
+
 export default function BrandSettingsPage() {
   const router = useRouter();
   const { brand } = useWorkspace();
@@ -87,7 +91,7 @@ export default function BrandSettingsPage() {
           aria-label={t("Settings")}
           className="-mx-1 flex gap-2 overflow-x-auto px-1 pb-1 lg:mx-0 lg:flex-col lg:overflow-visible lg:px-0 lg:pb-0"
         >
-          {SECTIONS.map((item) => {
+          {VISIBLE_SECTIONS.map((item) => {
             const Icon = item.icon;
             const selected = item.key === section;
             return (
@@ -129,7 +133,7 @@ export default function BrandSettingsPage() {
           {section === "general" ? <GeneralLanguageTab /> : null}
           {section === "users" ? <UserManagementTab /> : null}
           {section === "inventory" ? <InventoryRulesTab /> : null}
-          {section === "knowledge" ? <KnowledgeBaseTab /> : null}
+          {section === "knowledge" && ASSISTANT_ENABLED ? <KnowledgeBaseTab /> : null}
           {section === "danger" ? <DangerZoneTab /> : null}
         </div>
       </div>
