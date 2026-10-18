@@ -22,6 +22,13 @@ const dateOnly = z
   .regex(/^\d{4}-\d{2}-\d{2}$/, "Use a YYYY-MM-DD date")
   .refine((value) => !Number.isNaN(new Date(`${value}T00:00:00Z`).getTime()), "Not a real date");
 
+export const expenseLineItemSchema = z.object({
+  description: z.string().trim().min(1, "Each item needs a description").max(200),
+  amount: z.number().positive("Each item's amount must be greater than 0").max(99_999_999),
+});
+
+export type ExpenseLineItem = z.infer<typeof expenseLineItemSchema>;
+
 export const createExpenseSchema = z.object({
   brandId: z.string().uuid(),
   title: z.string().trim().min(1, "Title is required").max(200),
@@ -31,6 +38,13 @@ export const createExpenseSchema = z.object({
   expenseDate: dateOnly,
   receiptUrl: z.string().trim().max(2000).optional().or(z.literal("")),
   notes: z.string().trim().max(2000).optional().or(z.literal("")),
+  /**
+   * Optional itemized breakdown (e.g. Editor 5,000 + Studio 20,000). When
+   * non-empty, `amount` must equal the items' sum — checked in
+   * expenses.service.ts so updates can compare against the stored values
+   * too. An empty array clears an existing breakdown.
+   */
+  lineItems: z.array(expenseLineItemSchema).max(100, "Up to 100 items per expense").optional(),
   /**
    * Optional link to a payable ledger entity — when set, this expense's
    * amount is also recorded as a ledger payment against that supplier,

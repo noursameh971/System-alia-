@@ -41,6 +41,12 @@ const REVENUE_LABELS: Record<string, string> = {
 const money = (value: unknown) => `${Number(value).toLocaleString("en-US", { maximumFractionDigits: 2 })} EGP`;
 const clip = (value: unknown, max: number) => (typeof value === "string" && value.trim() ? value.trim().slice(0, max) : null);
 const join = (...parts: (string | null | undefined | false)[]) => parts.filter(Boolean).join(" ");
+/** An expense's itemized breakdown (expenses.line_items) as one sentence, or null when it has none. */
+const lineItemsText = (value: unknown) => {
+  if (!Array.isArray(value) || value.length === 0) return null;
+  const items = (value as { description?: unknown; amount?: unknown }[]).map((item) => `${String(item.description ?? "")} ${money(item.amount)}`);
+  return `Breakdown: ${items.join("; ")}.`;
+};
 
 type Row = Record<string, unknown>;
 async function rows(query: ReturnType<typeof sql>): Promise<Row[]> {
@@ -124,7 +130,7 @@ const BUILDERS: Record<string, () => Promise<RecordDocument[]>> = {
 
   async expense() {
     const list = await rows(sql`
-      select x.id, x.brand_id, x.title, x.category, x.amount, x.payment_method, x.expense_date, x.notes, x.ledger_entity_id, e.name as supplier
+      select x.id, x.brand_id, x.title, x.category, x.amount, x.payment_method, x.expense_date, x.notes, x.line_items, x.ledger_entity_id, e.name as supplier
       from expenses x left join ledger_entities e on e.id = x.ledger_entity_id`);
     return list.map((r) => ({
       sourceType: "expense",
@@ -136,6 +142,7 @@ const BUILDERS: Record<string, () => Promise<RecordDocument[]>> = {
         `Expense on ${r.expense_date}: "${r.title}", ${money(r.amount)},`,
         `${CATEGORY_LABELS[r.category as ExpenseCategory] ?? r.category}, paid by ${PAYMENT_LABELS[r.payment_method as ExpensePaymentMethod] ?? r.payment_method}`,
         r.supplier ? `to supplier ${r.supplier}.` : ".",
+        lineItemsText(r.line_items),
         clip(r.notes, 250) ? `Notes: ${clip(r.notes, 250)}` : null,
       ),
     }));

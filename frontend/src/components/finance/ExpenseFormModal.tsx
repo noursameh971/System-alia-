@@ -2,6 +2,7 @@
 
 import { useState, type FormEvent } from "react";
 import { toast } from "sonner";
+import { Plus, Trash2 } from "lucide-react";
 import { useLocale } from "@/context/LocaleContext";
 import { createExpense, updateExpense, EXPENSE_CATEGORY_META, EXPENSE_PAYMENT_LABEL } from "@/lib/expenses";
 import { formatPrice } from "@/lib/formatPrice";
@@ -34,6 +35,28 @@ function todayLocal(): string {
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
 }
 
+/** A breakdown row as typed — amount stays a string until submit, like FormState.amount. */
+interface LineItemDraft {
+  /** Stable React key; rows can be removed from the middle. */
+  key: number;
+  description: string;
+  amount: string;
+}
+
+let nextLineItemKey = 0;
+function lineItemDraft(description = "", amount = ""): LineItemDraft {
+  return { key: nextLineItemKey++, description, amount };
+}
+
+/** Summed in piastres so 0.1 + 0.2 shows as 0.30, matching the server's check. */
+function lineItemsTotal(items: LineItemDraft[]): number {
+  const cents = items.reduce((sum, item) => {
+    const value = Number(item.amount);
+    return sum + (Number.isFinite(value) && value > 0 ? Math.round(value * 100) : 0);
+  }, 0);
+  return cents / 100;
+}
+
 interface FormState {
   title: string;
   amount: string;
@@ -44,6 +67,8 @@ interface FormState {
   notes: string;
   /** "" = not paying down a supplier; otherwise a ledger entity id. */
   ledgerEntityId: string;
+  /** Empty = a single-amount expense; otherwise the amount is these rows' sum. */
+  lineItems: LineItemDraft[];
 }
 
 function blankForm(): FormState {
@@ -56,6 +81,7 @@ function blankForm(): FormState {
     receiptUrl: "",
     notes: "",
     ledgerEntityId: "",
+    lineItems: [],
   };
 }
 
@@ -69,6 +95,7 @@ function formFor(expense: Expense): FormState {
     receiptUrl: expense.receiptUrl ?? "",
     notes: expense.notes ?? "",
     ledgerEntityId: expense.ledgerEntityId ?? "",
+    lineItems: (expense.lineItems ?? []).map((item) => lineItemDraft(item.description, String(item.amount))),
   };
 }
 
@@ -93,6 +120,8 @@ export function ExpenseFormModal({
   const { t } = useLocale();
   const [form, setForm] = useState<FormState>(() => (editing ? formFor(editing) : blankForm()));
   const [errors, setErrors] = useState<Partial<Record<keyof FormState, string>>>({});
+  /** Per-row errors, keyed by LineItemDraft.key. */
+  const [itemErrors, setItemErrors] = useState<Record<number, { description?: string; amount?: string }>>({});
   const [submitting, setSubmitting] = useState(false);
 
   // Re-seed at render time when the modal is pointed at a different record —
@@ -102,6 +131,7 @@ export function ExpenseFormModal({
   if (open && seededFor !== (editing?.id ?? null)) {
     setForm(editing ? formFor(editing) : blankForm());
     setErrors({});
+    setItemErrors({});
     setSeededFor(editing?.id ?? null);
   }
 
@@ -110,18 +140,62 @@ export function ExpenseFormModal({
     setErrors((prev) => ({ ...prev, [key]: undefined }));
   }
 
+  const hasBreakdown = form.lineItems.length > 0;
+  const breakdownTotal = lineItemsTotal(form.lineItems);
+
+  function addLineItem() {
+    setForm((prev) => {
+      // Switching a typed amount into breakdown mode keeps it as the first row, so nothing typed is lost.
+      if (prev.lineItems.length === 0 && Number(prev.amount) > 0) {
+        return { ...prev, lineItems: [lineItemDraft("", prev.amount), lineItemDraft()] };
+      }
+      return { ...prev, lineItems: [...prev.lineItems, lineItemDraft()] };
+    });
+    setErrors((prev) => ({ ...prev, amount: undefined }));
+  }
+
+  function updateLineItem(key: number, field: "description" | "amount", value: string) {
+    setForm((prev) => ({
+      ...prev,
+      lineItems: prev.lineItems.map((item) => (item.key === key ? { ...item, [field]: value } : item)),
+    }));
+    setItemErrors((prev) => ({ ...prev, [key]: { ...prev[key], [field]: undefined } }));
+  }
+
+  function removeLineItem(key: number) {
+    setForm((prev) => {
+      const lineItems = prev.lineItems.filter((item) => item.key !== key);
+      // Removing the last row leaves breakdown mode — carry the total into the plain Amount field.
+      const total = lineItemsTotal(prev.lineItems);
+      const amount = lineItems.length === 0 && total > 0 ? String(total) : prev.amount;
+      return { ...prev, lineItems, amount };
+    });
+  }
+
   const selectedSupplier = payableSuppliers.find((supplier) => supplier.id === form.ledgerEntityId) ?? null;
 
   function validate(): boolean {
     const next: Partial<Record<keyof FormState, string>> = {};
     if (!form.title.trim()) next.title = t("Title is required");
 
-    const amount = Number(form.amount);
-    if (!form.amount.trim() || Number.isNaN(amount) || amount <= 0) next.amount = t("Enter an amount > 0");
+    const nextItemErrors: Record<number, { description?: string; amount?: string }> = {};
+    if (hasBreakdown) {
+      for (const item of form.lineItems) {
+        const rowErrors: { description?: string; amount?: string } = {};
+        if (!item.description.trim()) rowErrors.description = t("Description is required");
+        const value = Number(item.amount);
+        if (!item.amount.trim() || Number.isNaN(value) || value <= 0) rowErrors.amount = t("Enter an amount > 0");
+        if (rowErrors.description || rowErrors.amount) nextItemErrors[item.key] = rowErrors;
+      }
+    } else {
+      const amount = Number(form.amount);
+      if (!form.amount.trim() || Number.isNaN(amount) || amount <= 0) next.amount = t("Enter an amount > 0");
+    }
     if (!/^\d{4}-\d{2}-\d{2}$/.test(form.expenseDate)) next.expenseDate = t("Pick a date");
 
     setErrors(next);
-    return Object.keys(next).length === 0;
+    setItemErrors(nextItemErrors);
+    return Object.keys(next).length === 0 && Object.keys(nextItemErrors).length === 0;
   }
 
   async function handleSubmit(event: FormEvent) {
@@ -133,7 +207,9 @@ export function ExpenseFormModal({
       const payload = {
         title: form.title.trim(),
         category: form.category,
-        amount: Number(form.amount),
+        amount: hasBreakdown ? breakdownTotal : Number(form.amount),
+        // Always sent (even []), so removing every row on edit clears the stored breakdown.
+        lineItems: form.lineItems.map((item) => ({ description: item.description.trim(), amount: Number(item.amount) })),
         paymentMethod: form.paymentMethod,
         expenseDate: form.expenseDate,
         receiptUrl: form.receiptUrl.trim(),
@@ -188,19 +264,26 @@ export function ExpenseFormModal({
 
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div className="flex flex-col gap-1.5">
-              <Label htmlFor="expense-amount">{t("Amount")} (EGP)</Label>
+              <Label htmlFor="expense-amount">
+                {hasBreakdown ? t("Total") : t("Amount")} (EGP)
+              </Label>
               <Input
                 id="expense-amount"
                 type="number"
                 min="0"
                 step="0.01"
-                value={form.amount}
+                value={hasBreakdown ? breakdownTotal.toFixed(2) : form.amount}
                 onChange={(e) => setField("amount", e.target.value)}
                 placeholder="0.00"
                 disabled={submitting}
+                readOnly={hasBreakdown}
+                className={hasBreakdown ? "bg-slate-50 font-semibold tabular-nums dark:bg-slate-800/60" : undefined}
                 aria-invalid={Boolean(errors.amount)}
               />
               {errors.amount ? <p className="text-xs text-red-600 dark:text-red-400">{errors.amount}</p> : null}
+              {hasBreakdown ? (
+                <p className="text-xs text-slate-500 dark:text-slate-400">{t("Calculated from the items below")}</p>
+              ) : null}
             </div>
 
             <div className="flex flex-col gap-1.5">
@@ -217,6 +300,74 @@ export function ExpenseFormModal({
                   </option>
                 ))}
               </Select>
+            </div>
+          </div>
+
+          <div className="flex flex-col gap-2">
+            {hasBreakdown ? (
+              <>
+                <Label>{t("Breakdown")}</Label>
+                <div className="flex flex-col gap-2 rounded-lg border border-slate-200 p-3 dark:border-slate-700">
+                  {form.lineItems.map((item, index) => {
+                    const rowErrors = itemErrors[item.key];
+                    return (
+                      <div key={item.key} className="flex flex-col gap-1">
+                        <div className="flex items-start gap-2">
+                          <Input
+                            value={item.description}
+                            onChange={(e) => updateLineItem(item.key, "description", e.target.value)}
+                            placeholder={t("Description (e.g. Studio)")}
+                            aria-label={`${t("Description")} ${index + 1}`}
+                            disabled={submitting}
+                            aria-invalid={Boolean(rowErrors?.description)}
+                            className="min-w-0 flex-1"
+                          />
+                          <Input
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            value={item.amount}
+                            onChange={(e) => updateLineItem(item.key, "amount", e.target.value)}
+                            placeholder="0.00"
+                            aria-label={`${t("Amount")} ${index + 1}`}
+                            disabled={submitting}
+                            aria-invalid={Boolean(rowErrors?.amount)}
+                            className="w-28 shrink-0 tabular-nums sm:w-36"
+                          />
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => removeLineItem(item.key)}
+                            disabled={submitting}
+                            aria-label={`${t("Remove sub-item")} ${index + 1}`}
+                          >
+                            <Trash2 className="size-4" />
+                          </Button>
+                        </div>
+                        {rowErrors?.description || rowErrors?.amount ? (
+                          <p className="text-xs text-red-600 dark:text-red-400">{rowErrors.description ?? rowErrors.amount}</p>
+                        ) : null}
+                      </div>
+                    );
+                  })}
+                  <div className="flex items-center justify-between border-t border-slate-100 pt-2 text-sm dark:border-slate-800">
+                    <span className="text-slate-500 dark:text-slate-400">{t("Total")}</span>
+                    <span className="font-semibold tabular-nums text-slate-900 dark:text-slate-100">{formatPrice(breakdownTotal)}</span>
+                  </div>
+                </div>
+              </>
+            ) : null}
+            <div>
+              <Button type="button" variant="outline" size="sm" onClick={addLineItem} disabled={submitting}>
+                <Plus className="size-3.5" />
+                {t("Add sub-item")}
+              </Button>
+              {!hasBreakdown ? (
+                <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                  {t("Optional — split this expense into items (e.g. Editor, Studio, Photographer) and the total is added up for you.")}
+                </p>
+              ) : null}
             </div>
           </div>
 

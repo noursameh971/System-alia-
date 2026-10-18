@@ -7,6 +7,7 @@ import {
   EXPENSE_CATEGORIES,
   type CreateExpenseInput,
   type ExpenseCategory,
+  type ExpenseLineItem,
   type ExpensePaymentMethod,
   type ListExpensesQuery,
   type UpdateExpenseInput,
@@ -23,6 +24,8 @@ export interface ExpenseRecord {
   expenseDate: string;
   receiptUrl: string | null;
   notes: string | null;
+  /** Itemized breakdown; [] when the expense isn't broken down. When non-empty, `amount` is their sum. */
+  lineItems: ExpenseLineItem[];
   /** Set when this expense also pays down a specific supplier's payable balance — see createExpense/updateExpense. */
   ledgerEntityId: string | null;
   /** Display name of the linked supplier, joined in for the Expenses table's "Paid to" column — null when not linked. */
@@ -42,6 +45,7 @@ function toRecord(row: typeof expenses.$inferSelect, ledgerEntityName: string | 
     expenseDate: row.expenseDate,
     receiptUrl: row.receiptUrl,
     notes: row.notes,
+    lineItems: row.lineItems ?? [],
     ledgerEntityId: row.ledgerEntityId,
     ledgerEntityName,
     createdAt: row.createdAt.toISOString(),
@@ -79,6 +83,39 @@ async function assertLinkableLedgerEntity(
   return entity;
 }
 
+/** Sum in whole piastres, so 0.1 + 0.2 compares equal to 0.3. */
+function lineItemsTotalCents(items: ExpenseLineItem[]): number {
+  return items.reduce((sum, item) => sum + Math.round(item.amount * 100), 0);
+}
+
+/**
+ * The amount to store given the (final) line items: with no breakdown it's
+ * just `amount`; with one, the items' sum. `amount` may be omitted (an edit
+ * that only changed the items) — then the sum is used — but if both are
+ * given they must agree, so a stale total can't be saved next to new items.
+ */
+function reconcileAmount(amount: number | undefined, items: ExpenseLineItem[]): number | undefined {
+  if (items.length === 0) return amount;
+  const totalCents = lineItemsTotalCents(items);
+  if (amount !== undefined && Math.round(amount * 100) !== totalCents) {
+    throw ApiError.badRequest(
+      `Amount ${amount.toFixed(2)} doesn't match the sum of the line items (${(totalCents / 100).toFixed(2)})`,
+    );
+  }
+  return totalCents / 100;
+}
+
+function cleanLineItems(items: ExpenseLineItem[]): ExpenseLineItem[] {
+  return items.map((item) => ({ description: item.description.trim(), amount: Math.round(item.amount * 100) / 100 }));
+}
+
+/** The linked supplier payment's notes — carries the breakdown so it's visible from the supplier's ledger history too. */
+function ledgerPaymentNotes(title: string, items: ExpenseLineItem[]): string {
+  if (items.length === 0) return `Expense: ${title}`;
+  const breakdown = items.map((item) => `${item.description} ${item.amount.toFixed(2)}`).join(" · ");
+  return `Expense: ${title} (${breakdown})`;
+}
+
 /**
  * Creates the expense and, when a supplier is linked, a matching
  * ledger_transactions "payment" row in the same DB transaction — the
@@ -90,6 +127,9 @@ export async function createExpense(
   actorUserId: string,
   executor: DbExecutor = db,
 ): Promise<ExpenseRecord> {
+  const lineItems = cleanLineItems(input.lineItems ?? []);
+  const amount = reconcileAmount(input.amount, lineItems)!;
+
   return executor.transaction(async (tx) => {
     let ledgerTransactionId: string | null = null;
     let ledgerEntityName: string | null = null;
@@ -104,9 +144,9 @@ export async function createExpense(
           entityId: entity.id,
           brandId: entity.brandId,
           kind: "payment",
-          amount: input.amount.toFixed(2),
+          amount: amount.toFixed(2),
           transactionDate: input.expenseDate,
-          notes: `Expense: ${input.title}`,
+          notes: ledgerPaymentNotes(input.title, lineItems),
           // The same proof of payment, visible from the supplier's history too.
           receiptUrl: input.receiptUrl?.trim() || null,
           createdBy: actorUserId,
@@ -121,11 +161,12 @@ export async function createExpense(
         brandId: input.brandId,
         title: input.title,
         category: input.category,
-        amount: input.amount.toFixed(2),
+        amount: amount.toFixed(2),
         paymentMethod: input.paymentMethod,
         expenseDate: input.expenseDate,
         receiptUrl: input.receiptUrl?.trim() || null,
         notes: input.notes?.trim() || null,
+        lineItems,
         ledgerEntityId: input.ledgerEntityId ?? null,
         ledgerTransactionId,
         createdBy: actorUserId,
@@ -151,7 +192,10 @@ export async function updateExpense(id: string, input: UpdateExpenseInput): Prom
     if (!existing) throw ApiError.notFound("Expense not found");
 
     const finalTitle = input.title ?? existing.title;
-    const finalAmount = input.amount ?? Number(existing.amount);
+    const finalLineItems = input.lineItems !== undefined ? cleanLineItems(input.lineItems) : (existing.lineItems ?? []);
+    // An edit that only touched the items re-derives the total from them.
+    const reconciledAmount = reconcileAmount(input.amount, finalLineItems);
+    const finalAmount = reconciledAmount ?? Number(existing.amount);
     const finalExpenseDate = input.expenseDate ?? existing.expenseDate;
     const desiredLedgerEntityId = input.ledgerEntityId === undefined ? existing.ledgerEntityId : input.ledgerEntityId;
 
@@ -175,7 +219,7 @@ export async function updateExpense(id: string, input: UpdateExpenseInput): Prom
           .set({
             amount: finalAmount.toFixed(2),
             transactionDate: finalExpenseDate,
-            notes: `Expense: ${finalTitle}`,
+            notes: ledgerPaymentNotes(finalTitle, finalLineItems),
           })
           .where(eq(ledgerTransactions.id, existing.ledgerTransactionId!));
       } else {
@@ -190,7 +234,7 @@ export async function updateExpense(id: string, input: UpdateExpenseInput): Prom
             kind: "payment",
             amount: finalAmount.toFixed(2),
             transactionDate: finalExpenseDate,
-            notes: `Expense: ${finalTitle}`,
+            notes: ledgerPaymentNotes(finalTitle, finalLineItems),
             createdBy: existing.createdBy,
           })
           .returning({ id: ledgerTransactions.id });
@@ -203,7 +247,8 @@ export async function updateExpense(id: string, input: UpdateExpenseInput): Prom
       .set({
         ...(input.title !== undefined ? { title: input.title } : {}),
         ...(input.category !== undefined ? { category: input.category } : {}),
-        ...(input.amount !== undefined ? { amount: input.amount.toFixed(2) } : {}),
+        ...(reconciledAmount !== undefined ? { amount: reconciledAmount.toFixed(2) } : {}),
+        ...(input.lineItems !== undefined ? { lineItems: finalLineItems } : {}),
         ...(input.paymentMethod !== undefined ? { paymentMethod: input.paymentMethod } : {}),
         ...(input.expenseDate !== undefined ? { expenseDate: input.expenseDate } : {}),
         ...(input.receiptUrl !== undefined ? { receiptUrl: input.receiptUrl.trim() || null } : {}),

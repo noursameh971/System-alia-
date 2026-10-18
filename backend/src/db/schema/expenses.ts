@@ -1,4 +1,4 @@
-import { char, date, index, numeric, pgTable, text, timestamp, uuid, varchar } from "drizzle-orm/pg-core";
+import { char, date, index, jsonb, numeric, pgTable, text, timestamp, uuid, varchar } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { brands } from "./brands.js";
 import { users } from "./users.js";
@@ -27,6 +27,12 @@ export const expenses = pgTable(
     expenseDate: date("expense_date").notNull(),
     receiptUrl: text("receipt_url"),
     notes: text("notes"),
+    /**
+     * Optional itemized breakdown — [] when there is none. When non-empty,
+     * `amount` is the items' sum (enforced in expenses.service.ts). See
+     * migration 0029 for why this is JSONB rather than a child table.
+     */
+    lineItems: jsonb("line_items").$type<{ description: string; amount: number }[]>().notNull().default(sql`'[]'::jsonb`),
     /**
      * Optional: this expense also represents a payment toward a supplier's
      * payable balance. ledgerTransactionId is the ledger_transactions row

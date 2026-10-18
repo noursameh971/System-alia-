@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { MoreVertical } from "lucide-react";
+import { ChevronDown, ListTree, MoreVertical } from "lucide-react";
 import { useLocale } from "@/context/LocaleContext";
 import { EXPENSE_PAYMENT_LABEL } from "@/lib/expenses";
 import { formatPrice } from "@/lib/formatPrice";
@@ -41,11 +41,24 @@ export function ExpenseTable({
 }) {
   const { t } = useLocale();
   const [page, setPage] = useState(1);
+  const [expandedIds, setExpandedIds] = useState<Set<string>>(() => new Set());
+
+  function toggleExpanded(id: string) {
+    setExpandedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
 
   const query = search.trim().toLowerCase();
   const filtered = query
     ? expenses.filter((expense) =>
-        [expense.title, expense.notes ?? "", expense.category].join(" ").toLowerCase().includes(query),
+        [expense.title, expense.notes ?? "", expense.category, ...(expense.lineItems ?? []).map((item) => item.description)]
+          .join(" ")
+          .toLowerCase()
+          .includes(query),
       )
     : expenses;
 
@@ -94,6 +107,32 @@ export function ExpenseTable({
                   ) : null}
                   {expense.notes ? (
                     <p className="mt-0.5 max-w-xs truncate text-xs text-slate-400 dark:text-slate-500">{expense.notes}</p>
+                  ) : null}
+                  {expense.lineItems?.length ? (
+                    <div className="mt-1">
+                      <button
+                        type="button"
+                        onClick={() => toggleExpanded(expense.id)}
+                        aria-expanded={expandedIds.has(expense.id)}
+                        className="inline-flex items-center gap-1 rounded text-xs font-medium text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-100"
+                      >
+                        <ListTree className="size-3.5" />
+                        {expense.lineItems.length} {expense.lineItems.length === 1 ? t("line item") : t("line items")}
+                        <ChevronDown
+                          className={`size-3.5 transition-transform ${expandedIds.has(expense.id) ? "rotate-180" : ""}`}
+                        />
+                      </button>
+                      {expandedIds.has(expense.id) ? (
+                        <ul className="mt-1.5 flex max-w-sm flex-col gap-1 border-s-2 border-slate-200 ps-3 dark:border-slate-700">
+                          {expense.lineItems.map((item, index) => (
+                            <li key={index} className="flex items-baseline justify-between gap-4 text-xs">
+                              <span className="min-w-0 truncate text-slate-600 dark:text-slate-300">{item.description}</span>
+                              <span className="shrink-0 tabular-nums text-slate-900 dark:text-slate-100">{formatPrice(item.amount)}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      ) : null}
+                    </div>
                   ) : null}
                 </TableCell>
                 <TableCell className="py-3">

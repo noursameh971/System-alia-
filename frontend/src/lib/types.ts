@@ -634,11 +634,19 @@ export interface Expense {
   expenseDate: string;
   receiptUrl: string | null;
   notes: string | null;
+  /** Itemized breakdown; [] when there is none. When non-empty, `amount` is their sum. */
+  lineItems: ExpenseLineItem[];
   /** Set when this expense also pays down a specific supplier's payable balance in the Suppliers & Debts Ledger. */
   ledgerEntityId: string | null;
   /** The linked supplier's name, joined in server-side — null when not linked. */
   ledgerEntityName: string | null;
   createdAt: string;
+}
+
+/** One row of an expense's breakdown, e.g. { description: "Studio", amount: 20000 }. */
+export interface ExpenseLineItem {
+  description: string;
+  amount: number;
 }
 
 export interface CreateExpenseInput {
@@ -650,6 +658,8 @@ export interface CreateExpenseInput {
   expenseDate: string;
   receiptUrl?: string;
   notes?: string;
+  /** Optional breakdown — when non-empty, `amount` must equal the items' sum (the server rejects a mismatch). [] clears it on update. */
+  lineItems?: ExpenseLineItem[];
   /** Links this expense to a payable supplier — its amount is also recorded as a ledger payment reducing their Remaining Balance. */
   ledgerEntityId?: string | null;
 }

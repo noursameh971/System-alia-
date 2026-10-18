@@ -14,7 +14,7 @@ import {
   type ExpensePaymentMethod,
 } from "./expenses.schema.js";
 
-const EXPORT_HEADERS = ["Date", "Title", "Category", "Amount", "Currency", "Payment Method", "Receipt URL", "Notes"] as const;
+const EXPORT_HEADERS = ["Date", "Title", "Category", "Amount", "Currency", "Payment Method", "Receipt URL", "Notes", "Breakdown"] as const;
 
 /**
  * Human-readable labels are what an accountant actually types in a
@@ -71,12 +71,14 @@ export async function exportExpensesWorkbook(brandId: string): Promise<Buffer> {
     "Payment Method": PAYMENT_LABELS[expense.paymentMethod],
     "Receipt URL": expense.receiptUrl ?? "",
     Notes: expense.notes ?? "",
+    // Read-only on re-import: line items aren't parsed back, so an imported row is a plain expense.
+    Breakdown: expense.lineItems.map((item) => `${item.description}: ${item.amount.toFixed(2)}`).join("; "),
   }));
 
   const sheet = xlsx.utils.json_to_sheet(rows, { header: [...EXPORT_HEADERS] });
   // Explicit widths: without them every column collapses to ~8 characters
   // and the export opens looking broken.
-  sheet["!cols"] = [{ wch: 12 }, { wch: 34 }, { wch: 20 }, { wch: 12 }, { wch: 9 }, { wch: 16 }, { wch: 30 }, { wch: 34 }];
+  sheet["!cols"] = [{ wch: 12 }, { wch: 34 }, { wch: 20 }, { wch: 12 }, { wch: 9 }, { wch: 16 }, { wch: 30 }, { wch: 34 }, { wch: 40 }];
 
   const book = xlsx.utils.book_new();
   xlsx.utils.book_append_sheet(book, sheet, "Expenses");
