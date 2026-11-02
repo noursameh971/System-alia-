@@ -299,8 +299,13 @@ function ProductTableRow({
         <ProductThumbnail imageUrl={row.product.imageUrl} name={row.product.name} size={72} />
       </TableCell>
       <TableCell className="py-4 font-semibold text-slate-900 dark:text-slate-100">
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <span>{row.product.name}</span>
+          {row.product.patternNumber ? (
+            <Badge variant="info">
+              <span className="font-mono">#{row.product.patternNumber}</span>
+            </Badge>
+          ) : null}
           {row.allDiscontinued ? <Badge variant="warning">{t("discontinued")}</Badge> : null}
         </div>
         <div className="mt-1 text-xs font-normal text-slate-500 dark:text-slate-400">

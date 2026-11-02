@@ -9,6 +9,7 @@ import { deleteProductVariant, setVariantStock, updateProductCost, updateProduct
 import { formatPrice } from "@/lib/formatPrice";
 import { attributeValue } from "@/lib/variantAttributes";
 import { ApiError } from "@/lib/apiClient";
+import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
@@ -430,6 +431,11 @@ export function ProductProfileDrawer({ product, onOpenChange, canManage, onMutat
                   <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-center gap-2">
                       <SheetTitle>{product.name}</SheetTitle>
+                      {product.patternNumber ? (
+                        <Badge variant="info">
+                          {t("Pattern Number")}: <span className="ms-1 font-mono">{product.patternNumber}</span>
+                        </Badge>
+                      ) : null}
                       <ProductCategorySelect
                         productId={product.id}
                         categoryName={product.category.name}
@@ -439,11 +445,6 @@ export function ProductProfileDrawer({ product, onOpenChange, canManage, onMutat
                       />
                     </div>
                     <SheetDescription className="mt-0.5">
-                      {product.patternNumber ? (
-                        <>
-                          {t("Pattern Number")}: <span className="font-mono">{product.patternNumber}</span> &middot;{" "}
-                        </>
-                      ) : null}
                       {product.variants.length} variant{product.variants.length === 1 ? "" : "s"} &middot; {totalStock} total
                       in stock
                     </SheetDescription>
