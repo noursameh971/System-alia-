@@ -12,7 +12,7 @@ export interface UserListItem {
   id: string;
   fullName: string;
   email: string;
-  role: "admin" | "warehouse_staff" | "finance";
+  role: "admin" | "warehouse_staff" | "finance" | "qr_printer";
   isActive: boolean;
   createdAt: Date;
   brand: { id: string; name: string; code: string } | null;
@@ -22,7 +22,7 @@ function toUserListItem(row: {
   id: string;
   fullName: string;
   email: string;
-  role: "admin" | "warehouse_staff" | "finance";
+  role: "admin" | "warehouse_staff" | "finance" | "qr_printer";
   isActive: boolean;
   createdAt: Date;
   brandId: string | null;

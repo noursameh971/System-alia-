@@ -475,6 +475,7 @@ export const ar: Record<string, string> = {
   "Select a brand...": "اختر علامة تجارية...",
   Admin: "مسؤول",
   "Warehouse Staff": "موظف المستودع",
+  "QR Printer": "طابع QR",
   Active: "نشط",
   Inactive: "غير نشط",
   "Add user": "إضافة مستخدم",

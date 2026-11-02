@@ -11,7 +11,7 @@ export interface SessionUser {
   id: string;
   fullName: string;
   email: string;
-  role: "admin" | "warehouse_staff" | "finance";
+  role: "admin" | "warehouse_staff" | "finance" | "qr_printer";
   /** Assigned workspace, lowercased (e.g. "alh"). Null for admins — they aren't scoped to one brand. */
   brandCode: string | null;
   brandId: string | null;
@@ -27,7 +27,7 @@ export interface SessionUser {
  */
 export interface SessionTokenPayload {
   sub: string;
-  role: "admin" | "warehouse_staff" | "finance";
+  role: "admin" | "warehouse_staff" | "finance" | "qr_printer";
   brandCode: string | null;
   brandId: string | null;
 }
@@ -37,7 +37,7 @@ function issueSession(row: {
   id: string;
   fullName: string;
   email: string;
-  role: "admin" | "warehouse_staff" | "finance";
+  role: "admin" | "warehouse_staff" | "finance" | "qr_printer";
   brandId: string | null;
   brandCode: string | null;
 }): { token: string; user: SessionUser } {

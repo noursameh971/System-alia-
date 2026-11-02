@@ -548,7 +548,7 @@ export interface CreateBrandInput {
 
 export type CreateBrandResult = Brand;
 
-export type Role = "admin" | "warehouse_staff" | "finance";
+export type Role = "admin" | "warehouse_staff" | "finance" | "qr_printer";
 
 export interface UserListItem {
   id: string;

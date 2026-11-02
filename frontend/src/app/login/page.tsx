@@ -179,7 +179,7 @@ function LoginForm() {
 
   // Shared by a real submit and the dev-only quick login below, so the
   // redirect target and "remember me" persistence can't drift between them.
-  function completeLogin(user: { role: "admin" | "warehouse_staff" | "finance"; brandCode: string | null }) {
+  function completeLogin(user: { role: "admin" | "warehouse_staff" | "finance" | "qr_printer"; brandCode: string | null }) {
     try {
       if (rememberMe) window.localStorage.setItem(REMEMBERED_EMAIL_KEY, email);
       else window.localStorage.removeItem(REMEMBERED_EMAIL_KEY);

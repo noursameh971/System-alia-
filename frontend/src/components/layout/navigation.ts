@@ -3,7 +3,7 @@ import type { SessionRole } from "@/lib/routing";
 export interface NavItem {
   label: string;
   segment: string;
-  /** Roles allowed to see this item. Omitted means every role (admin, warehouse_staff, finance) sees it. */
+  /** Roles allowed to see this item. Omitted means every role (admin, warehouse_staff, finance, qr_printer) sees it. */
   roles?: SessionRole[];
 }
 
@@ -14,7 +14,7 @@ export interface NavItem {
 // the operational nav.
 export const NAV_ITEMS: NavItem[] = [
   { label: "Dashboard", segment: "dashboard", roles: ["admin", "warehouse_staff"] },
-  { label: "Products", segment: "products", roles: ["admin", "warehouse_staff"] },
+  { label: "Products", segment: "products", roles: ["admin", "warehouse_staff", "qr_printer"] },
   { label: "Inventory", segment: "inventory", roles: ["admin", "warehouse_staff"] },
   { label: "Orders", segment: "orders", roles: ["admin", "warehouse_staff"] },
   { label: "Finance", segment: "finance", roles: ["admin", "finance"] },

@@ -27,6 +27,8 @@ export function ProductList() {
   const { role } = useCurrentUser();
   const { t } = useLocale();
   const canManage = role === "admin";
+  // QR Printer is read-and-print only — bulk export is blocked for it server-side too.
+  const canExport = role !== "qr_printer";
 
   const {
     data: products,
@@ -178,10 +180,12 @@ export function ProductList() {
         </Select>
 
         <div className="flex w-full flex-col gap-2 sm:ms-auto sm:w-auto sm:shrink-0 sm:flex-row sm:flex-wrap sm:items-center [&>*]:w-full sm:[&>*]:w-auto">
-          <Button variant="outline" onClick={() => void handleExport()} disabled={exporting}>
-            <Download className="size-4" />
-            {exporting ? t("Exporting...") : t("Export Excel")}
-          </Button>
+          {canExport ? (
+            <Button variant="outline" onClick={() => void handleExport()} disabled={exporting}>
+              <Download className="size-4" />
+              {exporting ? t("Exporting...") : t("Export Excel")}
+            </Button>
+          ) : null}
 
           {canManage ? (
             <Button variant="outline" onClick={() => setImportOpen(true)}>

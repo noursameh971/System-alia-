@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { toast } from "sonner";
 import { MoreVertical, UserPlus } from "lucide-react";
-import type { UserListItem } from "@/lib/types";
+import type { Role, UserListItem } from "@/lib/types";
 import { updateUser } from "@/lib/users";
 import { ApiError } from "@/lib/apiClient";
 import { useLocale } from "@/context/LocaleContext";
@@ -13,6 +13,13 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { getBrandAccentClass, getBrandInitials } from "@/lib/brandColor";
+
+const ROLE_BADGES: Record<Role, { label: string; variant: "brand" | "success" | "info" | "neutral" }> = {
+  admin: { label: "Admin", variant: "brand" },
+  finance: { label: "Finance", variant: "success" },
+  qr_printer: { label: "QR Printer", variant: "info" },
+  warehouse_staff: { label: "Warehouse Staff", variant: "neutral" },
+};
 
 export function UserList({
   users,
@@ -91,11 +98,7 @@ export function UserList({
                   <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">{user.email}</p>
                 </TableCell>
                 <TableCell className="py-3">
-                  <Badge
-                    variant={user.role === "admin" ? "brand" : user.role === "finance" ? "success" : "neutral"}
-                  >
-                    {t(user.role === "admin" ? "Admin" : user.role === "finance" ? "Finance" : "Warehouse Staff")}
-                  </Badge>
+                  <Badge variant={ROLE_BADGES[user.role].variant}>{t(ROLE_BADGES[user.role].label)}</Badge>
                 </TableCell>
                 <TableCell className="py-3">
                   {user.brand ? (

@@ -148,6 +148,7 @@ export function AddUserModal({
               >
                 <option value="warehouse_staff">{t("Warehouse Staff")}</option>
                 <option value="finance">{t("Finance")}</option>
+                <option value="qr_printer">{t("QR Printer")}</option>
                 <option value="admin">{t("Admin")}</option>
               </Select>
             </div>

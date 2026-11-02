@@ -8,7 +8,7 @@ import { ApiError } from "../utils/apiError.js";
 
 export interface AuthenticatedUser {
   id: string;
-  role: "admin" | "warehouse_staff" | "finance";
+  role: "admin" | "warehouse_staff" | "finance" | "qr_printer";
   /** Assigned workspace, lowercased (e.g. "alh"). Null for admins. */
   brandCode: string | null;
   /** Assigned workspace's id — lets brand-scoped routes compare against the ?brandId= query/body param directly. Null for admins. */
@@ -67,6 +67,10 @@ export async function requireAuth(req: Request, _res: Response, next: NextFuncti
     throw ApiError.unauthorized("This account is no longer active");
   }
 
+  if (row.role === "qr_printer") {
+    assertQrPrinterAccess(req);
+  }
+
   req.user = {
     id: subject,
     role: row.role,
@@ -74,6 +78,38 @@ export async function requireAuth(req: Request, _res: Response, next: NextFuncti
     brandId: row.role === "admin" ? null : row.brandId,
   };
   next();
+}
+
+/** Routers a qr_printer may read from: the Products page plus what the workspace shell needs to render (brand list, app settings). */
+const QR_PRINTER_READABLE_ROUTERS = new Set(["/api/products", "/api/brands", "/api/categories", "/api/settings"]);
+
+/**
+ * The QR Printer role is read-and-print only, enforced here (inside
+ * requireAuth, which every protected route already runs) as an allowlist
+ * rather than by sprinkling requireRole across routers: several write
+ * routes (stock movements, orders, returns, inline stock edits) are
+ * deliberately open to every authenticated role, so a deny-by-default gate
+ * is the only way a future route can't silently become writable for this
+ * role. Label printing itself is pure client-side (window.print over data
+ * the product list already returned), so no write is ever needed.
+ */
+function assertQrPrinterAccess(req: Request): void {
+  // Changing one's own password is account hygiene, not a data write.
+  if (req.baseUrl === "/api/users" && req.path === "/me/password" && req.method === "PATCH") {
+    return;
+  }
+  if (req.method !== "GET" && req.method !== "HEAD") {
+    throw ApiError.forbidden("The QR Printer role is read-only");
+  }
+  // req.baseUrl is the router's mount path (see app.ts), whether requireAuth
+  // runs per-route or via router.use().
+  if (!QR_PRINTER_READABLE_ROUTERS.has(req.baseUrl)) {
+    throw ApiError.forbidden("The QR Printer role can only access products");
+  }
+  // Bulk export is hidden from this role in the UI too — it's a data-extraction path, not printing.
+  if (req.baseUrl === "/api/products" && req.path === "/export") {
+    throw ApiError.forbidden("The QR Printer role can't export products");
+  }
 }
 
 export function requireRole(...allowedRoles: AuthenticatedUser["role"][]) {

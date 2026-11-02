@@ -209,6 +209,12 @@ export async function getProducts(req: Request, res: Response): Promise<void> {
   }
 
   const productList = await listProductsWithVariants(parsed.data);
+  // Production cost is financial data — the QR Printer role only needs what goes on a label.
+  if (req.user?.role === "qr_printer") {
+    for (const product of productList) {
+      for (const variant of product.variants) variant.cost = null;
+    }
+  }
   sendSuccess(res, 200, productList);
 }
 

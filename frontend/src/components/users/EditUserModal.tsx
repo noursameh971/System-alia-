@@ -96,6 +96,7 @@ export function EditUserModal({
             >
               <option value="warehouse_staff">Warehouse Staff</option>
               <option value="finance">Finance</option>
+              <option value="qr_printer">QR Printer</option>
               <option value="admin">Admin</option>
             </Select>
           </div>

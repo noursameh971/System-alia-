@@ -105,7 +105,7 @@ export async function proxy(req: NextRequest) {
     return NextResponse.next();
   }
 
-  if (session.role === "warehouse_staff" || session.role === "finance") {
+  if (session.role !== "admin") {
     // The picker is for people with a choice to make. Staff/finance users
     // who have a brand don't, so send them home — but without one must be
     // let through, because homeFor() sends them here and bouncing them would
@@ -127,6 +127,13 @@ export async function proxy(req: NextRequest) {
     // brand — Products, Inventory, Orders, and Settings are exactly the
     // areas this role exists to not have access to.
     if (session.role === "finance" && moduleSegment && moduleSegment !== "finance") {
+      return NextResponse.redirect(new URL(homeFor(session), req.url));
+    }
+
+    // QR Printer is likewise locked to the Products module — it exists only
+    // to browse the catalog and print labels (the backend enforces the same
+    // read-only boundary in middleware/auth.ts).
+    if (session.role === "qr_printer" && moduleSegment && moduleSegment !== "products") {
       return NextResponse.redirect(new URL(homeFor(session), req.url));
     }
   }
