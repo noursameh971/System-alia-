@@ -21,7 +21,7 @@ import {
   warehouses,
 } from "../../db/schema/index.js";
 import { ApiError } from "../../utils/apiError.js";
-import { pgErrorCode, POSTGRES_FOREIGN_KEY_VIOLATION_CODES } from "../../utils/pgErrors.js";
+import { pgErrorCode, pgErrorConstraint, POSTGRES_FOREIGN_KEY_VIOLATION_CODES } from "../../utils/pgErrors.js";
 import { attributeSignature, buildVariantSku } from "../../utils/skuGenerator.js";
 import { buildQrPayload } from "../qrcode/qrcode.util.js";
 import type {
@@ -224,6 +224,8 @@ export interface ProductListItem {
   name: string;
   description: string | null;
   imageUrl: string | null;
+  /** Manually-entered pattern number ("رقم الباترون") — null if never set. */
+  patternNumber: string | null;
   status: string;
   sortOrder: number;
   brand: { id: string; name: string; code: string };
@@ -244,6 +246,7 @@ export async function listProductsWithVariants(filters: { brandId?: string }): P
       name: products.name,
       description: products.description,
       imageUrl: products.imageUrl,
+      patternNumber: products.patternNumber,
       status: products.status,
       sortOrder: products.sortOrder,
       brandId: brands.id,
@@ -361,6 +364,7 @@ export async function listProductsWithVariants(filters: { brandId?: string }): P
     name: p.name,
     description: p.description,
     imageUrl: p.imageUrl,
+    patternNumber: p.patternNumber,
     status: p.status,
     sortOrder: p.sortOrder,
     brand: { id: p.brandId, name: p.brandName, code: p.brandCode },
@@ -629,6 +633,10 @@ export async function createQuickProduct(
   input: QuickCreateProductInput,
   actorUserId: string,
 ): Promise<QuickProductResult> {
+  return withPatternNumberConflict(input.patternNumber, () => createQuickProductTx(input, actorUserId));
+}
+
+async function createQuickProductTx(input: QuickCreateProductInput, actorUserId: string): Promise<QuickProductResult> {
   return db.transaction(async (tx) => {
     const [brand] = await tx.select().from(brands).where(eq(brands.id, input.brandId)).limit(1);
     if (!brand) throw ApiError.badRequest(`Brand ${input.brandId} does not exist`);
@@ -663,6 +671,7 @@ export async function createQuickProduct(
             name: input.name,
             status: "active",
             imageUrl: input.imageUrl?.trim() || null,
+            patternNumber: input.patternNumber || null,
             sortOrder: nextSortOrderSql(brand.id),
           })
           .onConflictDoNothing({ target: [products.brandId, products.name] })
@@ -1076,6 +1085,7 @@ export interface UpdateProductInfoResult {
   productId: string;
   name: string;
   imageUrl: string | null;
+  patternNumber: string | null;
 }
 
 /**
@@ -1085,18 +1095,33 @@ export interface UpdateProductInfoResult {
  * itself, same as category above.
  */
 export async function updateProductInfo(productId: string, input: UpdateProductInfoInput): Promise<UpdateProductInfoResult> {
-  const [updated] = await db
-    .update(products)
-    .set({
-      ...(input.name !== undefined ? { name: input.name } : {}),
-      ...(input.imageUrl !== undefined ? { imageUrl: input.imageUrl.trim() || null } : {}),
-      updatedAt: sql`now()`,
-    })
-    .where(eq(products.id, productId))
-    .returning({ id: products.id, name: products.name, imageUrl: products.imageUrl });
+  const [updated] = await withPatternNumberConflict(input.patternNumber, () =>
+    db
+      .update(products)
+      .set({
+        ...(input.name !== undefined ? { name: input.name } : {}),
+        ...(input.imageUrl !== undefined ? { imageUrl: input.imageUrl.trim() || null } : {}),
+        ...(input.patternNumber !== undefined ? { patternNumber: input.patternNumber || null } : {}),
+        updatedAt: sql`now()`,
+      })
+      .where(eq(products.id, productId))
+      .returning({ id: products.id, name: products.name, imageUrl: products.imageUrl, patternNumber: products.patternNumber }),
+  );
 
   if (!updated) throw ApiError.notFound(`Product ${productId} does not exist`);
-  return { productId: updated.id, name: updated.name, imageUrl: updated.imageUrl };
+  return { productId: updated.id, name: updated.name, imageUrl: updated.imageUrl, patternNumber: updated.patternNumber };
+}
+
+/** Turns a collision on products_brand_id_pattern_number_key into a readable 409 (other unique violations pass through untouched). */
+async function withPatternNumberConflict<T>(patternNumber: string | undefined, fn: () => Promise<T>): Promise<T> {
+  try {
+    return await fn();
+  } catch (err) {
+    if (pgErrorConstraint(err) === "products_brand_id_pattern_number_key") {
+      throw ApiError.conflict(`Pattern number "${patternNumber}" is already used by another product in this brand`);
+    }
+    throw err;
+  }
 }
 
 export interface ReorderProductResult {

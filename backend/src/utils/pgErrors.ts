@@ -23,6 +23,14 @@ export function pgErrorCode(err: unknown): string | undefined {
   return (candidate as { code?: unknown }).code as string | undefined;
 }
 
+/** Extracts the violated constraint/index name from a thrown drizzle/pg error, if there is one — same `.cause` unwrapping as pgErrorCode. */
+export function pgErrorConstraint(err: unknown): string | undefined {
+  if (typeof err !== "object" || err === null) return undefined;
+  const candidate = "cause" in err ? err.cause : err;
+  if (typeof candidate !== "object" || candidate === null || !("constraint" in candidate)) return undefined;
+  return (candidate as { constraint?: unknown }).constraint as string | undefined;
+}
+
 /** Runs `fn`, translating a Postgres unique-constraint violation into a clean 409 instead of a raw 500. */
 export async function withUniqueConstraint<T>(message: string, fn: () => Promise<T>): Promise<T> {
   try {

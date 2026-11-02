@@ -371,7 +371,7 @@ export function ProductsGroupedTable({
     const q = search.trim().toLowerCase();
     if (!q) return byCategory;
     return byCategory.filter((row) =>
-      [row.product.name, row.categoryName, ...row.colors, ...row.product.variants.map((v) => v.sku)]
+      [row.product.name, row.product.patternNumber ?? "", row.categoryName, ...row.colors, ...row.product.variants.map((v) => v.sku)]
         .join(" ")
         .toLowerCase()
         .includes(q),

@@ -35,6 +35,7 @@ interface EditProductModalProps {
 interface FormState {
   name: string;
   category: string;
+  patternNumber: string;
   price: string;
   cost: string;
 }
@@ -43,6 +44,7 @@ function formStateFor(product: Product, priceInfo: EditProductModalProps["priceI
   return {
     name: product.name,
     category: product.category.name,
+    patternNumber: product.patternNumber ?? "",
     price: priceInfo.price != null ? String(priceInfo.price) : "",
     cost: costInfo.cost != null ? String(costInfo.cost) : "",
   };
@@ -139,16 +141,19 @@ export function EditProductModal({ open, onOpenChange, product, priceInfo, costI
       const trimmedName = form.name.trim();
       const trimmedCategory = form.category.trim();
       const trimmedImageUrl = imageUrlText.trim();
+      const trimmedPatternNumber = form.patternNumber.trim();
       const nameChanged = trimmedName !== product.name;
+      const patternNumberChanged = trimmedPatternNumber !== (product.patternNumber ?? "");
       const imageUrlChanged = !stagedFile && trimmedImageUrl !== (product.imageUrl ?? "");
       const price = Number(form.price);
       const cost = form.cost.trim() ? Number(form.cost) : null;
 
       await Promise.all([
-        nameChanged || imageUrlChanged
+        nameChanged || imageUrlChanged || patternNumberChanged
           ? updateProductInfo(product.id, {
               ...(nameChanged ? { name: trimmedName } : {}),
               ...(imageUrlChanged ? { imageUrl: trimmedImageUrl } : {}),
+              ...(patternNumberChanged ? { patternNumber: trimmedPatternNumber } : {}),
             })
           : null,
         trimmedCategory !== product.category.name ? updateProductCategory(product.id, trimmedCategory) : null,
@@ -208,6 +213,19 @@ export function EditProductModal({ open, onOpenChange, product, priceInfo, costI
                 ))}
               </datalist>
               {errors.category ? <p className="text-xs text-red-600 dark:text-red-400">{errors.category}</p> : null}
+            </div>
+
+            <div className="flex min-w-0 flex-col gap-1.5">
+              <Label htmlFor="edit-product-pattern-number">{t("Pattern Number")}</Label>
+              <Input
+                id="edit-product-pattern-number"
+                value={form.patternNumber}
+                onChange={(e) => setField("patternNumber", e.target.value)}
+                placeholder={t("e.g. 5789")}
+                maxLength={50}
+                disabled={submitting}
+              />
+              <p className="text-xs text-slate-400 dark:text-slate-500">{t("Optional — must be unique within this brand.")}</p>
             </div>
           </div>
 

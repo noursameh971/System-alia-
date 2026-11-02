@@ -28,6 +28,8 @@ export interface Product {
   name: string;
   description: string | null;
   imageUrl: string | null;
+  /** Manually-entered pattern number ("رقم الباترون") — search only, never part of the SKU/QR code. */
+  patternNumber: string | null;
   status: string;
   /** Manual display position within the brand's Products page — lower sorts first. */
   sortOrder: number;
@@ -52,6 +54,8 @@ export interface QuickCreateProductInput {
   category?: string;
   /** An external URL, set on creation. File uploads happen as a second step (see uploadProductImage) since the upload endpoint needs a productId that doesn't exist until after this call succeeds. */
   imageUrl?: string;
+  /** Optional manual pattern number, unique per brand. Only applied when this call creates the product. */
+  patternNumber?: string;
   variants: QuickVariantInput[];
 }
 
@@ -129,12 +133,15 @@ export interface UpdateProductInfoInput {
   name?: string;
   /** Empty string explicitly clears the image; omit to leave it untouched. */
   imageUrl?: string;
+  /** Empty string clears the pattern number; omit to leave it untouched. */
+  patternNumber?: string;
 }
 
 export interface UpdateProductInfoResult {
   productId: string;
   name: string;
   imageUrl: string | null;
+  patternNumber: string | null;
 }
 
 export interface BulkUpdateCategoryResult {

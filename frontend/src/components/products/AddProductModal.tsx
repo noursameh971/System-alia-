@@ -57,6 +57,7 @@ export function AddProductModal({ open, onOpenChange, brandId, onSuccess }: AddP
   const [name, setName] = useState("");
   const [nameError, setNameError] = useState<string | undefined>();
   const [category, setCategory] = useState("");
+  const [patternNumber, setPatternNumber] = useState("");
   const [imageUrlText, setImageUrlText] = useState("");
   const [stagedFile, setStagedFile] = useState<File | null>(null);
   const [rows, setRows] = useState<VariantRow[]>(() => [newVariantRow()]);
@@ -152,6 +153,7 @@ export function AddProductModal({ open, onOpenChange, brandId, onSuccess }: AddP
     setName("");
     setNameError(undefined);
     setCategory("");
+    setPatternNumber("");
     setImageUrlText("");
     setStagedFile(null);
     setRows([newVariantRow()]);
@@ -169,6 +171,7 @@ export function AddProductModal({ open, onOpenChange, brandId, onSuccess }: AddP
         name: name.trim(),
         category: category.trim() || undefined,
         imageUrl: imageUrlText.trim() || undefined,
+        patternNumber: patternNumber.trim() || undefined,
         variants: rows.map((row) => ({
           color: row.color.trim(),
           size: row.size.trim(),
@@ -258,6 +261,19 @@ export function AddProductModal({ open, onOpenChange, brandId, onSuccess }: AddP
                 ))}
               </datalist>
               <p className="text-xs text-slate-400 dark:text-slate-500">{t("Leave empty to use General.")}</p>
+            </div>
+
+            <div className="flex min-w-0 flex-col gap-1.5">
+              <Label htmlFor="add-product-pattern-number">{t("Pattern Number")}</Label>
+              <Input
+                id="add-product-pattern-number"
+                value={patternNumber}
+                onChange={(e) => setPatternNumber(e.target.value)}
+                placeholder={t("e.g. 5789")}
+                maxLength={50}
+                disabled={submitting}
+              />
+              <p className="text-xs text-slate-400 dark:text-slate-500">{t("Optional — must be unique within this brand.")}</p>
             </div>
           </div>
 

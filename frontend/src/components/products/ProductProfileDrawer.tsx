@@ -439,6 +439,11 @@ export function ProductProfileDrawer({ product, onOpenChange, canManage, onMutat
                       />
                     </div>
                     <SheetDescription className="mt-0.5">
+                      {product.patternNumber ? (
+                        <>
+                          {t("Pattern Number")}: <span className="font-mono">{product.patternNumber}</span> &middot;{" "}
+                        </>
+                      ) : null}
                       {product.variants.length} variant{product.variants.length === 1 ? "" : "s"} &middot; {totalStock} total
                       in stock
                     </SheetDescription>

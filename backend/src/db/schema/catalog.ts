@@ -6,6 +6,7 @@ import {
   text,
   timestamp,
   unique,
+  uniqueIndex,
   uuid,
   varchar,
 } from "drizzle-orm/pg-core";
@@ -37,13 +38,18 @@ export const products = pgTable(
     name: varchar("name", { length: 200 }).notNull(),
     description: text("description"),
     imageUrl: text("image_url"),
+    /** Optional manually-entered pattern number ("رقم الباترون"), unique per brand when set — search only, never used for SKU/QR generation. See database/migrations/0031_add_product_pattern_number.sql. */
+    patternNumber: varchar("pattern_number", { length: 50 }),
     status: productStatusEnum("status").notNull().default("active"),
     /** Manual display position within the brand's Products page — lower sorts first. Defaults to 0; see database/migrations/0022_add_product_sort_order.sql for the backfill of existing rows. */
     sortOrder: integer("sort_order").notNull().default(0),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
-  (table) => [unique("products_brand_id_name_key").on(table.brandId, table.name)],
+  (table) => [
+    unique("products_brand_id_name_key").on(table.brandId, table.name),
+    uniqueIndex("products_brand_id_pattern_number_key").on(table.brandId, table.patternNumber),
+  ],
 );
 
 export const attributes = pgTable("attributes", {

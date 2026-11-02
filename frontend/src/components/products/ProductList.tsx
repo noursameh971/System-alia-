@@ -160,7 +160,7 @@ export function ProductList() {
           <Input
             value={search}
             onChange={(event) => setSearch(event.target.value)}
-            placeholder={t("Search product, category, color, or SKU")}
+            placeholder={t("Search product, pattern number, category, color, or SKU")}
             className="ps-9"
           />
         </div>

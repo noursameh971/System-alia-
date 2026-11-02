@@ -57,6 +57,8 @@ export const quickCreateProductSchema = z.object({
   category: z.string().trim().max(100).optional(),
   /** An external URL (typed in) or a path returned by the image-upload endpoint (e.g. "/uploads/products/xyz.jpg") — not validated as a strict URL so relative upload paths are accepted too. */
   imageUrl: z.string().trim().max(500).optional(),
+  /** Manual pattern number ("رقم الباترون"), unique per brand. Only applied when this call creates the product, same as category. */
+  patternNumber: z.string().trim().max(50).optional(),
   variants: z
     .array(quickVariantInputSchema)
     .min(1, "Add at least one variant")
@@ -130,8 +132,10 @@ export const updateProductInfoSchema = z
     name: z.string().trim().min(1, "Product name is required").max(200).optional(),
     /** Empty string explicitly clears the image; omitting the field leaves it untouched — same convention as updateProductVariantSchema's imageUrl. */
     imageUrl: z.string().trim().max(500).optional(),
+    /** Empty string clears the pattern number; omitting it leaves it untouched — same convention as imageUrl. */
+    patternNumber: z.string().trim().max(50).optional(),
   })
-  .refine((data) => data.name !== undefined || data.imageUrl !== undefined, {
+  .refine((data) => data.name !== undefined || data.imageUrl !== undefined || data.patternNumber !== undefined, {
     message: "At least one field must be provided",
   });
 
