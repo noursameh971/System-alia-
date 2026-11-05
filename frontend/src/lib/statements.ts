@@ -16,6 +16,7 @@ export interface FinancialStatements {
     totalOperatingExpenses: number;
     netProfit: number;
     netMargin: number;
+    contribution: ContributionMargin;
   };
   cashFlow: {
     inflows: { collectedOrderSales: number; recordedRevenue: number; receivableCollections: number; total: number };
@@ -29,6 +30,33 @@ export interface FinancialStatements {
     liabilities: { accountsPayable: number; total: number };
     equity: { ownerCapital: number; retainedEarnings: number; otherAdjustments: number; total: number };
   };
+}
+
+export interface ContributionMargin {
+  revenue: number;
+  afterCostOfSales: number;
+  fulfilment: number;
+  afterFulfilment: number;
+  marketing: number;
+  afterMarketing: number;
+  fixedCosts: number;
+  netProfit: number;
+  contributionRatio: number;
+  breakEvenRevenue: number | null;
+}
+
+export interface CashIntelligence {
+  monthly: { month: string; partial: boolean; inflows: number; outflows: number; netCash: number; netProfit: number }[];
+  currentCash: number;
+  startingBalancesSet: boolean;
+  burnWindowMonths: number;
+  avgMonthlyNetCash: number;
+  monthlyBurn: number;
+  runwayMonths: number | null;
+}
+
+export function getCashIntelligence(brandId: string): Promise<CashIntelligence> {
+  return apiFetch<CashIntelligence>(`/api/statements/insights?brandId=${encodeURIComponent(brandId)}`);
 }
 
 export interface OpeningBalances {

@@ -5,7 +5,7 @@ import { ApiError } from "../../utils/apiError.js";
 import { sendSuccess } from "../../utils/apiResponse.js";
 import { asyncHandler } from "../../utils/asyncHandler.js";
 import { validateBody } from "../../middleware/validate.js";
-import { getFinancialStatements, saveOpeningBalances } from "./statements.service.js";
+import { getCashIntelligence, getFinancialStatements, saveOpeningBalances } from "./statements.service.js";
 
 const dateOnly = z
   .string()
@@ -43,6 +43,21 @@ statementsRouter.get(
     if (!parsed.success) throw ApiError.badRequest("Invalid query parameters", parsed.error.flatten());
     const { brandId, from, to } = parsed.data;
     sendSuccess(res, 200, await getFinancialStatements(brandId, { from, to }));
+  }),
+);
+
+const brandQuerySchema = z.object({ brandId: z.string().uuid() });
+
+/** GET /api/statements/insights?brandId= — Virtual CFO overview: monthly cash trend, burn rate, runway. Read-only. */
+statementsRouter.get(
+  "/insights",
+  requireAuth,
+  requireRole("admin", "finance"),
+  requireBrandAccess("query"),
+  asyncHandler(async (req: Request, res: Response) => {
+    const parsed = brandQuerySchema.safeParse(req.query);
+    if (!parsed.success) throw ApiError.badRequest("Invalid query parameters", parsed.error.flatten());
+    sendSuccess(res, 200, await getCashIntelligence(parsed.data.brandId));
   }),
 );
 

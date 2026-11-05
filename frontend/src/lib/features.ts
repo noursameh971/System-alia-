@@ -10,3 +10,11 @@
  * in Vercel (or .env.local) and redeploy to bring it back.
  */
 export const ASSISTANT_ENABLED = process.env.NEXT_PUBLIC_ASSISTANT_ENABLED?.trim() === "true";
+
+/**
+ * CFO_ENABLED gates the standalone "Virtual CFO" module (app/[brand]/cfo,
+ * components/cfo) and its sidebar entry. On by default; set
+ * NEXT_PUBLIC_CFO_ENABLED=false and redeploy to hide it. Nothing else in the
+ * app depends on the module, so hiding it leaves every other page unchanged.
+ */
+export const CFO_ENABLED = process.env.NEXT_PUBLIC_CFO_ENABLED?.trim() !== "false";

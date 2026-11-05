@@ -31,7 +31,7 @@ import { StartingBalancesModal } from "./StartingBalancesModal";
 
 export type StatementView = "income" | "balance" | "cashflow";
 
-type Period = "this_month" | "last_month" | "ytd" | "last_12_months" | "all";
+export type Period = "this_month" | "last_month" | "ytd" | "last_12_months" | "all";
 
 const PERIODS: { value: Period; label: string }[] = [
   { value: "this_month", label: "This month" },
@@ -46,7 +46,7 @@ function isoDay(date: Date): string {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
 }
 
-function rangeFor(period: Period): { from?: string; to?: string } {
+export function rangeFor(period: Period): { from?: string; to?: string } {
   const now = new Date();
   const y = now.getFullYear();
   const m = now.getMonth();
@@ -64,9 +64,9 @@ function rangeFor(period: Period): { from?: string; to?: string } {
   }
 }
 
-const percent = (value: number) => `${value.toFixed(1)}%`;
+export const percent = (value: number) => `${value.toFixed(1)}%`;
 
-interface StatementRow {
+export interface StatementRow {
   label: string;
   amount: number;
   /** section: a heading with no amount. item: an indented detail line. subtotal / total: summary lines. */
@@ -75,7 +75,7 @@ interface StatementRow {
   hideIfZero?: boolean;
 }
 
-function StatementTable({ rows, footnote }: { rows: StatementRow[]; footnote?: string }) {
+export function StatementTable({ rows, footnote }: { rows: StatementRow[]; footnote?: string }) {
   const { t } = useLocale();
   return (
     <div className="flex flex-col gap-3">
@@ -189,7 +189,7 @@ function IncomeStatementView({ data }: { data: Statements["incomeStatement"] }) 
       >
         <StatementTable
           rows={rows}
-          footnote="Net profit matches the Overview tab. Production & fabric expenses are shown under cost of sales instead of operating expenses."
+          footnote="Net profit matches the Finance page. Production & fabric expenses are shown under cost of sales instead of operating expenses."
         />
       </DashboardCard>
     </>
@@ -341,8 +341,38 @@ function BalanceSheetView({
   );
 }
 
+/** Period chips (this month … all time) plus the resolved date range. */
+export function PeriodPicker({ period, onChange }: { period: Period; onChange: (next: Period) => void }) {
+  const { t } = useLocale();
+  const range = rangeFor(period);
+  return (
+    <div className="flex flex-wrap items-center gap-2">
+      {PERIODS.map((option) => (
+        <button
+          key={option.value}
+          type="button"
+          onClick={() => onChange(option.value)}
+          className={cn(
+            "rounded-full px-3 py-1.5 text-xs font-medium transition-colors",
+            period === option.value
+              ? "bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900"
+              : "bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700",
+          )}
+        >
+          {t(option.label)}
+        </button>
+      ))}
+      {range.from ? (
+        <span className="text-xs text-slate-400 tabular-nums dark:text-slate-500">
+          {range.from} → {range.to}
+        </span>
+      ) : null}
+    </div>
+  );
+}
+
 /**
- * The Finance page's statement tabs — a view over GET /api/statements (the
+ * The Virtual CFO page's statement tabs — a view over GET /api/statements (the
  * Balance Sheet's starting balances are the only thing edited from here). The Balance Sheet is always as of today; the period
  * selector applies to the Income Statement and Cash Flow.
  */
@@ -356,30 +386,7 @@ export function FinancialStatements({ brandId, view }: { brandId: string; view: 
 
   return (
     <div className="flex flex-col gap-5">
-      {view !== "balance" ? (
-        <div className="flex flex-wrap items-center gap-2">
-          {PERIODS.map((option) => (
-            <button
-              key={option.value}
-              type="button"
-              onClick={() => setPeriod(option.value)}
-              className={cn(
-                "rounded-full px-3 py-1.5 text-xs font-medium transition-colors",
-                period === option.value
-                  ? "bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900"
-                  : "bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700",
-              )}
-            >
-              {t(option.label)}
-            </button>
-          ))}
-          {range.from ? (
-            <span className="text-xs text-slate-400 tabular-nums dark:text-slate-500">
-              {range.from} → {range.to}
-            </span>
-          ) : null}
-        </div>
-      ) : null}
+      {view !== "balance" ? <PeriodPicker period={period} onChange={setPeriod} /> : null}
 
       {isLoading ? (
         <div className="flex justify-center py-16">

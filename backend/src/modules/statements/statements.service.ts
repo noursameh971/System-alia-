@@ -13,7 +13,7 @@ import {
   revenues,
   variantCosts,
 } from "../../db/schema/index.js";
-import { BUSINESS_TIMEZONE } from "../../utils/businessDate.js";
+import { BUSINESS_TIMEZONE, businessDate } from "../../utils/businessDate.js";
 import { getFinanceSummary, type FinanceDateRange } from "../expenses/expenses.service.js";
 import type { ExpenseCategory } from "../expenses/expenses.schema.js";
 import { listLedgerEntities } from "../ledger/ledger.service.js";
@@ -53,6 +53,33 @@ export interface IncomeStatement {
   totalOperatingExpenses: number;
   netProfit: number;
   netMargin: number;
+  contribution: ContributionMargin;
+}
+
+/**
+ * The same P&L regrouped by how costs behave, for e-commerce unit
+ * economics: each step subtracts the next layer of variable cost, and what's
+ * left after marketing must cover fixed overheads. Every expense category
+ * lands in exactly one layer, so contributionAfterMarketing - fixedCosts is
+ * always netProfit.
+ */
+export interface ContributionMargin {
+  revenue: number;
+  /** Revenue − cost of sales (= gross profit). */
+  afterCostOfSales: number;
+  /** Order shipping + packaging + logistics. */
+  fulfilment: number;
+  afterFulfilment: number;
+  marketing: number;
+  /** Contribution margin: what each pound of sales leaves for fixed costs. */
+  afterMarketing: number;
+  /** Salaries, rent, professional fees, misc. */
+  fixedCosts: number;
+  netProfit: number;
+  /** afterMarketing / revenue * 100. */
+  contributionRatio: number;
+  /** Revenue needed for netProfit = 0 at the current contribution ratio; null when the ratio isn't positive (no revenue level breaks even). */
+  breakEvenRevenue: number | null;
 }
 
 export interface CashFlowStatement {
@@ -163,6 +190,11 @@ async function getIncomeStatement(brandId: string, range: FinanceDateRange): Pro
   const { production: productionExpenses, ...overheads } = summary.byCategory;
   const costOfSalesTotal = summary.cogs + productionExpenses;
   const grossProfit = summary.grossRevenue - costOfSalesTotal;
+  const fulfilment = summary.shipping + overheads.packaging + overheads.logistics;
+  const afterFulfilment = grossProfit - fulfilment;
+  const afterMarketing = afterFulfilment - overheads.marketing;
+  const fixedCosts = overheads.salaries + overheads.rent + overheads.professional_fees + overheads.misc;
+  const contributionRatio = percent(afterMarketing, summary.grossRevenue);
   return {
     orderRevenue: summary.orderRevenue,
     otherRevenue,
@@ -175,6 +207,18 @@ async function getIncomeStatement(brandId: string, range: FinanceDateRange): Pro
     totalOperatingExpenses: summary.shipping + summary.operatingExpenses - productionExpenses,
     netProfit: summary.netProfit,
     netMargin: summary.profitMargin,
+    contribution: {
+      revenue: summary.grossRevenue,
+      afterCostOfSales: grossProfit,
+      fulfilment,
+      afterFulfilment,
+      marketing: overheads.marketing,
+      afterMarketing,
+      fixedCosts,
+      netProfit: summary.netProfit,
+      contributionRatio,
+      breakEvenRevenue: contributionRatio > 0 ? fixedCosts / (contributionRatio / 100) : null,
+    },
   };
 }
 
@@ -352,4 +396,86 @@ export async function getFinancialStatements(brandId: string, range: FinanceDate
     getBalanceSheet(brandId),
   ]);
   return { range, incomeStatement, cashFlow, balanceSheet };
+}
+
+export interface MonthlyCashPoint {
+  /** YYYY-MM. */
+  month: string;
+  /** True for the current, still-running month. */
+  partial: boolean;
+  inflows: number;
+  outflows: number;
+  netCash: number;
+  netProfit: number;
+}
+
+export interface CashIntelligence {
+  /** Oldest first: the last 6 complete months, then the current month to date. */
+  monthly: MonthlyCashPoint[];
+  /** Balance Sheet cash (starting balance + recorded flows). */
+  currentCash: number;
+  /** False until starting cash is entered — currentCash (and so runway) then only reflects recorded flows. */
+  startingBalancesSet: boolean;
+  /** How many complete months avgMonthlyNetCash covers (up to 3; fewer for a brand with less history). */
+  burnWindowMonths: number;
+  /** Average net cash change across the last complete months with activity. */
+  avgMonthlyNetCash: number;
+  /** Average monthly cash lost over those months; 0 when cash is growing. */
+  monthlyBurn: number;
+  /** currentCash / monthlyBurn; null when not burning cash. 0 when cash is already exhausted. */
+  runwayMonths: number | null;
+}
+
+const COMPLETE_MONTHS = 6;
+const BURN_WINDOW_MONTHS = 3;
+
+/** First and last day (YYYY-MM-DD) of the month `offset` months from the business-calendar month containing `today`. */
+function monthBounds(today: string, offset: number): { month: string; from: string; to: string } {
+  const [y, m] = today.split("-").map(Number) as [number, number];
+  const start = new Date(Date.UTC(y, m - 1 + offset, 1));
+  const end = new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth() + 1, 0));
+  const iso = (d: Date) => d.toISOString().slice(0, 10);
+  return { month: iso(start).slice(0, 7), from: iso(start), to: iso(end) };
+}
+
+/** The Virtual CFO overview's cash trend, burn rate, and runway — read-only, derived from the same flows as the Cash Flow statement. */
+export async function getCashIntelligence(brandId: string): Promise<CashIntelligence> {
+  const today = businessDate();
+  const months = Array.from({ length: COMPLETE_MONTHS + 1 }, (_, i) => monthBounds(today, i - COMPLETE_MONTHS));
+
+  const [balanceSheet, ...points] = await Promise.all([
+    getBalanceSheet(brandId),
+    ...months.map(async ({ month, from, to }, i) => {
+      const partial = i === COMPLETE_MONTHS;
+      const range = { from, to: partial ? today : to };
+      const [cash, summary] = await Promise.all([getCashFlowStatement(brandId, range), getFinanceSummary(brandId, range)]);
+      return {
+        month,
+        partial,
+        inflows: cash.inflows.total,
+        outflows: cash.outflows.total,
+        netCash: cash.netCashChange,
+        netProfit: summary.netProfit,
+      };
+    }),
+  ]);
+
+  // Months before the brand's first recorded flow are skipped rather than
+  // averaged in as zeros, which would understate the burn of a new brand.
+  const complete = points.filter((p) => !p.partial);
+  const firstActive = complete.findIndex((p) => p.inflows !== 0 || p.outflows !== 0);
+  const window = firstActive === -1 ? [] : complete.slice(firstActive).slice(-BURN_WINDOW_MONTHS);
+  const avgMonthlyNetCash = window.reduce((sum, p) => sum + p.netCash, 0) / Math.max(window.length, 1);
+  const monthlyBurn = avgMonthlyNetCash < 0 ? -avgMonthlyNetCash : 0;
+  const currentCash = balanceSheet.assets.cash;
+
+  return {
+    monthly: points,
+    currentCash,
+    startingBalancesSet: balanceSheet.openingBalances.isSet,
+    burnWindowMonths: window.length,
+    avgMonthlyNetCash,
+    monthlyBurn,
+    runwayMonths: monthlyBurn > 0 ? Math.max(currentCash, 0) / monthlyBurn : null,
+  };
 }

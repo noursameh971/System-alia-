@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Settings, TrendingUp } from "lucide-react";
+import { BarChart3, Settings, TrendingUp } from "lucide-react";
 import { useWorkspace } from "@/context/WorkspaceContext";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { useLocale } from "@/context/LocaleContext";
@@ -15,6 +15,7 @@ const ICONS: Record<string, React.ComponentType<{ className?: string }>> = {
   inventory: InventoryIcon,
   orders: OrdersIcon,
   finance: TrendingUp,
+  cfo: BarChart3,
   settings: Settings,
 };
 

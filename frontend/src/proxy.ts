@@ -126,7 +126,7 @@ export async function proxy(req: NextRequest) {
     // Finance is further locked to just the Finance module within its
     // brand — Products, Inventory, Orders, and Settings are exactly the
     // areas this role exists to not have access to.
-    if (session.role === "finance" && moduleSegment && moduleSegment !== "finance") {
+    if (session.role === "finance" && moduleSegment && moduleSegment !== "finance" && moduleSegment !== "cfo") {
       return NextResponse.redirect(new URL(homeFor(session), req.url));
     }
 

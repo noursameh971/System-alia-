@@ -29,7 +29,9 @@ export function MobileBottomNav() {
   const { role } = useCurrentUser();
   const { t } = useLocale();
 
-  const items = NAV_ITEMS.filter((item) => !item.roles || (role !== null && item.roles.includes(role)));
+  const items = NAV_ITEMS.filter(
+    (item) => item.mobile !== false && (!item.roles || (role !== null && item.roles.includes(role))),
+  );
 
   return (
     <nav

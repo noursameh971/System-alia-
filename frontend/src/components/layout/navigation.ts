@@ -1,3 +1,4 @@
+import { CFO_ENABLED } from "@/lib/features";
 import type { SessionRole } from "@/lib/routing";
 
 export interface NavItem {
@@ -5,6 +6,8 @@ export interface NavItem {
   segment: string;
   /** Roles allowed to see this item. Omitted means every role (admin, warehouse_staff, finance, qr_printer) sees it. */
   roles?: SessionRole[];
+  /** False keeps the item out of the mobile bottom bar (sidebar only), so optional modules don't crowd the phone layout. */
+  mobile?: boolean;
 }
 
 // Relative to /[brand]/ — Sidebar/MobileBottomNav prefix these with the
@@ -18,6 +21,8 @@ export const NAV_ITEMS: NavItem[] = [
   { label: "Inventory", segment: "inventory", roles: ["admin", "warehouse_staff"] },
   { label: "Orders", segment: "orders", roles: ["admin", "warehouse_staff"] },
   { label: "Finance", segment: "finance", roles: ["admin", "finance"] },
+  // Optional, self-contained module — see lib/features.ts.
+  ...(CFO_ENABLED ? [{ label: "Virtual CFO", segment: "cfo", roles: ["admin", "finance"] as SessionRole[], mobile: false }] : []),
   { label: "Settings", segment: "settings", roles: ["admin"] },
 ];
 
