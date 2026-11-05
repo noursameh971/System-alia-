@@ -4,7 +4,8 @@ import { requireAuth, requireBrandAccess, requireRole } from "../../middleware/a
 import { ApiError } from "../../utils/apiError.js";
 import { sendSuccess } from "../../utils/apiResponse.js";
 import { asyncHandler } from "../../utils/asyncHandler.js";
-import { getFinancialStatements } from "./statements.service.js";
+import { validateBody } from "../../middleware/validate.js";
+import { getFinancialStatements, saveOpeningBalances } from "./statements.service.js";
 
 const dateOnly = z
   .string()
@@ -15,6 +16,14 @@ const statementsQuerySchema = z.object({
   brandId: z.string().uuid(),
   from: dateOnly.optional(),
   to: dateOnly.optional(),
+});
+
+const openingBalancesSchema = z.object({
+  brandId: z.string().uuid(),
+  // Starting cash can legitimately be negative (an overdrawn account); capital normally isn't, but isn't forbidden.
+  startingCash: z.number().finite().min(-1_000_000_000).max(1_000_000_000),
+  ownerCapital: z.number().finite().min(-1_000_000_000).max(1_000_000_000),
+  asOfDate: dateOnly.nullable(),
 });
 
 export const statementsRouter = Router();
@@ -34,5 +43,21 @@ statementsRouter.get(
     if (!parsed.success) throw ApiError.badRequest("Invalid query parameters", parsed.error.flatten());
     const { brandId, from, to } = parsed.data;
     sendSuccess(res, 200, await getFinancialStatements(brandId, { from, to }));
+  }),
+);
+
+/**
+ * PUT /api/statements/opening-balances — the Balance Sheet tab's "Starting
+ * Cash & Capital" form. Upserts the brand's single row.
+ */
+statementsRouter.put(
+  "/opening-balances",
+  requireAuth,
+  requireRole("admin", "finance"),
+  requireBrandAccess("body"),
+  validateBody(openingBalancesSchema),
+  asyncHandler(async (req: Request, res: Response) => {
+    const { brandId, ...input } = req.body as z.infer<typeof openingBalancesSchema>;
+    sendSuccess(res, 200, await saveOpeningBalances(brandId, input, req.user!.id));
   }),
 );

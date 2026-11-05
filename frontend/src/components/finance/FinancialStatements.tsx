@@ -7,6 +7,7 @@ import {
   ArrowUpCircle,
   Clock,
   Landmark,
+  Pencil,
   Percent,
   PiggyBank,
   Scale,
@@ -21,10 +22,12 @@ import { REVENUE_CATEGORY_META } from "@/lib/revenues";
 import { getFinancialStatements, type FinancialStatements as Statements } from "@/lib/statements";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/Badge";
+import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Spinner } from "@/components/ui/Spinner";
 import { DashboardCard } from "@/components/dashboard/DashboardCard";
 import { StatTile } from "@/components/dashboard/StatTile";
+import { StartingBalancesModal } from "./StartingBalancesModal";
 
 export type StatementView = "income" | "balance" | "cashflow";
 
@@ -243,13 +246,24 @@ function CashFlowView({ data }: { data: Statements["cashFlow"] }) {
   );
 }
 
-function BalanceSheetView({ data }: { data: Statements["balanceSheet"] }) {
+function BalanceSheetView({
+  data,
+  brandId,
+  onStartingBalancesSaved,
+}: {
+  data: Statements["balanceSheet"];
+  brandId: string;
+  onStartingBalancesSaved: () => void;
+}) {
   const { t } = useLocale();
+  const [startingOpen, setStartingOpen] = useState(false);
+  const opening = data.openingBalances;
   const solvent = data.equity.total >= 0;
   const debtRatio = data.assets.total > 0 ? (data.liabilities.total / data.assets.total) * 100 : null;
   const rows: StatementRow[] = [
     { label: "Assets", amount: 0, kind: "section" },
-    { label: "Cash & bank (from recorded flows)", amount: data.assets.cash, kind: "item" },
+    { label: "Starting cash balance", amount: data.assets.startingCash, kind: "item", hideIfZero: true },
+    { label: "Net recorded cash flow", amount: data.assets.recordedCashFlow, kind: "item" },
     { label: "Inventory at cost", amount: data.assets.inventory, kind: "item" },
     { label: "Accounts receivable", amount: data.assets.accountsReceivable, kind: "item" },
     { label: "Total assets", amount: data.assets.total, kind: "subtotal" },
@@ -257,8 +271,9 @@ function BalanceSheetView({ data }: { data: Statements["balanceSheet"] }) {
     { label: "Accounts payable (suppliers)", amount: data.liabilities.accountsPayable, kind: "item" },
     { label: "Total liabilities", amount: data.liabilities.total, kind: "subtotal" },
     { label: "Equity", amount: 0, kind: "section" },
-    { label: "Retained earnings (all-time net profit)", amount: data.equity.retainedEarnings, kind: "item" },
-    { label: "Owner capital & other", amount: data.equity.ownerCapitalAndOther, kind: "item" },
+    { label: "Owner's starting capital", amount: data.equity.ownerCapital, kind: "item", hideIfZero: true },
+    { label: "Retained earnings", amount: data.equity.retainedEarnings, kind: "item" },
+    { label: "Other adjustments (unreconciled)", amount: data.equity.otherAdjustments, kind: "item" },
     { label: "Total equity", amount: data.equity.total, kind: "subtotal" },
     { label: "Total liabilities & equity", amount: data.liabilities.total + data.equity.total, kind: "total" },
   ];
@@ -283,29 +298,59 @@ function BalanceSheetView({ data }: { data: Statements["balanceSheet"] }) {
           iconColor="amber"
         />
       </div>
+      <div
+        className={cn(
+          "flex flex-col gap-3 rounded-xl border px-4 py-3 sm:flex-row sm:items-center sm:justify-between",
+          opening.isSet
+            ? "border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900"
+            : "border-amber-200 bg-amber-50 dark:border-amber-900 dark:bg-amber-950/40",
+        )}
+      >
+        <p className={cn("text-sm", opening.isSet ? "text-slate-600 dark:text-slate-400" : "text-amber-900 dark:text-amber-200")}>
+          {opening.isSet ? (
+            <>
+              {t("Starting balances")}: {formatPrice(opening.startingCash)} {t("cash")} · {formatPrice(opening.ownerCapital)}{" "}
+              {t("capital")} · {opening.asOfDate ? `${t("as of")} ${opening.asOfDate}` : t("before the first record")}
+            </>
+          ) : (
+            t("Starting cash and capital aren't set yet, so cash and equity are estimated from recorded entries only.")
+          )}
+        </p>
+        <Button size="sm" variant={opening.isSet ? "outline" : "default"} onClick={() => setStartingOpen(true)} className="shrink-0">
+          <Pencil className="size-3.5" />
+          {t(opening.isSet ? "Edit starting balances" : "Set starting balances")}
+        </Button>
+      </div>
       <DashboardCard
         title={`${t("Balance Sheet")} — ${t("as of today")}`}
         action={<StatusBadge good={solvent} goodLabel="Positive equity" badLabel="Negative equity" />}
       >
         <StatementTable
           rows={rows}
-          footnote="Cash is derived from every recorded inflow and outflow, since the system has no opening bank balance. Owner capital & other is the balancing figure: starting capital plus anything never recorded as a flow, such as opening supplier balances."
+          footnote="Cash is the starting balance plus every inflow and outflow recorded from its date on. Other adjustments is the balancing figure for anything the starting balances don't cover, such as opening supplier debts or stock that existed before the starting date."
         />
       </DashboardCard>
+      <StartingBalancesModal
+        open={startingOpen}
+        onOpenChange={setStartingOpen}
+        brandId={brandId}
+        current={opening}
+        onSaved={onStartingBalancesSaved}
+      />
     </>
   );
 }
 
 /**
- * The Finance page's statement tabs — a read-only view over
- * GET /api/statements. The Balance Sheet is always as of today; the period
+ * The Finance page's statement tabs — a view over GET /api/statements (the
+ * Balance Sheet's starting balances are the only thing edited from here). The Balance Sheet is always as of today; the period
  * selector applies to the Income Statement and Cash Flow.
  */
 export function FinancialStatements({ brandId, view }: { brandId: string; view: StatementView }) {
   const { t } = useLocale();
   const [period, setPeriod] = useState<Period>("ytd");
   const range = rangeFor(period);
-  const { data, error, isLoading } = useSWR(["finance-statements", brandId, range.from, range.to], () =>
+  const { data, error, isLoading, mutate } = useSWR(["finance-statements", brandId, range.from, range.to], () =>
     getFinancialStatements(brandId, range),
   );
 
@@ -350,7 +395,7 @@ export function FinancialStatements({ brandId, view }: { brandId: string; view: 
       ) : view === "cashflow" ? (
         <CashFlowView data={data.cashFlow} />
       ) : (
-        <BalanceSheetView data={data.balanceSheet} />
+        <BalanceSheetView data={data.balanceSheet} brandId={brandId} onStartingBalancesSaved={() => void mutate()} />
       )}
     </div>
   );

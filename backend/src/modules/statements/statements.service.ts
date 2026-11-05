@@ -1,6 +1,7 @@
 import { and, eq, gte, isNull, lte, ne, notExists, or, sql } from "drizzle-orm";
 import { db } from "../../db/client.js";
 import {
+  brandOpeningBalances,
   expenses,
   inventory,
   ledgerEntities,
@@ -81,9 +82,23 @@ export interface CashFlowStatement {
   pendingCodOrderSales: number;
 }
 
+export interface OpeningBalances {
+  startingCash: number;
+  ownerCapital: number;
+  /** YYYY-MM-DD, or null for "before the first record". */
+  asOfDate: string | null;
+  /** False until someone saves starting balances for this brand. */
+  isSet: boolean;
+}
+
 export interface BalanceSheet {
+  openingBalances: OpeningBalances;
   assets: {
-    /** All-time net cash change from recorded flows — no opening bank balance exists in the system, so this can be negative. */
+    /** The entered starting bank/cash balance (0 if never set). */
+    startingCash: number;
+    /** Net cash change from recorded flows on or after openingBalances.asOfDate (all of them when it's null). */
+    recordedCashFlow: number;
+    /** startingCash + recordedCashFlow. */
     cash: number;
     /** On-hand units × current active production cost, same valuation as the dashboards' Inventory Value. */
     inventory: number;
@@ -95,10 +110,17 @@ export interface BalanceSheet {
     total: number;
   };
   equity: {
-    /** All-time net profit. */
+    /** The entered owner's starting capital (0 if never set). */
+    ownerCapital: number;
+    /** Net profit on or after openingBalances.asOfDate (all-time when it's null). */
     retainedEarnings: number;
-    /** Balancing figure: owner capital and anything not recorded as a flow (opening supplier balances, unrecorded starting cash/stock). */
-    ownerCapitalAndOther: number;
+    /**
+     * Balancing figure: whatever makes assets = liabilities + equity once
+     * capital and profit are accounted for — e.g. opening supplier balances
+     * or stock that existed before the starting date. Near zero when the
+     * starting balances fully describe the opening position.
+     */
+    otherAdjustments: number;
     total: number;
   };
 }
@@ -250,12 +272,46 @@ async function getInventoryValue(brandId: string): Promise<number> {
   return Number(row?.value ?? 0);
 }
 
+export async function getOpeningBalances(brandId: string): Promise<OpeningBalances> {
+  const [row] = await db.select().from(brandOpeningBalances).where(eq(brandOpeningBalances.brandId, brandId)).limit(1);
+  if (!row) return { startingCash: 0, ownerCapital: 0, asOfDate: null, isSet: false };
+  return {
+    startingCash: Number(row.startingCash),
+    ownerCapital: Number(row.ownerCapital),
+    asOfDate: row.asOfDate,
+    isSet: true,
+  };
+}
+
+export async function saveOpeningBalances(
+  brandId: string,
+  input: { startingCash: number; ownerCapital: number; asOfDate: string | null },
+  actorUserId: string,
+): Promise<OpeningBalances> {
+  const values = {
+    startingCash: input.startingCash.toFixed(2),
+    ownerCapital: input.ownerCapital.toFixed(2),
+    asOfDate: input.asOfDate,
+    updatedBy: actorUserId,
+    updatedAt: sql`now()`,
+  };
+  await db
+    .insert(brandOpeningBalances)
+    .values({ brandId, ...values })
+    .onConflictDoUpdate({ target: brandOpeningBalances.brandId, set: values });
+  return getOpeningBalances(brandId);
+}
+
 async function getBalanceSheet(brandId: string): Promise<BalanceSheet> {
-  const [allTimeCash, inventoryValue, entities, allTimeSummary] = await Promise.all([
-    getCashFlowStatement(brandId, {}),
+  const openingBalances = await getOpeningBalances(brandId);
+  // Flows before the starting date are assumed to be already reflected in
+  // the entered starting cash/capital, so only later ones are added.
+  const sinceStart: FinanceDateRange = openingBalances.asOfDate ? { from: openingBalances.asOfDate } : {};
+  const [cashSinceStart, inventoryValue, entities, summarySinceStart] = await Promise.all([
+    getCashFlowStatement(brandId, sinceStart),
     getInventoryValue(brandId),
     listLedgerEntities(brandId),
-    getFinanceSummary(brandId),
+    getFinanceSummary(brandId, sinceStart),
   ]);
 
   const sumRemaining = (type: "payable" | "receivable") =>
@@ -263,16 +319,27 @@ async function getBalanceSheet(brandId: string): Promise<BalanceSheet> {
 
   const accountsReceivable = sumRemaining("receivable");
   const accountsPayable = sumRemaining("payable");
-  const cash = allTimeCash.netCashChange;
+  const recordedCashFlow = cashSinceStart.netCashChange;
+  const cash = openingBalances.startingCash + recordedCashFlow;
   const totalAssets = cash + inventoryValue + accountsReceivable;
   const totalEquity = totalAssets - accountsPayable;
+  const retainedEarnings = summarySinceStart.netProfit;
 
   return {
-    assets: { cash, inventory: inventoryValue, accountsReceivable, total: totalAssets },
+    openingBalances,
+    assets: {
+      startingCash: openingBalances.startingCash,
+      recordedCashFlow,
+      cash,
+      inventory: inventoryValue,
+      accountsReceivable,
+      total: totalAssets,
+    },
     liabilities: { accountsPayable, total: accountsPayable },
     equity: {
-      retainedEarnings: allTimeSummary.netProfit,
-      ownerCapitalAndOther: totalEquity - allTimeSummary.netProfit,
+      ownerCapital: openingBalances.ownerCapital,
+      retainedEarnings,
+      otherAdjustments: totalEquity - openingBalances.ownerCapital - retainedEarnings,
       total: totalEquity,
     },
   };

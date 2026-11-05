@@ -24,10 +24,19 @@ export interface FinancialStatements {
     pendingCodOrderSales: number;
   };
   balanceSheet: {
-    assets: { cash: number; inventory: number; accountsReceivable: number; total: number };
+    openingBalances: OpeningBalances;
+    assets: { startingCash: number; recordedCashFlow: number; cash: number; inventory: number; accountsReceivable: number; total: number };
     liabilities: { accountsPayable: number; total: number };
-    equity: { retainedEarnings: number; ownerCapitalAndOther: number; total: number };
+    equity: { ownerCapital: number; retainedEarnings: number; otherAdjustments: number; total: number };
   };
+}
+
+export interface OpeningBalances {
+  startingCash: number;
+  ownerCapital: number;
+  /** YYYY-MM-DD, or null for "before the first record". */
+  asOfDate: string | null;
+  isSet: boolean;
 }
 
 export function getFinancialStatements(brandId: string, range: { from?: string; to?: string }): Promise<FinancialStatements> {
@@ -35,4 +44,13 @@ export function getFinancialStatements(brandId: string, range: { from?: string; 
   if (range.from) params.set("from", range.from);
   if (range.to) params.set("to", range.to);
   return apiFetch<FinancialStatements>(`/api/statements?${params.toString()}`);
+}
+
+export function saveOpeningBalances(input: {
+  brandId: string;
+  startingCash: number;
+  ownerCapital: number;
+  asOfDate: string | null;
+}): Promise<OpeningBalances> {
+  return apiFetch<OpeningBalances>("/api/statements/opening-balances", { method: "PUT", body: JSON.stringify(input) });
 }
