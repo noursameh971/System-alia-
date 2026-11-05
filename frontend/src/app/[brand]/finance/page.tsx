@@ -58,6 +58,17 @@ import { ImportExpensesModal } from "@/components/finance/ImportExpensesModal";
 import { LedgerTable } from "@/components/finance/LedgerTable";
 import { OpeningBalanceModal } from "@/components/finance/OpeningBalanceModal";
 import { RecordPaymentModal } from "@/components/finance/RecordPaymentModal";
+import { FinancialStatements, type StatementView } from "@/components/finance/FinancialStatements";
+import { SegmentedControl } from "@/components/ui/SegmentedControl";
+
+type FinanceView = "overview" | StatementView;
+
+const FINANCE_VIEWS: { value: FinanceView; label: string }[] = [
+  { value: "overview", label: "Overview" },
+  { value: "income", label: "Income Statement" },
+  { value: "balance", label: "Balance Sheet" },
+  { value: "cashflow", label: "Cash Flow" },
+];
 
 export default function FinancePage() {
   const router = useRouter();
@@ -69,6 +80,7 @@ export default function FinancePage() {
   // proxy.ts and the backend's expenses/ledger route guards).
   const canAccessFinance = role === "admin" || role === "finance";
 
+  const [view, setView] = useState<FinanceView>("overview");
   const [search, setSearch] = useState("");
   const [categoryFilter, setCategoryFilter] = useState<ExpenseCategory | "">("");
   const [formOpen, setFormOpen] = useState(false);
@@ -246,260 +258,273 @@ export default function FinancePage() {
         </div>
       </div>
 
-      {summary.isLoading ? (
-        <div className="flex justify-center py-16">
-          <Spinner label="Loading finance data..." />
-        </div>
-      ) : summary.error ? (
-        <EmptyState
-          title={t("Couldn't load finance data")}
-          description={summary.error instanceof ApiError ? summary.error.message : t("Check that the backend API is running.")}
-        />
-      ) : !data ? null : (
+      <SegmentedControl
+        ariaLabel={t("Finance view")}
+        options={FINANCE_VIEWS.map((option) => ({ value: option.value, label: t(option.label) }))}
+        value={view}
+        onChange={setView}
+      />
+
+      {view === "overview" ? (
         <>
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-            <StatTile
-              label={t("Gross Revenue")}
-              value={formatPrice(data.grossRevenue)}
-              sublabel={`${data.orderCount} ${t(data.orderCount === 1 ? "order" : "orders")} + ${data.revenueCount} ${t(data.revenueCount === 1 ? "revenue entry" : "revenue entries")}`}
-              icon={TrendingUp}
-              iconColor="emerald"
-            />
-            <StatTile
-              label={t("Total COGS & Expenses")}
-              value={formatPrice(data.totalExpenses)}
-              sublabel={t("Production + shipping + operating")}
-              icon={Receipt}
-              iconColor="rose"
-            />
-            <StatTile
-              label={t("Net Profit")}
-              value={formatPrice(data.netProfit)}
-              sublabel={t("Revenue − total expenses")}
-              icon={PiggyBank}
-              iconColor="violet"
-            />
-            <StatTile
-              label={t("Profit Margin")}
-              value={`${data.profitMargin.toFixed(1)}%`}
-              sublabel={t("Net profit ÷ revenue")}
-              icon={Percent}
-              iconColor="indigo"
-            />
-          </div>
-
-          {/* Symmetric with "Where the money goes" below: Gross Revenue is
-              equally an opaque total until it's split into what actually
-              produced it, which is also the fastest way to see that a
-              manual revenue entry actually landed. */}
-          <DashboardCard title={t("Where the revenue comes from")}>
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-              <StatTile
-                variant="flat"
-                label={t("Order sales")}
-                value={formatPrice(data.orderRevenue)}
-                sublabel={`${data.orderCount} ${t(data.orderCount === 1 ? "order" : "orders")}`}
-              />
-              <StatTile
-                variant="flat"
-                label={t("Manual & other revenue")}
-                value={formatPrice(data.manualRevenue)}
-                sublabel={`${data.revenueCount} ${t(data.revenueCount === 1 ? "entry" : "entries")}`}
-              />
+          {summary.isLoading ? (
+            <div className="flex justify-center py-16">
+              <Spinner label="Loading finance data..." />
             </div>
-          </DashboardCard>
+          ) : summary.error ? (
+            <EmptyState
+              title={t("Couldn't load finance data")}
+              description={summary.error instanceof ApiError ? summary.error.message : t("Check that the backend API is running.")}
+            />
+          ) : !data ? null : (
+            <>
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+                <StatTile
+                  label={t("Gross Revenue")}
+                  value={formatPrice(data.grossRevenue)}
+                  sublabel={`${data.orderCount} ${t(data.orderCount === 1 ? "order" : "orders")} + ${data.revenueCount} ${t(data.revenueCount === 1 ? "revenue entry" : "revenue entries")}`}
+                  icon={TrendingUp}
+                  iconColor="emerald"
+                />
+                <StatTile
+                  label={t("Total COGS & Expenses")}
+                  value={formatPrice(data.totalExpenses)}
+                  sublabel={t("Production + shipping + operating")}
+                  icon={Receipt}
+                  iconColor="rose"
+                />
+                <StatTile
+                  label={t("Net Profit")}
+                  value={formatPrice(data.netProfit)}
+                  sublabel={t("Revenue − total expenses")}
+                  icon={PiggyBank}
+                  iconColor="violet"
+                />
+                <StatTile
+                  label={t("Profit Margin")}
+                  value={`${data.profitMargin.toFixed(1)}%`}
+                  sublabel={t("Net profit ÷ revenue")}
+                  icon={Percent}
+                  iconColor="indigo"
+                />
+              </div>
 
-          {/* The three components of Total Expenses, so the KPI above is
-              auditable rather than an opaque total. */}
-          <DashboardCard title={t("Where the money goes")}>
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-              <StatTile variant="flat" label={t("Production cost (COGS)")} value={formatPrice(data.cogs)} />
-              <StatTile variant="flat" label={t("Shipping")} value={formatPrice(data.shipping)} />
-              <StatTile
-                variant="flat"
-                label={t("Operating expenses")}
-                value={formatPrice(data.operatingExpenses)}
-                sublabel={`${data.expenseCount} ${t(data.expenseCount === 1 ? "entry" : "entries")}`}
+              {/* Symmetric with "Where the money goes" below: Gross Revenue is
+                  equally an opaque total until it's split into what actually
+                  produced it, which is also the fastest way to see that a
+                  manual revenue entry actually landed. */}
+              <DashboardCard title={t("Where the revenue comes from")}>
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  <StatTile
+                    variant="flat"
+                    label={t("Order sales")}
+                    value={formatPrice(data.orderRevenue)}
+                    sublabel={`${data.orderCount} ${t(data.orderCount === 1 ? "order" : "orders")}`}
+                  />
+                  <StatTile
+                    variant="flat"
+                    label={t("Manual & other revenue")}
+                    value={formatPrice(data.manualRevenue)}
+                    sublabel={`${data.revenueCount} ${t(data.revenueCount === 1 ? "entry" : "entries")}`}
+                  />
+                </div>
+              </DashboardCard>
+
+              {/* The three components of Total Expenses, so the KPI above is
+                  auditable rather than an opaque total. */}
+              <DashboardCard title={t("Where the money goes")}>
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                  <StatTile variant="flat" label={t("Production cost (COGS)")} value={formatPrice(data.cogs)} />
+                  <StatTile variant="flat" label={t("Shipping")} value={formatPrice(data.shipping)} />
+                  <StatTile
+                    variant="flat"
+                    label={t("Operating expenses")}
+                    value={formatPrice(data.operatingExpenses)}
+                    sublabel={`${data.expenseCount} ${t(data.expenseCount === 1 ? "entry" : "entries")}`}
+                  />
+                </div>
+              </DashboardCard>
+
+              <DashboardCard title={t("Monthly expenses breakdown")}>
+                <ExpenseBreakdownChart data={data.monthly} />
+              </DashboardCard>
+            </>
+          )}
+
+          {/* Cash Flow & Debt is deliberately its own row, not folded into the
+              P&L cards above: accrual profit and actual liquidity are different
+              questions, and merging them into one KPI row would make Net Cash
+              Flow read as a fifth variation on Net Profit instead of what it is. */}
+          <div>
+            <h2 className="mb-3 text-sm font-semibold text-slate-900 dark:text-slate-100">{t("Cash Flow & Debt")}</h2>
+            {cashFlow.isLoading ? (
+              <div className="flex justify-center py-8">
+                <Spinner label="Loading cash flow..." />
+              </div>
+            ) : cashFlow.error ? (
+              <EmptyState
+                title={t("Couldn't load cash flow data")}
+                description={cashFlow.error instanceof ApiError ? cashFlow.error.message : t("Check that the backend API is running.")}
               />
-            </div>
-          </DashboardCard>
-
-          <DashboardCard title={t("Monthly expenses breakdown")}>
-            <ExpenseBreakdownChart data={data.monthly} />
-          </DashboardCard>
-        </>
-      )}
-
-      {/* Cash Flow & Debt is deliberately its own row, not folded into the
-          P&L cards above: accrual profit and actual liquidity are different
-          questions, and merging them into one KPI row would make Net Cash
-          Flow read as a fifth variation on Net Profit instead of what it is. */}
-      <div>
-        <h2 className="mb-3 text-sm font-semibold text-slate-900 dark:text-slate-100">{t("Cash Flow & Debt")}</h2>
-        {cashFlow.isLoading ? (
-          <div className="flex justify-center py-8">
-            <Spinner label="Loading cash flow..." />
+            ) : !cashFlowData ? null : (
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+                <StatTile
+                  label={t("Accounts Payable")}
+                  value={formatPrice(cashFlowData.accountsPayable)}
+                  sublabel={t("Owed to suppliers & factories")}
+                  icon={ArrowUpCircle}
+                  iconColor="rose"
+                />
+                <StatTile
+                  label={t("Accounts Receivable")}
+                  value={formatPrice(cashFlowData.accountsReceivable)}
+                  sublabel={t("Held by couriers & clients")}
+                  icon={ArrowDownCircle}
+                  iconColor="emerald"
+                />
+                <StatTile
+                  label={t("Net Cash Flow")}
+                  value={formatPrice(cashFlowData.netCashFlow)}
+                  sublabel={t("Net profit − payable + receivable")}
+                  icon={Wallet}
+                  iconColor="indigo"
+                />
+              </div>
+            )}
           </div>
-        ) : cashFlow.error ? (
-          <EmptyState
-            title={t("Couldn't load cash flow data")}
-            description={cashFlow.error instanceof ApiError ? cashFlow.error.message : t("Check that the backend API is running.")}
-          />
-        ) : !cashFlowData ? null : (
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-            <StatTile
-              label={t("Accounts Payable")}
-              value={formatPrice(cashFlowData.accountsPayable)}
-              sublabel={t("Owed to suppliers & factories")}
-              icon={ArrowUpCircle}
-              iconColor="rose"
-            />
-            <StatTile
-              label={t("Accounts Receivable")}
-              value={formatPrice(cashFlowData.accountsReceivable)}
-              sublabel={t("Held by couriers & clients")}
-              icon={ArrowDownCircle}
-              iconColor="emerald"
-            />
-            <StatTile
-              label={t("Net Cash Flow")}
-              value={formatPrice(cashFlowData.netCashFlow)}
-              sublabel={t("Net profit − payable + receivable")}
-              icon={Wallet}
-              iconColor="indigo"
-            />
-          </div>
-        )}
-      </div>
 
-      <DashboardCard
-        title={t("Suppliers & Debts Ledger")}
-        action={
-          <Button variant="outline" size="sm" onClick={() => void handleExportLedger()} disabled={exportingLedger}>
-            <Download className="size-3.5" />
-            {exportingLedger ? t("Exporting...") : t("Export Excel")}
-          </Button>
-        }
-      >
-        {suppliers.isLoading ? (
-          <div className="flex justify-center py-16">
-            <Spinner label="Loading suppliers..." />
-          </div>
-        ) : suppliers.error ? (
-          <EmptyState
-            title={t("Couldn't load the ledger")}
-            description={suppliers.error instanceof ApiError ? suppliers.error.message : t("Check that the backend API is running.")}
-          />
-        ) : (
-          <LedgerTable entities={suppliers.data ?? []} brandCode={brand.code} onRecordPayment={setPayingEntity} />
-        )}
-      </DashboardCard>
-
-      <div className="flex flex-col gap-3">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <h2 className="text-sm font-semibold text-slate-900 dark:text-slate-100">{t("Revenue")}</h2>
-
-          <div className="relative w-full sm:max-w-xs">
-            <Search className="pointer-events-none absolute start-2.5 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
-            <Input
-              value={revenueSearch}
-              onChange={(event) => setRevenueSearch(event.target.value)}
-              placeholder={t("Search revenue")}
-              className="ps-8"
-            />
-          </div>
-        </div>
-
-        <div className="flex flex-wrap gap-1.5">
-          <FilterPill active={revenueCategoryFilter === ""} onClick={() => setRevenueCategoryFilter("")}>
-            {t("All")}
-          </FilterPill>
-          {REVENUE_CATEGORIES.map((category) => (
-            <FilterPill
-              key={category}
-              active={revenueCategoryFilter === category}
-              onClick={() => setRevenueCategoryFilter(category)}
-            >
-              {t(REVENUE_CATEGORY_META[category].label)}
-            </FilterPill>
-          ))}
-        </div>
-
-        {revenueLedger.isLoading ? (
-          <div className="flex justify-center py-16">
-            <Spinner label="Loading revenue..." />
-          </div>
-        ) : revenueLedger.error ? (
-          <EmptyState
-            title={t("Couldn't load revenue")}
-            description={
-              revenueLedger.error instanceof ApiError ? revenueLedger.error.message : t("Check that the backend API is running.")
+          <DashboardCard
+            title={t("Suppliers & Debts Ledger")}
+            action={
+              <Button variant="outline" size="sm" onClick={() => void handleExportLedger()} disabled={exportingLedger}>
+                <Download className="size-3.5" />
+                {exportingLedger ? t("Exporting...") : t("Export Excel")}
+              </Button>
             }
-          />
-        ) : (
-          <RevenueTable
-            revenues={revenueLedger.data ?? []}
-            search={revenueSearch}
-            onEdit={(revenue) => {
-              setEditingRevenue(revenue);
-              setRevenueFormOpen(true);
-            }}
-            onDelete={setDeleteRevenueTarget}
-          />
-        )}
-      </div>
+          >
+            {suppliers.isLoading ? (
+              <div className="flex justify-center py-16">
+                <Spinner label="Loading suppliers..." />
+              </div>
+            ) : suppliers.error ? (
+              <EmptyState
+                title={t("Couldn't load the ledger")}
+                description={suppliers.error instanceof ApiError ? suppliers.error.message : t("Check that the backend API is running.")}
+              />
+            ) : (
+              <LedgerTable entities={suppliers.data ?? []} brandCode={brand.code} onRecordPayment={setPayingEntity} />
+            )}
+          </DashboardCard>
 
-      <div className="flex flex-col gap-3">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <h2 className="text-sm font-semibold text-slate-900 dark:text-slate-100">{t("Expenses")}</h2>
+          <div className="flex flex-col gap-3">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <h2 className="text-sm font-semibold text-slate-900 dark:text-slate-100">{t("Revenue")}</h2>
 
-          <div className="relative w-full sm:max-w-xs">
-            <Search className="pointer-events-none absolute start-2.5 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
-            <Input
-              value={search}
-              onChange={(event) => setSearch(event.target.value)}
-              placeholder={t("Search expenses")}
-              className="ps-8"
-            />
+              <div className="relative w-full sm:max-w-xs">
+                <Search className="pointer-events-none absolute start-2.5 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
+                <Input
+                  value={revenueSearch}
+                  onChange={(event) => setRevenueSearch(event.target.value)}
+                  placeholder={t("Search revenue")}
+                  className="ps-8"
+                />
+              </div>
+            </div>
+
+            <div className="flex flex-wrap gap-1.5">
+              <FilterPill active={revenueCategoryFilter === ""} onClick={() => setRevenueCategoryFilter("")}>
+                {t("All")}
+              </FilterPill>
+              {REVENUE_CATEGORIES.map((category) => (
+                <FilterPill
+                  key={category}
+                  active={revenueCategoryFilter === category}
+                  onClick={() => setRevenueCategoryFilter(category)}
+                >
+                  {t(REVENUE_CATEGORY_META[category].label)}
+                </FilterPill>
+              ))}
+            </div>
+
+            {revenueLedger.isLoading ? (
+              <div className="flex justify-center py-16">
+                <Spinner label="Loading revenue..." />
+              </div>
+            ) : revenueLedger.error ? (
+              <EmptyState
+                title={t("Couldn't load revenue")}
+                description={
+                  revenueLedger.error instanceof ApiError ? revenueLedger.error.message : t("Check that the backend API is running.")
+                }
+              />
+            ) : (
+              <RevenueTable
+                revenues={revenueLedger.data ?? []}
+                search={revenueSearch}
+                onEdit={(revenue) => {
+                  setEditingRevenue(revenue);
+                  setRevenueFormOpen(true);
+                }}
+                onDelete={setDeleteRevenueTarget}
+              />
+            )}
           </div>
-        </div>
 
-        <div className="flex flex-wrap gap-1.5">
-          <FilterPill active={categoryFilter === ""} onClick={() => setCategoryFilter("")}>
-            {t("All")}
-          </FilterPill>
-          {EXPENSE_CATEGORIES.map((category) => (
-            <FilterPill
-              key={category}
-              active={categoryFilter === category}
-              onClick={() => setCategoryFilter(category)}
-            >
-              {t(EXPENSE_CATEGORY_META[category].label)}
-            </FilterPill>
-          ))}
-        </div>
+          <div className="flex flex-col gap-3">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <h2 className="text-sm font-semibold text-slate-900 dark:text-slate-100">{t("Expenses")}</h2>
 
-        {ledger.isLoading ? (
-          <div className="flex justify-center py-16">
-            <Spinner label="Loading expenses..." />
+              <div className="relative w-full sm:max-w-xs">
+                <Search className="pointer-events-none absolute start-2.5 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
+                <Input
+                  value={search}
+                  onChange={(event) => setSearch(event.target.value)}
+                  placeholder={t("Search expenses")}
+                  className="ps-8"
+                />
+              </div>
+            </div>
+
+            <div className="flex flex-wrap gap-1.5">
+              <FilterPill active={categoryFilter === ""} onClick={() => setCategoryFilter("")}>
+                {t("All")}
+              </FilterPill>
+              {EXPENSE_CATEGORIES.map((category) => (
+                <FilterPill
+                  key={category}
+                  active={categoryFilter === category}
+                  onClick={() => setCategoryFilter(category)}
+                >
+                  {t(EXPENSE_CATEGORY_META[category].label)}
+                </FilterPill>
+              ))}
+            </div>
+
+            {ledger.isLoading ? (
+              <div className="flex justify-center py-16">
+                <Spinner label="Loading expenses..." />
+              </div>
+            ) : ledger.error ? (
+              <EmptyState
+                title={t("Couldn't load expenses")}
+                description={ledger.error instanceof ApiError ? ledger.error.message : t("Check that the backend API is running.")}
+              />
+            ) : (
+              <ExpenseTable
+                expenses={ledger.data ?? []}
+                search={search}
+                onEdit={(expense) => {
+                  setEditing(expense);
+                  setFormOpen(true);
+                }}
+                onDelete={setDeleteTarget}
+              />
+            )}
           </div>
-        ) : ledger.error ? (
-          <EmptyState
-            title={t("Couldn't load expenses")}
-            description={ledger.error instanceof ApiError ? ledger.error.message : t("Check that the backend API is running.")}
-          />
-        ) : (
-          <ExpenseTable
-            expenses={ledger.data ?? []}
-            search={search}
-            onEdit={(expense) => {
-              setEditing(expense);
-              setFormOpen(true);
-            }}
-            onDelete={setDeleteTarget}
-          />
-        )}
-      </div>
+        </>
+      ) : (
+        <FinancialStatements brandId={brand.id} view={view} />
+      )}
 
       <ExpenseFormModal
         open={formOpen}

@@ -13,6 +13,7 @@ import { expensesRouter } from "./modules/expenses/expenses.routes.js";
 import { factoryRouter } from "./modules/factory/factory.routes.js";
 import { inventoryRouter } from "./modules/inventory/inventory.routes.js";
 import { ledgerRouter } from "./modules/ledger/ledger.routes.js";
+import { statementsRouter } from "./modules/statements/statements.routes.js";
 import { ordersRouter } from "./modules/orders/orders.routes.js";
 import { productsRouter } from "./modules/products/products.routes.js";
 import { reasonCodesRouter } from "./modules/reason-codes/reasonCodes.routes.js";
@@ -106,6 +107,7 @@ export function createApp(): Express {
   app.use("/api/expenses", expensesRouter);
   app.use("/api/revenues", revenuesRouter);
   app.use("/api/ledger", ledgerRouter);
+  app.use("/api/statements", statementsRouter);
   app.use("/api/uploads", uploadsRouter);
   app.use("/api/factory", factoryRouter);
   app.use("/api/assistant", assistantRouter);
