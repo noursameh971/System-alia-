@@ -248,11 +248,11 @@ function ProductCostEditor({
 }
 
 /**
- * +/- steppers plus a directly-editable number, all writing through
- * setVariantStock immediately (no separate "save" step for the buttons).
- * Keyed by `${variantId}:${stock}` at the call site so a successful save —
- * which flows a fresh `stock` prop back in via onMutate — remounts this
- * with a clean initial value instead of needing an effect to resync it.
+ * +/- steppers plus a directly-editable number. The buttons write through
+ * setVariantStock immediately; the typed value lives in local state and is
+ * saved once — on blur (Enter just blurs) — so typing never triggers a save
+ * or a remount. A fresh `stock` prop only replaces the field while the user
+ * isn't editing it.
  */
 function StockStepper({
   variantId,
@@ -266,7 +266,26 @@ function StockStepper({
   onSaved: () => void;
 }) {
   const [value, setValue] = useState(String(stock));
+  const [editing, setEditing] = useState(false);
+  const [syncedStock, setSyncedStock] = useState(stock);
   const [saving, setSaving] = useState(false);
+
+  // Adopt a new server value (after a save or a refetch) unless mid-edit.
+  if (stock !== syncedStock && !editing) {
+    setSyncedStock(stock);
+    setValue(String(stock));
+  }
+
+  function commit() {
+    setEditing(false);
+    const trimmed = value.trim();
+    // An emptied field means "never mind", not "set to 0".
+    if (trimmed === "") {
+      setValue(String(stock));
+      return;
+    }
+    void apply(Number(trimmed));
+  }
 
   async function apply(next: number) {
     if (!Number.isInteger(next) || next < 0) {
@@ -290,8 +309,17 @@ function StockStepper({
   }
 
   function handleKeyDown(e: KeyboardEvent<HTMLInputElement>) {
-    if (e.key === "Enter") void apply(Number(value));
-    if (e.key === "Escape") setValue(String(stock));
+    if (e.key === "Enter") {
+      e.preventDefault();
+      // Blurring runs commit() via onBlur — one save path, never two.
+      e.currentTarget.blur();
+    }
+    if (e.key === "Escape") {
+      // Don't let Escape close the drawer; just discard the edit.
+      e.stopPropagation();
+      setValue(String(stock));
+      setEditing(false);
+    }
   }
 
   if (!canManage) return <span>{stock}</span>;
@@ -310,13 +338,18 @@ function StockStepper({
         <Minus className="size-3" />
       </Button>
       <Input
-        type="number"
-        min="0"
-        step="1"
+        type="text"
+        inputMode="numeric"
+        pattern="[0-9]*"
+        autoComplete="off"
         value={value}
-        onChange={(e) => setValue(e.target.value)}
+        onFocus={() => setEditing(true)}
+        onChange={(e) => {
+          setEditing(true);
+          setValue(e.target.value.replace(/[^0-9]/g, ""));
+        }}
         onKeyDown={handleKeyDown}
-        onBlur={() => void apply(Number(value))}
+        onBlur={commit}
         disabled={saving}
         className="h-7 w-14 px-1 text-center"
         aria-label="Stock quantity"
@@ -554,7 +587,7 @@ export function ProductProfileDrawer({ product, onOpenChange, canManage, onMutat
                             ) : null}
                             <TableCell className="px-2 py-2.5 sm:px-3">
                               <StockStepper
-                                key={`${variant.id}:${variant.stock}`}
+                                key={variant.id}
                                 variantId={variant.id}
                                 stock={variant.stock}
                                 canManage={canManage}
