@@ -349,6 +349,7 @@ function StockStepper({
           setValue(e.target.value.replace(/[^0-9]/g, ""));
         }}
         onKeyDown={handleKeyDown}
+        onWheel={(e) => e.currentTarget.blur()}
         onBlur={commit}
         disabled={saving}
         className="h-7 w-14 px-1 text-center"

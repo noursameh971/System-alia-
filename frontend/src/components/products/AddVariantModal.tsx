@@ -226,11 +226,13 @@ export function AddVariantModal({ open, onOpenChange, product, onSuccess }: AddV
             <Label htmlFor="add-variant-stock">{t("Initial stock")}</Label>
             <Input
               id="add-variant-stock"
-              type="number"
-              min="0"
-              step="1"
+              type="text"
+              inputMode="numeric"
+              pattern="[0-9]*"
+              autoComplete="off"
               value={form.initialStock}
-              onChange={(e) => setField("initialStock", e.target.value)}
+              onChange={(e) => setField("initialStock", e.target.value.replace(/[^0-9]/g, ""))}
+              onWheel={(e) => e.currentTarget.blur()}
               disabled={submitting}
               aria-invalid={Boolean(errors.initialStock)}
               className="max-w-[10rem]"

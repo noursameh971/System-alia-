@@ -354,11 +354,13 @@ export function AddProductModal({ open, onOpenChange, brandId, onSuccess }: AddP
 
                       <VariantField label={t("Stock")} error={errors.initialStock}>
                         <Input
-                          type="number"
-                          min="0"
-                          step="1"
+                          type="text"
+                          inputMode="numeric"
+                          pattern="[0-9]*"
+                          autoComplete="off"
                           value={row.initialStock}
-                          onChange={(e) => updateRow(row.key, "initialStock", e.target.value)}
+                          onChange={(e) => updateRow(row.key, "initialStock", e.target.value.replace(/[^0-9]/g, ""))}
+                          onWheel={(e) => e.currentTarget.blur()}
                           disabled={submitting}
                           aria-invalid={Boolean(errors.initialStock)}
                           aria-label={t("Stock")}
