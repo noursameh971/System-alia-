@@ -52,13 +52,16 @@ export async function createBatchMovement(req: Request, res: Response): Promise<
   sendSuccess(res, 201, result);
 }
 
-/** GET /api/stock-movements/recent?brandId= — the Inventory page's "Recent Movements Log". */
+/** GET /api/stock-movements/recent?brandId=&limit=&offset= — the Inventory page's "Recent Movements Log", paged newest-first. */
 export async function getRecentMovements(req: Request, res: Response): Promise<void> {
   const brandId = String(req.query.brandId ?? "");
   if (!brandId) throw ApiError.badRequest("brandId query parameter is required");
-  const limit = req.query.limit ? Number(req.query.limit) : undefined;
+  const limit = req.query.limit ? Number(req.query.limit) : 10;
+  const offset = req.query.offset ? Number(req.query.offset) : 0;
+  if (!Number.isInteger(limit) || limit < 1 || limit > 100) throw ApiError.badRequest("limit must be a whole number from 1 to 100");
+  if (!Number.isInteger(offset) || offset < 0) throw ApiError.badRequest("offset must be a whole number, 0 or more");
 
-  const movements = await listRecentMovementsForBrand(brandId, limit);
+  const movements = await listRecentMovementsForBrand(brandId, limit, offset);
   sendSuccess(res, 200, movements);
 }
 

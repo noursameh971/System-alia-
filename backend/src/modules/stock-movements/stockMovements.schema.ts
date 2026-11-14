@@ -107,7 +107,7 @@ export type BatchMovementInput = z.infer<typeof batchMovementSchema>;
 /** POST /api/stock-movements/revert — the Recent Movements Log's admin-only Revert / Undo. */
 export const revertMovementsSchema = z.object({
   brandId: z.string().uuid(),
-  movementIds: z.array(z.string().uuid()).min(1, "Select at least one movement").max(50, "Revert at most 50 movements at a time"),
+  movementIds: z.array(z.string().uuid()).min(1, "Select at least one movement").max(200, "Revert at most 200 movements at a time"),
 });
 
 export type RevertMovementsInput = z.infer<typeof revertMovementsSchema>;

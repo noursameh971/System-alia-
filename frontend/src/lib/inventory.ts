@@ -85,9 +85,11 @@ export function recordBatchMovement(payload: BatchMovementInput): Promise<BatchM
   });
 }
 
-/** Backs the Inventory page's "Recent Movements Log". */
-export function listRecentMovements(brandId: string, limit = 10): Promise<RecentMovementLogItem[]> {
-  return apiFetch<RecentMovementLogItem[]>(`/api/stock-movements/recent?brandId=${encodeURIComponent(brandId)}&limit=${limit}`);
+/** Backs the Inventory page's "Recent Movements Log" — one newest-first page; `offset` walks back through the full history. */
+export function listRecentMovements(brandId: string, limit = 10, offset = 0): Promise<RecentMovementLogItem[]> {
+  return apiFetch<RecentMovementLogItem[]>(
+    `/api/stock-movements/recent?brandId=${encodeURIComponent(brandId)}&limit=${limit}&offset=${offset}`,
+  );
 }
 
 /** Admin-only Revert / Undo from the Recent Movements Log — applies the inverse of every selected movement in one transaction. */

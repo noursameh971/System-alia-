@@ -556,8 +556,13 @@ export interface RecentMovementLogItem {
   revertible: boolean;
 }
 
-/** Backs the Inventory page's "Recent Movements Log" — the latest movements for one brand, across every movement type. */
-export async function listRecentMovementsForBrand(brandId: string, limit = 10): Promise<RecentMovementLogItem[]> {
+/**
+ * Backs the Inventory page's "Recent Movements Log" — one brand's movements
+ * across every type, newest first, a page at a time (`offset` walks back
+ * through the full history). id breaks created_at ties so lines from the
+ * same batch transaction keep a stable order across pages.
+ */
+export async function listRecentMovementsForBrand(brandId: string, limit = 10, offset = 0): Promise<RecentMovementLogItem[]> {
   const reverter = alias(users, "reverter");
   const rows = await db
     .select({
@@ -582,8 +587,9 @@ export async function listRecentMovementsForBrand(brandId: string, limit = 10): 
     .leftJoin(reasonCodes, eq(reasonCodes.id, stockMovements.reasonCodeId))
     .leftJoin(reverter, eq(reverter.id, stockMovements.revertedBy))
     .where(eq(products.brandId, brandId))
-    .orderBy(desc(stockMovements.createdAt))
-    .limit(limit);
+    .orderBy(desc(stockMovements.createdAt), desc(stockMovements.id))
+    .limit(limit)
+    .offset(offset);
 
   return rows.map(({ referenceType, ...r }) => ({
     ...r,

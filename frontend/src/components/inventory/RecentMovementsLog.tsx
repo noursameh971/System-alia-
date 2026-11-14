@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { Undo2 } from "lucide-react";
 import type { RecentMovementLogItem } from "@/lib/types";
@@ -26,6 +26,9 @@ function batchKey(m: RecentMovementLogItem): string {
   return `${m.createdAt}|${m.movementType}|${m.performedByName}`;
 }
 
+/** Below this many rows the log fits without scrolling, so the end-of-history footer would just be noise. */
+const RECENT_FOOTER_MIN = 10;
+
 interface RevertRequest {
   /** What "Revert" on its own applies to: one row, or the current selection. */
   ids: string[];
@@ -33,13 +36,24 @@ interface RevertRequest {
   batchIds: string[];
 }
 
-/** Latest movements for this brand across every type — the Inventory page's fast-scan activity feed. Admins also get Revert / Undo. */
+/**
+ * This brand's movements across every type, newest first — the Inventory
+ * page's fast-scan activity feed. Scrolls inside a fixed-height box with a
+ * sticky header; reaching the bottom loads the next page of history.
+ * Admins also get Revert / Undo.
+ */
 export function RecentMovementsLog({
   movements,
   onReverted,
+  hasMore = false,
+  isLoadingMore = false,
+  onLoadMore,
 }: {
   movements: RecentMovementLogItem[];
   onReverted?: () => void;
+  hasMore?: boolean;
+  isLoadingMore?: boolean;
+  onLoadMore?: () => void;
 }) {
   const { t } = useLocale();
   const { brand } = useWorkspace();
@@ -48,6 +62,20 @@ export function RecentMovementsLog({
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [request, setRequest] = useState<RevertRequest | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const sentinelRef = useRef<HTMLTableRowElement>(null);
+
+  // IntersectionObserver clips against every scrolling ancestor, so a
+  // viewport-rooted observer fires exactly when the last row scrolls into
+  // view inside the log's own scroll box.
+  useEffect(() => {
+    const node = sentinelRef.current;
+    if (!node || !hasMore || isLoadingMore || !onLoadMore) return;
+    const observer = new IntersectionObserver((entries) => {
+      if (entries.some((entry) => entry.isIntersecting)) onLoadMore();
+    });
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [hasMore, isLoadingMore, onLoadMore, movements.length]);
 
   const batches = useMemo(() => {
     const map = new Map<string, string[]>();
@@ -115,9 +143,12 @@ export function RecentMovementsLog({
         </div>
       ) : null}
 
-      <div className="overflow-hidden rounded-xl border border-slate-200 dark:border-slate-800">
+      {/* The Table's own wrapper div is the scroll box (it already scrolls
+          sideways), so the height cap targets it — that keeps the sticky
+          header anchored to the same element the rows scroll in. */}
+      <div className="overflow-hidden rounded-xl border border-slate-200 dark:border-slate-800 [&>div]:max-h-[32rem] [&>div]:overflow-y-auto [&>div]:[scrollbar-width:thin]">
         <Table>
-          <TableHeader>
+          <TableHeader className="sticky top-0 z-10 bg-slate-50 shadow-[inset_0_-1px_0_var(--color-slate-200)] dark:bg-slate-950 dark:shadow-[inset_0_-1px_0_var(--color-slate-800)]">
             <TableRow className="hover:bg-transparent">
               {canRevert ? (
                 <TableHead className="w-8 pe-0">
@@ -194,6 +225,21 @@ export function RecentMovementsLog({
                 ) : null}
               </TableRow>
             ))}
+            {hasMore || movements.length > RECENT_FOOTER_MIN ? (
+              <TableRow ref={sentinelRef} className="hover:bg-transparent">
+                <TableCell colSpan={canRevert ? 8 : 6} className="py-3 text-center text-xs text-slate-400 dark:text-slate-500">
+                  {isLoadingMore ? (
+                    t("Loading...")
+                  ) : hasMore ? (
+                    <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={onLoadMore}>
+                      {t("Load more")}
+                    </Button>
+                  ) : (
+                    `${t("All")} ${movements.length} ${t("movements shown")}`
+                  )}
+                </TableCell>
+              </TableRow>
+            ) : null}
           </TableBody>
         </Table>
       </div>

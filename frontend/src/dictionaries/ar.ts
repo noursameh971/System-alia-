@@ -1204,4 +1204,6 @@ export const ar: Record<string, string> = {
   "Revert whole batch": "تراجع عن الدفعة كاملة",
   "Reverting...": "جارٍ التراجع...",
   "Revert this item": "تراجع عن هذا الصنف",
+  "Load more": "عرض المزيد",
+  "movements shown": "حركة معروضة",
 };
