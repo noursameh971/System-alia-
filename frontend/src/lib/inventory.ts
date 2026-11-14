@@ -5,6 +5,7 @@ import type {
   InventoryRow,
   MovementResult,
   RecentMovementLogItem,
+  RevertMovementsResult,
   VariantInventoryRow,
 } from "./types";
 
@@ -87,4 +88,12 @@ export function recordBatchMovement(payload: BatchMovementInput): Promise<BatchM
 /** Backs the Inventory page's "Recent Movements Log". */
 export function listRecentMovements(brandId: string, limit = 10): Promise<RecentMovementLogItem[]> {
   return apiFetch<RecentMovementLogItem[]>(`/api/stock-movements/recent?brandId=${encodeURIComponent(brandId)}&limit=${limit}`);
+}
+
+/** Admin-only Revert / Undo from the Recent Movements Log — applies the inverse of every selected movement in one transaction. */
+export function revertMovements(brandId: string, movementIds: string[]): Promise<RevertMovementsResult> {
+  return apiFetch<RevertMovementsResult>("/api/stock-movements/revert", {
+    method: "POST",
+    body: JSON.stringify({ brandId, movementIds }),
+  });
 }

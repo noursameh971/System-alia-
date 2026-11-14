@@ -1,4 +1,4 @@
-import { check, integer, pgTable, text, timestamp, uuid, varchar } from "drizzle-orm/pg-core";
+import { type AnyPgColumn, check, integer, pgTable, text, timestamp, uniqueIndex, uuid, varchar } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { productVariants } from "./catalog.js";
 import { movementTypeEnum, reasonScopeEnum } from "./enums.js";
@@ -32,8 +32,13 @@ export const stockMovements = pgTable(
       .references(() => users.id, { onDelete: "restrict" }),
     notes: text("notes"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    // Admin revert (migration 0033): the original is stamped, the inverse row points back at it.
+    revertedAt: timestamp("reverted_at", { withTimezone: true }),
+    revertedBy: uuid("reverted_by").references(() => users.id, { onDelete: "restrict" }),
+    reversalOfId: uuid("reversal_of_id").references((): AnyPgColumn => stockMovements.id),
   },
   (table) => [
+    uniqueIndex("stock_movements_reversal_of_id_key").on(table.reversalOfId),
     // Mirrors chk_movement_bins in database/schema.sql — kept here for
     // type-level documentation; the raw SQL migration is the enforced source.
     check(

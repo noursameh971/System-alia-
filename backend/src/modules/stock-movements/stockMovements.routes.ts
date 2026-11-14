@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { requireAuth, requireBrandAccess } from "../../middleware/auth.js";
+import { requireAuth, requireBrandAccess, requireRole } from "../../middleware/auth.js";
 import { validateBody } from "../../middleware/validate.js";
 import { asyncHandler } from "../../utils/asyncHandler.js";
 import {
@@ -10,12 +10,14 @@ import {
   createTransferMovement,
   getRecentMovements,
   getVariantMovementHistory,
+  revertStockMovements,
 } from "./stockMovements.controller.js";
 import {
   batchMovementSchema,
   inboundMovementSchema,
   outboundMovementSchema,
   returnMovementSchema,
+  revertMovementsSchema,
   transferMovementSchema,
 } from "./stockMovements.schema.js";
 
@@ -70,4 +72,15 @@ stockMovementsRouter.get(
   requireAuth,
   requireBrandAccess("query"),
   asyncHandler(getRecentMovements),
+);
+
+// Revert / Undo is admin-only — unlike recording movements, it rewrites
+// stock that someone else counted, so warehouse staff can't use it.
+stockMovementsRouter.post(
+  "/revert",
+  requireAuth,
+  requireRole("admin"),
+  requireBrandAccess("body"),
+  validateBody(revertMovementsSchema),
+  asyncHandler(revertStockMovements),
 );

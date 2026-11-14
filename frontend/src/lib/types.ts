@@ -302,6 +302,19 @@ export interface RecentMovementLogItem {
   performedByName: string;
   reasonLabel: string | null;
   notes: string | null;
+  /** Set once an admin has reverted this movement. */
+  revertedAt: string | null;
+  revertedByName: string | null;
+  /** Set on the inverse movement a revert records — points at the movement it undid. */
+  reversalOfId: string | null;
+  /** False when the backend would refuse to revert it (already reverted, a revert itself, or owned by an order/return/factory transfer). */
+  revertible: boolean;
+}
+
+export interface RevertMovementsResult {
+  revertedCount: number;
+  totalQuantity: number;
+  reversalIds: string[];
 }
 
 export type ReasonScope = "stock_movement" | "return" | "both";

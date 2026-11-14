@@ -1,5 +1,5 @@
-import { and, desc, eq, inArray } from "drizzle-orm";
-import type { PgTransaction } from "drizzle-orm/pg-core";
+import { and, desc, eq, inArray, isNull, sql } from "drizzle-orm";
+import { alias, type PgTransaction } from "drizzle-orm/pg-core";
 import { db } from "../../db/client.js";
 import { decrementInventory, incrementInventory } from "../../db/inventoryOperations.js";
 import { inventory, productVariants, products, reasonCodes, stockMovements, users, warehouseBins } from "../../db/schema/index.js";
@@ -9,6 +9,7 @@ import type {
   InboundMovementInput,
   OutboundMovementInput,
   ReturnMovementInput,
+  RevertMovementsInput,
   TransferMovementInput,
 } from "./stockMovements.schema.js";
 
@@ -518,6 +519,26 @@ export async function recordBatchMovement(input: BatchMovementInput, actorUserId
   });
 }
 
+/**
+ * Movements written on behalf of another module's record. Reverting one here
+ * would leave that record (an order, a customer return, a factory hand-off)
+ * claiming stock moved when it no longer has, so those are undone from
+ * their own module instead.
+ */
+const NON_REVERTIBLE_REFERENCE_TYPES: Record<string, string> = {
+  order: "an order",
+  return: "a customer return",
+  brand: "a factory transfer",
+};
+
+function revertBlockReason(m: { revertedAt: Date | null; reversalOfId: string | null; referenceType: string | null }): string | null {
+  if (m.revertedAt) return "already reverted";
+  if (m.reversalOfId) return "it is itself a revert";
+  const owner = m.referenceType ? NON_REVERTIBLE_REFERENCE_TYPES[m.referenceType] : undefined;
+  if (owner) return `it belongs to ${owner}`;
+  return null;
+}
+
 export interface RecentMovementLogItem {
   id: string;
   movementType: string;
@@ -528,10 +549,16 @@ export interface RecentMovementLogItem {
   performedByName: string;
   reasonLabel: string | null;
   notes: string | null;
+  revertedAt: Date | null;
+  revertedByName: string | null;
+  reversalOfId: string | null;
+  /** False when revertMovements would refuse this row (already reverted, a revert itself, or owned by another module). */
+  revertible: boolean;
 }
 
 /** Backs the Inventory page's "Recent Movements Log" — the latest movements for one brand, across every movement type. */
 export async function listRecentMovementsForBrand(brandId: string, limit = 10): Promise<RecentMovementLogItem[]> {
+  const reverter = alias(users, "reverter");
   const rows = await db
     .select({
       id: stockMovements.id,
@@ -539,19 +566,149 @@ export async function listRecentMovementsForBrand(brandId: string, limit = 10): 
       quantity: stockMovements.quantity,
       createdAt: stockMovements.createdAt,
       notes: stockMovements.notes,
+      referenceType: stockMovements.referenceType,
+      revertedAt: stockMovements.revertedAt,
+      reversalOfId: stockMovements.reversalOfId,
       sku: productVariants.sku,
       productName: products.name,
       performedByName: users.fullName,
       reasonLabel: reasonCodes.label,
+      revertedByName: reverter.fullName,
     })
     .from(stockMovements)
     .innerJoin(productVariants, eq(productVariants.id, stockMovements.variantId))
     .innerJoin(products, eq(products.id, productVariants.productId))
     .innerJoin(users, eq(users.id, stockMovements.performedBy))
     .leftJoin(reasonCodes, eq(reasonCodes.id, stockMovements.reasonCodeId))
+    .leftJoin(reverter, eq(reverter.id, stockMovements.revertedBy))
     .where(eq(products.brandId, brandId))
     .orderBy(desc(stockMovements.createdAt))
     .limit(limit);
 
-  return rows.map((r) => ({ ...r, reasonLabel: r.reasonLabel ?? null }));
+  return rows.map(({ referenceType, ...r }) => ({
+    ...r,
+    reasonLabel: r.reasonLabel ?? null,
+    revertedByName: r.revertedByName ?? null,
+    revertible: revertBlockReason({ ...r, referenceType }) === null,
+  }));
+}
+
+export interface RevertMovementsResult {
+  revertedCount: number;
+  totalQuantity: number;
+  /** One inverse movement per reverted original (none for a no-bin Damaged/Lost return, which never touched stock). */
+  reversalIds: string[];
+}
+
+/**
+ * Admin Revert / Undo: applies the exact inverse of each selected movement
+ * to the same variant and bin(s), in ONE transaction — if any line can't be
+ * undone (e.g. stock that came in has since been sold, so the bin can't give
+ * it back), nothing is reverted.
+ *
+ *  - stock out of a bin (outbound, gift, decreasing adjustment) → added back to that bin
+ *  - stock into a bin (inbound, restocked return, increasing adjustment) → taken back out
+ *  - transfer → moved back from the destination to the source bin
+ *  - Damaged/Lost return (no bin) → only marked reverted; it never changed stock
+ *
+ * The inverse is recorded as its own movement (an `adjustment`, or a
+ * `transfer` for a transfer) pointing back via reversal_of_id, and the
+ * original is stamped reverted_at/reverted_by. Rows are locked FOR UPDATE
+ * and processed newest-first, so concurrent reverts of the same row
+ * serialize and the second one sees it as already reverted.
+ */
+export async function revertMovementsInTx(tx: Tx, input: RevertMovementsInput, actorUserId: string): Promise<RevertMovementsResult> {
+  const ids = [...new Set(input.movementIds)];
+  const rows = await tx
+    .select({
+      id: stockMovements.id,
+      variantId: stockMovements.variantId,
+      movementType: stockMovements.movementType,
+      quantity: stockMovements.quantity,
+      fromBinId: stockMovements.fromBinId,
+      toBinId: stockMovements.toBinId,
+      referenceType: stockMovements.referenceType,
+      revertedAt: stockMovements.revertedAt,
+      reversalOfId: stockMovements.reversalOfId,
+      createdAt: stockMovements.createdAt,
+      brandId: products.brandId,
+      sku: productVariants.sku,
+    })
+    .from(stockMovements)
+    .innerJoin(productVariants, eq(productVariants.id, stockMovements.variantId))
+    .innerJoin(products, eq(products.id, productVariants.productId))
+    .where(inArray(stockMovements.id, ids))
+    .orderBy(desc(stockMovements.createdAt))
+    .for("update", { of: stockMovements });
+
+  // A movement from another brand is reported the same as a missing one — no cross-brand probing.
+  const found = rows.filter((row) => row.brandId === input.brandId);
+  if (found.length !== ids.length) throw ApiError.notFound("One or more movements were not found in this workspace");
+
+  for (const row of found) {
+    const reason = revertBlockReason(row);
+    if (reason) throw ApiError.conflict(`Can't revert the ${row.movementType} movement for ${row.sku}: ${reason}`);
+  }
+
+  const reversalIds: string[] = [];
+  for (const row of found) {
+    const { variantId, quantity, fromBinId, toBinId } = row;
+    const takeBack = async (binId: string) => {
+      try {
+        await decrementInventory(tx, { variantId, binId, quantity });
+      } catch (err) {
+        if (err instanceof ApiError && err.statusCode === 409) {
+          throw ApiError.conflict(
+            `Can't revert the ${row.movementType} movement for ${row.sku}: the bin no longer holds ${quantity} of it (stock has moved since)`,
+            err.details,
+          );
+        }
+        throw err;
+      }
+    };
+
+    let reversal: { fromBinId: string | null; toBinId: string | null; movementType: "adjustment" | "transfer" } | null = null;
+    if (fromBinId && toBinId) {
+      await takeBack(toBinId);
+      await incrementInventory(tx, { variantId, binId: fromBinId, quantity });
+      reversal = { movementType: "transfer", fromBinId: toBinId, toBinId: fromBinId };
+    } else if (fromBinId) {
+      await incrementInventory(tx, { variantId, binId: fromBinId, quantity });
+      reversal = { movementType: "adjustment", fromBinId: null, toBinId: fromBinId };
+    } else if (toBinId) {
+      await takeBack(toBinId);
+      reversal = { movementType: "adjustment", fromBinId: toBinId, toBinId: null };
+    }
+
+    if (reversal) {
+      const [inserted] = await tx
+        .insert(stockMovements)
+        .values({
+          variantId,
+          quantity,
+          ...reversal,
+          reversalOfId: row.id,
+          performedBy: actorUserId,
+          notes: `Revert of ${row.movementType} movement`,
+        })
+        .returning({ id: stockMovements.id });
+      if (!inserted) throw new Error("Movement insert returned no row"); // unreachable
+      reversalIds.push(inserted.id);
+    }
+
+    await tx
+      .update(stockMovements)
+      .set({ revertedAt: sql`now()`, revertedBy: actorUserId })
+      .where(and(eq(stockMovements.id, row.id), isNull(stockMovements.revertedAt)));
+  }
+
+  return {
+    revertedCount: found.length,
+    totalQuantity: found.reduce((sum, row) => sum + row.quantity, 0),
+    reversalIds,
+  };
+}
+
+export async function revertMovements(input: RevertMovementsInput, actorUserId: string): Promise<RevertMovementsResult> {
+  return db.transaction((tx) => revertMovementsInTx(tx, input, actorUserId));
 }

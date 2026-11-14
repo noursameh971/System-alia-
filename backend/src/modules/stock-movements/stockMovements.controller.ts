@@ -9,12 +9,14 @@ import {
   recordOutboundMovement,
   recordReturnMovement,
   recordTransferMovement,
+  revertMovements,
 } from "./stockMovements.service.js";
 import type {
   BatchMovementInput,
   InboundMovementInput,
   OutboundMovementInput,
   ReturnMovementInput,
+  RevertMovementsInput,
   TransferMovementInput,
 } from "./stockMovements.schema.js";
 
@@ -58,4 +60,10 @@ export async function getRecentMovements(req: Request, res: Response): Promise<v
 
   const movements = await listRecentMovementsForBrand(brandId, limit);
   sendSuccess(res, 200, movements);
+}
+
+/** POST /api/stock-movements/revert — admin-only Revert / Undo from the Recent Movements Log. */
+export async function revertStockMovements(req: Request, res: Response): Promise<void> {
+  const result = await revertMovements(req.body as RevertMovementsInput, req.user!.id);
+  sendSuccess(res, 200, result);
 }

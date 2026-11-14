@@ -54,7 +54,7 @@ export function MovementForms() {
 
       <div>
         <h2 className="mb-2 text-sm font-semibold text-slate-900 dark:text-slate-100">{t("Recent Movements Log")}</h2>
-        <RecentMovementsLog movements={recentMovements ?? []} />
+        <RecentMovementsLog movements={recentMovements ?? []} onReverted={() => void refreshRecent()} />
       </div>
     </div>
   );
