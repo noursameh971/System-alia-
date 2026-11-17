@@ -10,6 +10,31 @@ import { Badge } from "@/components/ui/Badge";
 import { QrCodeIcon } from "@/components/layout/icons";
 import { ProductThumbnail } from "@/components/products/ProductThumbnail";
 
+/**
+ * SKU -> variant for this browser session. A scan session is mostly the same
+ * few SKUs over and over (500 units of 20 variants), so after the first scan
+ * of a label every repeat resolves instantly with no network round-trip.
+ */
+const resolvedBySku = new Map<string, VariantLookupResult>();
+/** Lookups currently in flight, so a burst of the same new SKU shares one request instead of firing one per scan. */
+const pendingBySku = new Map<string, Promise<VariantLookupResult>>();
+
+function lookupSku(sku: string): VariantLookupResult | Promise<VariantLookupResult> {
+  const cached = resolvedBySku.get(sku);
+  if (cached) return cached;
+  let pending = pendingBySku.get(sku);
+  if (!pending) {
+    pending = getVariantBySku(sku)
+      .then((found) => {
+        resolvedBySku.set(sku, found);
+        return found;
+      })
+      .finally(() => pendingBySku.delete(sku));
+    pendingBySku.set(sku, pending);
+  }
+  return pending;
+}
+
 export function VariantScanInput({
   variant,
   onResolved,
@@ -33,6 +58,12 @@ export function VariantScanInput({
 }) {
   const { t } = useLocale();
   const [sku, setSku] = useState("");
+  // The authoritative scan buffer. A scanner types a whole label plus Enter
+  // in a few milliseconds; reading `sku` (the last *rendered* value) on
+  // Enter could submit a label with its tail missing while the page is busy
+  // re-rendering a long queue. The ref is updated synchronously per key, and
+  // the state copy only drives what the field displays.
+  const bufferRef = useRef("");
   // Count of in-flight lookups, not a boolean — a scanner fires Enter every
   // few hundred ms, far faster than a round-trip, so multiple scans are
   // routinely in flight at once. Never disable the input on this: a
@@ -43,19 +74,41 @@ export function VariantScanInput({
   const [error, setError] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
+  function setBuffer(next: string) {
+    bufferRef.current = next;
+    setSku(next);
+  }
+
+  /** Empties the field synchronously and resolves what was in it — the scanner is already sending the next label. */
+  function submitBuffer() {
+    const value = bufferRef.current;
+    setBuffer("");
+    void resolve(value);
+  }
+
+  function accept(found: VariantLookupResult) {
+    if (expectedBrand && found.brand.id !== expectedBrand.id) {
+      setError(`${found.sku} belongs to ${found.brand.name}, not ${expectedBrand.name} — wrong workspace.`);
+      return;
+    }
+    setError(null);
+    onResolved(found);
+  }
+
   async function resolve(rawValue: string) {
     const trimmed = rawValue.trim();
     if (!trimmed) return;
 
+    const lookup = lookupSku(trimmed);
+    // Already-seen SKU: counted immediately, no network, no pending state.
+    if (!(lookup instanceof Promise)) {
+      accept(lookup);
+      return;
+    }
+
     setPendingCount((n) => n + 1);
-    setError(null);
     try {
-      const found = await getVariantBySku(trimmed);
-      if (expectedBrand && found.brand.id !== expectedBrand.id) {
-        setError(`${found.sku} belongs to ${found.brand.name}, not ${expectedBrand.name} — wrong workspace.`);
-        return;
-      }
-      onResolved(found);
+      accept(await lookup);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Failed to look up that SKU");
     } finally {
@@ -119,7 +172,7 @@ export function VariantScanInput({
             autoComplete="off"
             autoCapitalize="characters"
             value={sku}
-            onChange={(e) => setSku(e.target.value)}
+            onChange={(e) => setBuffer(e.target.value)}
             onKeyDown={(e) => {
               if (e.key === "Enter") {
                 e.preventDefault();
@@ -128,9 +181,7 @@ export function VariantScanInput({
                 // scanner is already moving on to the next label and the
                 // field must be empty and focused for it, not still holding
                 // this scan's text until a network round-trip finishes.
-                const value = sku;
-                setSku("");
-                void resolve(value);
+                submitBuffer();
                 return;
               }
 
@@ -147,7 +198,7 @@ export function VariantScanInput({
               const char = getUsLayoutChar(e);
               if (char !== null) {
                 e.preventDefault();
-                setSku((prev) => prev + char);
+                setBuffer(bufferRef.current + char);
               }
             }}
             placeholder="e.g. ALH-HIJ-00001-BLK-CHF-M"
@@ -156,11 +207,7 @@ export function VariantScanInput({
         </div>
         <button
           type="button"
-          onClick={() => {
-            const value = sku;
-            setSku("");
-            void resolve(value);
-          }}
+          onClick={submitBuffer}
           disabled={!sku.trim()}
           className="rounded-lg bg-indigo-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-indigo-500 disabled:opacity-50"
         >

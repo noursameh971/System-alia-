@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { memo, useCallback, useState } from "react";
 import { toast } from "sonner";
 import { Minus, Plus, Trash2 } from "lucide-react";
 import { useAllBins } from "@/hooks/useAllBins";
@@ -45,6 +45,69 @@ const KIND_ACTION_LABEL: Record<MovementKind, string> = {
 };
 
 /**
+ * One queued line. Memoized with stable callbacks so a scan re-renders only
+ * the row it bumped (or the one it added) — not every row of a queue that
+ * can grow to hundreds of lines during a long scanning session.
+ */
+const QueueRow = memo(function QueueRow({
+  item,
+  onAdjust,
+  onRemove,
+}: {
+  item: QueueItem;
+  onAdjust: (variantId: string, delta: number) => void;
+  onRemove: (variantId: string) => void;
+}) {
+  return (
+    <TableRow>
+      <TableCell className="font-medium text-slate-900 dark:text-slate-100">
+        {item.productName}
+        {item.attributesLabel ? (
+          <div className="text-xs font-normal text-slate-500 dark:text-slate-400">{item.attributesLabel}</div>
+        ) : null}
+      </TableCell>
+      <TableCell className="font-mono text-xs text-slate-500 dark:text-slate-400">{item.sku}</TableCell>
+      <TableCell>
+        <div className="flex items-center gap-1">
+          <Button
+            type="button"
+            size="icon"
+            variant="outline"
+            className="size-7"
+            onClick={() => onAdjust(item.variantId, -1)}
+            aria-label={`Decrease quantity for ${item.sku}`}
+          >
+            <Minus className="size-3" />
+          </Button>
+          <span className="w-8 text-center tabular-nums">{item.quantity}</span>
+          <Button
+            type="button"
+            size="icon"
+            variant="outline"
+            className="size-7"
+            onClick={() => onAdjust(item.variantId, 1)}
+            aria-label={`Increase quantity for ${item.sku}`}
+          >
+            <Plus className="size-3" />
+          </Button>
+        </div>
+      </TableCell>
+      <TableCell className="text-end">
+        <Button
+          type="button"
+          size="icon"
+          variant="ghost"
+          onClick={() => onRemove(item.variantId)}
+          aria-label={`Remove ${item.sku} from queue`}
+        >
+          <Trash2 className="size-4 text-red-500" />
+        </Button>
+      </TableCell>
+    </TableRow>
+  );
+});
+
+/**
  * The Inventory page's fast-scan WMS panel, shared by all four movement
  * tabs: a scanner that never stops (every resolved SKU is added straight to
  * a queue instead of opening a one-item form), inline +/- and delete on
@@ -64,28 +127,54 @@ export function ScanQueuePanel({ movementType, onExecuted }: { movementType: Mov
   const [executing, setExecuting] = useState(false);
   const [status, setStatus] = useState<MovementStatus | null>(null);
 
-  function addToQueue(variant: VariantLookupResult) {
+  // Every queue change is a functional update against the latest queue, so
+  // scans resolving in any order (or while a batch is executing) each land
+  // exactly once — none can overwrite another's count.
+  const addToQueue = useCallback((variant: VariantLookupResult) => {
     setStatus(null);
     setQueue((prev) => {
-      const existing = prev.find((item) => item.variantId === variant.id);
-      if (existing) {
-        return prev.map((item) => (item.variantId === variant.id ? { ...item, quantity: item.quantity + 1 } : item));
+      const index = prev.findIndex((item) => item.variantId === variant.id);
+      if (index !== -1) {
+        // Copy the array but reuse every other row object, so only the bumped row re-renders.
+        const next = prev.slice();
+        next[index] = { ...prev[index]!, quantity: prev[index]!.quantity + 1 };
+        return next;
       }
       const attributesLabel = variant.attributes.map((a) => a.value).join(" / ");
       return [{ variantId: variant.id, sku: variant.sku, productName: variant.productName, attributesLabel, quantity: 1 }, ...prev];
     });
-  }
+  }, []);
 
-  function adjustQuantity(variantId: string, delta: number) {
-    setQueue((prev) =>
-      prev
-        .map((item) => (item.variantId === variantId ? { ...item, quantity: item.quantity + delta } : item))
-        .filter((item) => item.quantity > 0),
-    );
-  }
+  const adjustQuantity = useCallback((variantId: string, delta: number) => {
+    setQueue((prev) => {
+      const index = prev.findIndex((item) => item.variantId === variantId);
+      if (index === -1) return prev;
+      const quantity = prev[index]!.quantity + delta;
+      if (quantity <= 0) return prev.filter((_, i) => i !== index);
+      const next = prev.slice();
+      next[index] = { ...prev[index]!, quantity };
+      return next;
+    });
+  }, []);
 
-  function removeItem(variantId: string) {
+  const removeItem = useCallback((variantId: string) => {
     setQueue((prev) => prev.filter((item) => item.variantId !== variantId));
+  }, []);
+
+  /**
+   * Takes what a batch actually processed off the queue — rather than
+   * replacing the queue with a pre-execute snapshot — so anything scanned
+   * while the request was in flight stays queued for the next batch.
+   */
+  function subtractProcessed(processed: Map<string, number>) {
+    setQueue((prev) =>
+      prev.flatMap((item) => {
+        const done = processed.get(item.variantId) ?? 0;
+        if (done === 0) return [item];
+        const quantity = item.quantity - done;
+        return quantity > 0 ? [{ ...item, quantity }] : [];
+      }),
+    );
   }
 
   const totalUnits = queue.reduce((sum, item) => sum + item.quantity, 0);
@@ -103,8 +192,7 @@ export function ScanQueuePanel({ movementType, onExecuted }: { movementType: Mov
 
   const canExecute = queue.length > 0 && contextReady && !executing;
 
-  function buildPayload(): BatchMovementInput {
-    const items = queue.map((item) => ({ variantId: item.variantId, quantity: item.quantity }));
+  function buildPayload(items: { variantId: string; quantity: number }[]): BatchMovementInput {
     if (movementType === "inbound") return { movementType: "inbound", toBinId, items };
     if (movementType === "outbound") return { movementType: "outbound", fromBinId, items };
     if (movementType === "gift") return { movementType: "gift", fromBinId, items };
@@ -122,8 +210,10 @@ export function ScanQueuePanel({ movementType, onExecuted }: { movementType: Mov
     if (!canExecute) return;
     setExecuting(true);
     setStatus(null);
+    // Snapshot exactly what's being sent; scans keep landing in `queue` meanwhile.
+    const sent = queue.map((item) => ({ variantId: item.variantId, quantity: item.quantity }));
     try {
-      const result = await recordBatchMovement(buildPayload());
+      const result = await recordBatchMovement(buildPayload(sent));
       const processedSummary = `${result.itemCount} item${result.itemCount === 1 ? "" : "s"} processed — ${result.totalQuantity} unit${result.totalQuantity === 1 ? "" : "s"} total.`;
 
       if (result.skipped.length > 0) {
@@ -139,7 +229,7 @@ export function ScanQueuePanel({ movementType, onExecuted }: { movementType: Mov
           .join("; ");
 
         toast.success(processedSummary);
-        setQueue((prev) => prev.filter((item) => skippedByVariant.has(item.variantId)));
+        subtractProcessed(new Map(sent.filter((item) => !skippedByVariant.has(item.variantId)).map((item) => [item.variantId, item.quantity])));
         setStatus({
           kind: "warning",
           message: `${processedSummary} ${result.skipped.length} line${result.skipped.length === 1 ? "" : "s"} skipped — not enough stock: ${detail}. ${result.skipped.length === 1 ? "It is" : "They are"} still queued below — adjust the quantity and run the batch again.`,
@@ -149,7 +239,7 @@ export function ScanQueuePanel({ movementType, onExecuted }: { movementType: Mov
       }
 
       toast.success(processedSummary);
-      setQueue([]);
+      subtractProcessed(new Map(sent.map((item) => [item.variantId, item.quantity])));
       setReason("");
       onExecuted();
     } catch (err) {
@@ -268,51 +358,7 @@ export function ScanQueuePanel({ movementType, onExecuted }: { movementType: Mov
             </TableHeader>
             <TableBody>
               {queue.map((item) => (
-                <TableRow key={item.variantId}>
-                  <TableCell className="font-medium text-slate-900 dark:text-slate-100">
-                    {item.productName}
-                    {item.attributesLabel ? (
-                      <div className="text-xs font-normal text-slate-500 dark:text-slate-400">{item.attributesLabel}</div>
-                    ) : null}
-                  </TableCell>
-                  <TableCell className="font-mono text-xs text-slate-500 dark:text-slate-400">{item.sku}</TableCell>
-                  <TableCell>
-                    <div className="flex items-center gap-1">
-                      <Button
-                        type="button"
-                        size="icon"
-                        variant="outline"
-                        className="size-7"
-                        onClick={() => adjustQuantity(item.variantId, -1)}
-                        aria-label={`Decrease quantity for ${item.sku}`}
-                      >
-                        <Minus className="size-3" />
-                      </Button>
-                      <span className="w-8 text-center tabular-nums">{item.quantity}</span>
-                      <Button
-                        type="button"
-                        size="icon"
-                        variant="outline"
-                        className="size-7"
-                        onClick={() => adjustQuantity(item.variantId, 1)}
-                        aria-label={`Increase quantity for ${item.sku}`}
-                      >
-                        <Plus className="size-3" />
-                      </Button>
-                    </div>
-                  </TableCell>
-                  <TableCell className="text-end">
-                    <Button
-                      type="button"
-                      size="icon"
-                      variant="ghost"
-                      onClick={() => removeItem(item.variantId)}
-                      aria-label={`Remove ${item.sku} from queue`}
-                    >
-                      <Trash2 className="size-4 text-red-500" />
-                    </Button>
-                  </TableCell>
-                </TableRow>
+                <QueueRow key={item.variantId} item={item} onAdjust={adjustQuantity} onRemove={removeItem} />
               ))}
             </TableBody>
           </Table>
